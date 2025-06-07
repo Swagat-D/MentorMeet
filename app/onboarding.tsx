@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Animated, Easing } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,14 +6,68 @@ import { useAuthStore } from "@/stores/auth-store";
 import { subjects } from "@/constants/subjects";
 import { ArrowRight, Check } from "lucide-react-native";
 
+// Create a separate component for list items to avoid hooks in renderItem
+const SubjectItem = ({ item, index, selectedSubjects, toggleSubject }: {
+  item: string;
+  index: number;
+  selectedSubjects: string[];
+  toggleSubject: (subject: string) => void;
+}) => {
+  const isSelected = selectedSubjects.includes(item);
+  const itemFadeAnim = useRef(new Animated.Value(0)).current;
+  const itemTranslateYAnim = useRef(new Animated.Value(20)).current;
+  
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(itemFadeAnim, {
+        toValue: 1,
+        duration: 400,
+        delay: index * 50,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(itemTranslateYAnim, {
+        toValue: 0,
+        duration: 400,
+        delay: index * 50,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+    ]).start();
+  }, []);
+  
+  return (
+    <Animated.View
+      style={{
+        opacity: itemFadeAnim,
+        transform: [{ translateY: itemTranslateYAnim }],
+        flex: 1,
+      }}
+    >
+      <TouchableOpacity
+        style={[
+          styles.subjectItem,
+          isSelected && styles.selectedSubjectItem,
+        ]}
+        onPress={() => toggleSubject(item)}
+      >
+        <Text style={[styles.subjectText, isSelected && styles.selectedSubjectText]}>
+          {item}
+        </Text>
+        {isSelected && <Check size={20} color="#fff" />}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 export default function OnboardingScreen() {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const { completeOnboarding } = useAuthStore();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateYAnim = useRef(new Animated.Value(50)).current;
 
-  // Animation on mount
-  useState(() => {
+  // Fixed: Use useEffect instead of useState for animations
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -28,7 +82,7 @@ export default function OnboardingScreen() {
         easing: Easing.out(Easing.ease),
       }),
     ]).start();
-  });
+  }, []);
 
   const toggleSubject = (subject: string) => {
     if (selectedSubjects.includes(subject)) {
@@ -43,55 +97,14 @@ export default function OnboardingScreen() {
     router.replace("/(tabs)");
   };
 
-  const renderSubjectItem = ({ item, index }: { item: string; index: number }) => {
-    const isSelected = selectedSubjects.includes(item);
-    
-    // Staggered animation for each item
-    const itemFadeAnim = useRef(new Animated.Value(0)).current;
-    const itemTranslateYAnim = useRef(new Animated.Value(20)).current;
-    
-    useState(() => {
-      Animated.parallel([
-        Animated.timing(itemFadeAnim, {
-          toValue: 1,
-          duration: 400,
-          delay: index * 50,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.ease),
-        }),
-        Animated.timing(itemTranslateYAnim, {
-          toValue: 0,
-          duration: 400,
-          delay: index * 50,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.ease),
-        }),
-      ]).start();
-    });
-    
-    return (
-      <Animated.View
-        style={{
-          opacity: itemFadeAnim,
-          transform: [{ translateY: itemTranslateYAnim }],
-          flex: 1,
-        }}
-      >
-        <TouchableOpacity
-          style={[
-            styles.subjectItem,
-            isSelected && styles.selectedSubjectItem,
-          ]}
-          onPress={() => toggleSubject(item)}
-        >
-          <Text style={[styles.subjectText, isSelected && styles.selectedSubjectText]}>
-            {item}
-          </Text>
-          {isSelected && <Check size={20} color="#fff" />}
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
+  const renderSubjectItem = ({ item, index }: { item: string; index: number }) => (
+    <SubjectItem
+      item={item}
+      index={index}
+      selectedSubjects={selectedSubjects}
+      toggleSubject={toggleSubject}
+    />
+  );
 
   return (
     <SafeAreaView style={styles.container}>
