@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Animated, Dimensions } from "react-native";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore } from "@/stores/authStore";
 import { router } from "expo-router";
 import { useRef, useEffect } from "react";
 import { 

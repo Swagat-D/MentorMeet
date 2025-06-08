@@ -1,12 +1,12 @@
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Switch } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore } from "@/stores/authStore";
 import { subjects } from "@/constants/subjects";
 import { LogOut, ChevronRight, Bell, CreditCard, HelpCircle, Shield, Moon } from "lucide-react-native";
 
 export default function ProfileScreen() {
-  const { user, logout, toggleDarkMode, isDarkMode } = useAuthStore();
+  const { user, logout } = useAuthStore();
 
   const handleLogout = () => {
     logout();
@@ -69,12 +69,6 @@ export default function ProfileScreen() {
               <Moon size={20} color="#666" />
               <Text style={styles.settingTitle}>Dark Mode</Text>
             </View>
-            <Switch
-              value={isDarkMode}
-              onValueChange={toggleDarkMode}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
-              thumbColor="#fff"
-            />
           </View>
           
           {renderSettingItem(

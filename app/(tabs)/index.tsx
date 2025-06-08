@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore } from "@/stores/authStore";
 import { mentors } from "@/mocks/mentors";
 import { subjects } from "@/constants/subjects";
 import { Star } from "lucide-react-native";

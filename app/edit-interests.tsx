@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, router } from "expo-router";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore } from "@/stores/authStore";
 import { subjects } from "@/constants/subjects";
 import { Check, ArrowRight } from "lucide-react-native";
 
