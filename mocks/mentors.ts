@@ -1,394 +1,404 @@
-import { Mentor } from "@/types/mentor";
+// mocks/mentors.ts - Enhanced Mock Data for Mentors
+import { Mentor, Session } from '@/types/mentor';
 
 export const mentors: Mentor[] = [
   {
-    id: "1",
-    name: "Dr. Sarah Johnson",
-    title: "Mathematics Professor",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200",
+    id: '1',
+    name: 'Dr. Sarah Chen',
+    title: 'Senior Software Engineer at Google',
+    bio: 'Passionate educator with 8+ years in software development. I specialize in helping students transition from academia to industry, focusing on practical coding skills and career guidance.',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200',
+    coverImage: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=800',
     rating: 4.9,
-    location: "New Delhi, India",
-    bio: "I'm a Mathematics professor with over 15 years of teaching experience. I specialize in Calculus, Linear Algebra, and Statistics. My teaching approach focuses on building strong fundamentals and problem-solving skills.",
-    subjects: ["Mathematics", "Statistics", "Physics"],
-    education: [
-      {
-        degree: "Ph.D. in Mathematics",
-        institution: "Indian Institute of Technology, Delhi",
-        year: "2008"
-      },
-      {
-        degree: "M.Sc. in Mathematics",
-        institution: "Delhi University",
-        year: "2004"
-      }
-    ],
+    location: 'San Francisco, CA',
+    timezone: 'PST',
+    languages: ['English', 'Mandarin'],
+    subjects: ['Computer Science', 'Software Engineering', 'Data Structures', 'Algorithms'],
     sessionTypes: [
       {
-        title: "Concept Clarification",
-        description: "One-on-one session to clarify specific mathematical concepts and solve your doubts.",
+        id: '1',
+        title: 'Code Review Session',
+        description: 'Detailed review of your code with feedback and improvement suggestions',
+        duration: 60,
+        price: 85,
+        type: 'video_call',
+        maxParticipants: 1,
+        isPopular: true,
+      },
+      {
+        id: '2',
+        title: 'Career Guidance',
+        description: 'Strategic advice for your tech career path and interview preparation',
+        duration: 45,
+        price: 75,
+        type: 'video_call',
+        maxParticipants: 1,
+      },
+      {
+        id: '3',
+        title: 'Quick Q&A',
+        description: 'Fast answers to your programming questions',
         duration: 30,
-        price: 25
+        price: 50,
+        type: 'video_call',
+        maxParticipants: 1,
+      },
+    ],
+    education: [
+      {
+        id: '1',
+        degree: 'Ph.D. in Computer Science',
+        institution: 'Stanford University',
+        year: '2016',
+        field: 'Machine Learning',
+        honors: ['Summa Cum Laude', 'Phi Beta Kappa'],
       },
       {
-        title: "Problem Solving Session",
-        description: "Work through challenging problems together and learn advanced problem-solving techniques.",
-        duration: 60,
-        price: 45
+        id: '2',
+        degree: 'M.S. in Computer Science',
+        institution: 'MIT',
+        year: '2012',
+        field: 'Software Engineering',
+      },
+    ],
+    experience: [
+      {
+        id: '1',
+        title: 'Senior Software Engineer',
+        company: 'Google',
+        duration: '2018 - Present',
+        description: 'Lead development of machine learning systems for search ranking',
+        skills: ['Python', 'TensorFlow', 'Go', 'System Design'],
+        current: true,
       },
       {
-        title: "Exam Preparation",
-        description: "Comprehensive preparation for upcoming exams, including practice tests and personalized feedback.",
-        duration: 90,
-        price: 60
-      }
+        id: '2',
+        title: 'Software Engineer',
+        company: 'Meta',
+        duration: '2016 - 2018',
+        description: 'Developed scalable backend systems for social media platform',
+        skills: ['Java', 'React', 'GraphQL', 'Distributed Systems'],
+      },
+    ],
+    certifications: [
+      {
+        id: '1',
+        name: 'Google Cloud Professional Architect',
+        issuer: 'Google Cloud',
+        year: '2023',
+        credentialId: 'GCP-PA-2023-001',
+      },
     ],
     reviews: [
       {
-        name: "Rahul Sharma",
-        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100",
+        id: '1',
+        name: 'Alex Johnson',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200',
         rating: 5,
-        date: "Oct 15, 2023",
-        comment: "Dr. Johnson is an exceptional teacher! She explained complex calculus concepts in a way that finally made sense to me. Highly recommend her sessions."
+        comment: 'Dr. Chen helped me land my dream job at Amazon! Her guidance on system design was invaluable.',
+        date: '2024-01-15',
+        verified: true,
+        helpfulCount: 12,
       },
       {
-        name: "Priya Patel",
-        avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=100",
+        id: '2',
+        name: 'Maria Rodriguez',
+        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=200',
         rating: 5,
-        date: "Sep 28, 2023",
-        comment: "I was struggling with statistics for months, but after just three sessions with Dr. Johnson, I'm confident enough to tackle any problem. She's patient and very knowledgeable."
+        comment: 'Excellent mentor! She explains complex concepts in a very understandable way.',
+        date: '2024-01-10',
+        verified: true,
+        helpfulCount: 8,
       },
-      {
-        name: "Amit Kumar",
-        avatar: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=100",
-        rating: 4,
-        date: "Aug 12, 2023",
-        comment: "Great mentor for advanced mathematics. Her problem-solving sessions are particularly helpful for competitive exams."
-      }
-    ]
+    ],
+    availability: [
+      { dayOfWeek: 1, startTime: '09:00', endTime: '12:00', timezone: 'PST' },
+      { dayOfWeek: 1, startTime: '14:00', endTime: '17:00', timezone: 'PST' },
+      { dayOfWeek: 3, startTime: '10:00', endTime: '15:00', timezone: 'PST' },
+      { dayOfWeek: 5, startTime: '09:00', endTime: '12:00', timezone: 'PST' },
+    ],
+    stats: {
+      totalSessions: 247,
+      totalStudents: 89,
+      averageRating: 4.9,
+      responseTime: 'within 2 hours',
+      completionRate: 98,
+      repeatStudents: 67,
+      yearsOfExperience: 8,
+    },
+    isVerified: true,
+    isPremium: true,
+    isOnline: true,
+    lastActive: '2024-01-20T10:30:00Z',
+    joinedDate: '2022-03-15',
+    hourlyRate: 85,
+    specialties: ['System Design', 'Career Coaching', 'Interview Prep'],
+    teachingStyle: ['Hands-on', 'Project-based', 'Interactive'],
+    badges: ['Top Rated', 'Quick Responder', 'Career Expert'],
+    socialLinks: {
+      linkedin: 'https://linkedin.com/in/sarahchen',
+      github: 'https://github.com/sarahchen',
+      website: 'https://sarahchen.dev',
+    },
   },
   {
-    id: "2",
-    name: "Prof. Rajesh Gupta",
-    title: "Computer Science Expert",
-    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=200",
+    id: '2',
+    name: 'Prof. Michael Thompson',
+    title: 'Mathematics Professor at MIT',
+    bio: 'Mathematics educator with 15+ years of experience. I help students master calculus, linear algebra, and statistics through clear explanations and practical applications.',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200',
     rating: 4.8,
-    location: "Bangalore, India",
-    bio: "I'm a software engineer and CS professor with expertise in programming, data structures, algorithms, and web development. I believe in practical, hands-on learning and helping students build real-world projects.",
-    subjects: ["Computer Science", "Programming", "Web Development"],
-    education: [
-      {
-        degree: "M.Tech in Computer Science",
-        institution: "Indian Institute of Science, Bangalore",
-        year: "2010"
-      },
-      {
-        degree: "B.Tech in Computer Engineering",
-        institution: "NIT Surathkal",
-        year: "2008"
-      }
-    ],
+    location: 'Boston, MA',
+    timezone: 'EST',
+    languages: ['English', 'French'],
+    subjects: ['Mathematics', 'Calculus', 'Linear Algebra', 'Statistics'],
     sessionTypes: [
       {
-        title: "Programming Basics",
-        description: "Learn fundamentals of programming with Python or Java. Perfect for beginners.",
-        duration: 45,
-        price: 30
-      },
-      {
-        title: "Data Structures & Algorithms",
-        description: "Master essential DS&A concepts for interviews and competitive programming.",
+        id: '1',
+        title: 'Problem Solving Session',
+        description: 'Work through challenging math problems step by step',
         duration: 60,
-        price: 40
+        price: 70,
+        type: 'video_call',
+        maxParticipants: 1,
+        isPopular: true,
       },
       {
-        title: "Project Mentorship",
-        description: "Get guidance on your coding projects with code reviews and architecture advice.",
-        duration: 90,
-        price: 55
-      }
+        id: '2',
+        title: 'Concept Explanation',
+        description: 'Deep dive into mathematical concepts and theory',
+        duration: 45,
+        price: 60,
+        type: 'video_call',
+        maxParticipants: 1,
+      },
     ],
-    reviews: [
-      {
-        name: "Neha Singh",
-        avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=100",
-        rating: 5,
-        date: "Nov 2, 2023",
-        comment: "Prof. Gupta helped me prepare for my technical interviews. His algorithm sessions were incredibly helpful, and I landed a job at a top tech company!"
-      },
-      {
-        name: "Vikram Reddy",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100",
-        rating: 5,
-        date: "Oct 18, 2023",
-        comment: "I was struggling with my final year project, but Prof. Gupta's guidance completely transformed it. He's knowledgeable and explains complex concepts clearly."
-      },
-      {
-        name: "Ananya Desai",
-        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=100",
-        rating: 4,
-        date: "Sep 5, 2023",
-        comment: "Great mentor for learning web development. He helped me build my first full-stack application from scratch."
-      }
-    ]
-  },
-  {
-    id: "3",
-    name: "Dr. Meera Agarwal",
-    title: "Biology & Life Sciences Educator",
-    avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=200",
-    rating: 4.7,
-    location: "Mumbai, India",
-    bio: "I'm a biologist and educator with a passion for making complex biological concepts accessible to students. I specialize in molecular biology, genetics, and human physiology, with a focus on medical entrance exam preparation.",
-    subjects: ["Biology", "Genetics", "Chemistry"],
     education: [
       {
-        degree: "Ph.D. in Molecular Biology",
-        institution: "Tata Institute of Fundamental Research",
-        year: "2012"
+        id: '1',
+        degree: 'Ph.D. in Mathematics',
+        institution: 'Harvard University',
+        year: '2008',
+        field: 'Pure Mathematics',
       },
-      {
-        degree: "M.Sc. in Biotechnology",
-        institution: "Mumbai University",
-        year: "2008"
-      }
     ],
-    sessionTypes: [
+    experience: [
       {
-        title: "Biology Fundamentals",
-        description: "Clear understanding of core biological concepts with visual aids and examples.",
-        duration: 45,
-        price: 30
+        id: '1',
+        title: 'Professor of Mathematics',
+        company: 'MIT',
+        duration: '2010 - Present',
+        description: 'Teaching undergraduate and graduate mathematics courses',
+        skills: ['Teaching', 'Research', 'Curriculum Development'],
+        current: true,
       },
-      {
-        title: "NEET/Medical Exam Prep",
-        description: "Targeted preparation for medical entrance exams with practice questions and strategies.",
-        duration: 60,
-        price: 45
-      },
-      {
-        title: "Advanced Topics in Biology",
-        description: "Deep dive into specialized areas like genetics, molecular biology, or physiology.",
-        duration: 75,
-        price: 50
-      }
     ],
+    certifications: [],
     reviews: [
       {
-        name: "Karthik Nair",
-        avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=100",
+        id: '1',
+        name: 'Emma Watson',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200',
         rating: 5,
-        date: "Nov 10, 2023",
-        comment: "Dr. Agarwal's NEET preparation sessions were instrumental in my success. Her approach to teaching biology made even the most complex topics seem simple."
+        comment: 'Prof. Thompson made calculus finally click for me. His explanations are crystal clear!',
+        date: '2024-01-18',
+        verified: true,
+        helpfulCount: 15,
       },
-      {
-        name: "Shreya Malhotra",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100",
-        rating: 4,
-        date: "Oct 22, 2023",
-        comment: "Excellent mentor for biology. Her visual teaching methods and diagrams helped me understand concepts I had struggled with for years."
-      },
-      {
-        name: "Rohan Joshi",
-        avatar: "https://images.unsplash.com/photo-1552058544-f2b08422138a?q=80&w=100",
-        rating: 5,
-        date: "Sep 30, 2023",
-        comment: "Dr. Agarwal's genetics sessions are outstanding. She explains complex molecular mechanisms in a way that's easy to understand and remember."
-      }
-    ]
+    ],
+    availability: [
+      { dayOfWeek: 2, startTime: '10:00', endTime: '16:00', timezone: 'EST' },
+      { dayOfWeek: 4, startTime: '10:00', endTime: '16:00', timezone: 'EST' },
+    ],
+    stats: {
+      totalSessions: 312,
+      totalStudents: 156,
+      averageRating: 4.8,
+      responseTime: 'within 4 hours',
+      completionRate: 96,
+      repeatStudents: 89,
+      yearsOfExperience: 15,
+    },
+    isVerified: true,
+    isPremium: false,
+    isOnline: false,
+    lastActive: '2024-01-19T15:45:00Z',
+    joinedDate: '2021-09-01',
+    hourlyRate: 70,
+    specialties: ['Calculus', 'Linear Algebra', 'Exam Prep'],
+    teachingStyle: ['Structured', 'Patient', 'Theory-focused'],
+    badges: ['University Professor', 'Math Expert'],
+    socialLinks: {
+      linkedin: 'https://linkedin.com/in/michaelthompson',
+    },
   },
   {
-    id: "4",
-    name: "Prof. Arjun Mehta",
-    title: "Physics & Engineering Expert",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200",
+    id: '3',
+    name: 'Dr. Priya Patel',
+    title: 'Data Scientist at Netflix',
+    bio: 'Experienced data scientist passionate about teaching machine learning and statistics. I help students understand complex data concepts through real-world projects.',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=200',
     rating: 4.9,
-    location: "Chennai, India",
-    bio: "I'm a physics professor and former aerospace engineer with a passion for making physics intuitive and applicable. I specialize in mechanics, electromagnetism, and engineering physics, with a focus on problem-solving and real-world applications.",
-    subjects: ["Physics", "Engineering", "Mathematics"],
-    education: [
-      {
-        degree: "Ph.D. in Theoretical Physics",
-        institution: "Indian Institute of Technology, Madras",
-        year: "2009"
-      },
-      {
-        degree: "B.Tech in Aerospace Engineering",
-        institution: "Indian Institute of Technology, Bombay",
-        year: "2005"
-      }
-    ],
+    location: 'Los Angeles, CA',
+    timezone: 'PST',
+    languages: ['English', 'Hindi', 'Gujarati'],
+    subjects: ['Data Science', 'Machine Learning', 'Statistics', 'Python'],
     sessionTypes: [
       {
-        title: "Physics Fundamentals",
-        description: "Build strong foundations in core physics concepts with intuitive explanations and demonstrations.",
-        duration: 45,
-        price: 35
-      },
-      {
-        title: "Problem Solving Masterclass",
-        description: "Learn advanced problem-solving techniques for physics competitions and engineering entrance exams.",
-        duration: 60,
-        price: 45
-      },
-      {
-        title: "Engineering Physics Applications",
-        description: "Connect theoretical physics to real-world engineering applications and projects.",
+        id: '1',
+        title: 'Project Guidance',
+        description: 'Get help with your data science projects and portfolio',
         duration: 90,
-        price: 60
-      }
+        price: 95,
+        type: 'video_call',
+        maxParticipants: 1,
+        isPopular: true,
+      },
+      {
+        id: '2',
+        title: 'Technical Interview Prep',
+        description: 'Practice data science interview questions and case studies',
+        duration: 60,
+        price: 80,
+        type: 'video_call',
+        maxParticipants: 1,
+      },
     ],
-    reviews: [
-      {
-        name: "Aditya Sharma",
-        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100",
-        rating: 5,
-        date: "Nov 15, 2023",
-        comment: "Prof. Mehta's approach to teaching physics is revolutionary. He uses real-world examples that make complex concepts intuitive. My JEE Advanced score improved dramatically after his sessions."
-      },
-      {
-        name: "Kavita Rao",
-        avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100",
-        rating: 5,
-        date: "Oct 28, 2023",
-        comment: "The best physics teacher I've ever had. Prof. Mehta's problem-solving techniques are game-changers for competitive exams."
-      },
-      {
-        name: "Siddharth Patel",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100",
-        rating: 4,
-        date: "Sep 20, 2023",
-        comment: "His engineering physics sessions helped me bridge the gap between theoretical knowledge and practical applications. Highly recommended for engineering students."
-      }
-    ]
-  },
-  {
-    id: "5",
-    name: "Ms. Anjali Sharma",
-    title: "English Literature & Language Coach",
-    avatar: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?q=80&w=200",
-    rating: 4.8,
-    location: "Kolkata, India",
-    bio: "I'm an English literature professor and language coach with expertise in creative writing, grammar, and literary analysis. I help students improve their English communication skills, prepare for language proficiency tests, and develop a deeper appreciation for literature.",
-    subjects: ["English", "Literature", "Creative Writing"],
     education: [
       {
-        degree: "M.A. in English Literature",
-        institution: "Jadavpur University",
-        year: "2011"
+        id: '1',
+        degree: 'Ph.D. in Statistics',
+        institution: 'UC Berkeley',
+        year: '2017',
+        field: 'Applied Statistics',
       },
-      {
-        degree: "B.A. in English",
-        institution: "St. Xavier's College, Kolkata",
-        year: "2009"
-      }
     ],
-    sessionTypes: [
+    experience: [
       {
-        title: "English Grammar & Usage",
-        description: "Master English grammar rules and improve your written and spoken communication.",
-        duration: 45,
-        price: 25
+        id: '1',
+        title: 'Senior Data Scientist',
+        company: 'Netflix',
+        duration: '2020 - Present',
+        description: 'Building recommendation systems and conducting A/B testing',
+        skills: ['Python', 'Machine Learning', 'SQL', 'A/B Testing'],
+        current: true,
       },
+    ],
+    certifications: [
       {
-        title: "Literary Analysis",
-        description: "Learn to analyze and appreciate literary works with critical thinking and contextual understanding.",
-        duration: 60,
-        price: 35
+        id: '1',
+        name: 'AWS Machine Learning Specialty',
+        issuer: 'Amazon Web Services',
+        year: '2023',
       },
-      {
-        title: "IELTS/TOEFL Preparation",
-        description: "Comprehensive preparation for English proficiency tests with practice exercises and feedback.",
-        duration: 75,
-        price: 45
-      }
     ],
     reviews: [
       {
-        name: "Ravi Kumar",
-        avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=100",
+        id: '1',
+        name: 'David Kim',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200',
         rating: 5,
-        date: "Nov 5, 2023",
-        comment: "Ms. Sharma helped me improve my IELTS score from 6.5 to 8.0 in just two months. Her techniques for the writing and speaking sections were particularly effective."
+        comment: 'Dr. Patel helped me build an amazing portfolio project that got me hired!',
+        date: '2024-01-12',
+        verified: true,
+        helpfulCount: 20,
       },
-      {
-        name: "Divya Mathur",
-        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=100",
-        rating: 4,
-        date: "Oct 12, 2023",
-        comment: "I've always struggled with grammar, but Ms. Sharma's systematic approach made it much easier to understand and apply the rules correctly."
-      },
-      {
-        name: "Nikhil Menon",
-        avatar: "https://images.unsplash.com/photo-1552058544-f2b08422138a?q=80&w=100",
-        rating: 5,
-        date: "Sep 25, 2023",
-        comment: "Her literary analysis sessions opened my eyes to new ways of interpreting texts. She has an incredible depth of knowledge and a gift for teaching."
-      }
-    ]
+    ],
+    availability: [
+      { dayOfWeek: 6, startTime: '09:00', endTime: '15:00', timezone: 'PST' },
+      { dayOfWeek: 0, startTime: '10:00', endTime: '14:00', timezone: 'PST' },
+    ],
+    stats: {
+      totalSessions: 189,
+      totalStudents: 67,
+      averageRating: 4.9,
+      responseTime: 'within 1 hour',
+      completionRate: 99,
+      repeatStudents: 45,
+      yearsOfExperience: 7,
+    },
+    isVerified: true,
+    isPremium: true,
+    isOnline: true,
+    lastActive: '2024-01-20T09:15:00Z',
+    joinedDate: '2022-06-20',
+    hourlyRate: 95,
+    specialties: ['Machine Learning', 'Data Visualization', 'Career Transition'],
+    teachingStyle: ['Project-based', 'Industry-focused', 'Practical'],
+    badges: ['Data Science Expert', 'Top Rated', 'Quick Responder'],
+    socialLinks: {
+      linkedin: 'https://linkedin.com/in/priyapatel',
+      github: 'https://github.com/priyapatel',
+    },
   },
-  {
-    id: "6",
-    name: "Dr. Vikram Singh",
-    title: "History & Social Sciences Expert",
-    avatar: "https://images.unsplash.com/photo-1566492031773-4f4e44671857?q=80&w=200",
-    rating: 4.7,
-    location: "Jaipur, India",
-    bio: "I'm a historian and social sciences educator with a passion for making history engaging and relevant. I specialize in Indian history, world civilizations, and political science, focusing on connecting historical events to contemporary issues.",
-    subjects: ["History", "Political Science", "Geography"],
-    education: [
-      {
-        degree: "Ph.D. in History",
-        institution: "Jawaharlal Nehru University",
-        year: "2010"
-      },
-      {
-        degree: "M.A. in History",
-        institution: "Delhi University",
-        year: "2006"
-      }
-    ],
-    sessionTypes: [
-      {
-        title: "Indian History Overview",
-        description: "Comprehensive coverage of Indian history from ancient civilizations to modern India.",
-        duration: 60,
-        price: 30
-      },
-      {
-        title: "World History Highlights",
-        description: "Explore major world civilizations and transformative historical events.",
-        duration: 60,
-        price: 30
-      },
-      {
-        title: "UPSC History Preparation",
-        description: "Targeted preparation for history and social sciences sections of civil services exams.",
-        duration: 90,
-        price: 50
-      }
-    ],
-    reviews: [
-      {
-        name: "Anand Verma",
-        avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=100",
-        rating: 5,
-        date: "Nov 8, 2023",
-        comment: "Dr. Singh's approach to teaching history is refreshing. Instead of just dates and events, he focuses on patterns, causes, and impacts, which makes the subject fascinating."
-      },
-      {
-        name: "Leela Krishnan",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100",
-        rating: 4,
-        date: "Oct 20, 2023",
-        comment: "His UPSC preparation sessions are excellent. The way he connects historical events to current affairs is particularly helpful for the civil services exam."
-      },
-      {
-        name: "Farhan Ahmed",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100",
-        rating: 5,
-        date: "Sep 15, 2023",
-        comment: "Dr. Singh's knowledge of world history is impressive. His comparative analysis of different civilizations gave me new perspectives I hadn't considered before."
-      }
-    ]
-  }
 ];
+
+export const sessions: Session[] = [
+  {
+    id: '1',
+    mentor: {
+      id: '1',
+      name: 'Dr. Sarah Chen',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200',
+    },
+    mentee: {
+      id: 'current-user',
+      name: 'John Student',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200',
+    },
+    subject: 'Computer Science',
+    sessionType: {
+      id: '1',
+      title: 'Code Review Session',
+      description: 'Detailed review of your code with feedback',
+      duration: 60,
+      price: 85,
+      type: 'video_call',
+      maxParticipants: 1,
+    },
+    date: '2024-01-25T15:00:00Z',
+    duration: 60,
+    price: 85,
+    status: 'scheduled',
+    meetingLink: 'https://meet.google.com/abc-defg-hij',
+    userRating: 5,
+    createdAt: '2024-01-20T10:00:00Z',
+    updatedAt: '2024-01-20T10:00:00Z',
+  },
+  {
+    id: '2',
+    mentor: {
+      id: '2',
+      name: 'Prof. Michael Thompson',
+      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200',
+    },
+    mentee: {
+      id: 'current-user',
+      name: 'John Student',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200',
+    },
+    subject: 'Mathematics',
+    sessionType: {
+      id: '1',
+      title: 'Problem Solving Session',
+      description: 'Work through challenging math problems',
+      duration: 60,
+      price: 70,
+      type: 'video_call',
+      maxParticipants: 1,
+    },
+    date: '2024-01-15T14:00:00Z',
+    duration: 60,
+    price: 70,
+    status: 'completed',
+    userRating: 4,
+    feedback: {
+      mentorRating: 5,
+      menteeRating: 4,
+      mentorComment: "everything is well and good",
+      menteeComment: "ok ok",
+    },
+    createdAt: '2024-01-20T10:00:00Z',
+    updatedAt: '2024-01-20T10:00:00Z',
+  }
+]

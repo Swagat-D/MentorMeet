@@ -1,129 +1,466 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native";
+// app/(tabs)/sessions.tsx - Fully Responsive Sessions Screen
+import React, { useState, useEffect } from "react";
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  Image,
+  RefreshControl,
+  Dimensions,
+  Platform,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { sessions } from "@/mocks/sessions";
-import { Calendar, Clock, Video } from "lucide-react-native";
-import { formatDate, formatTime } from "@/utils/date-utils";
+import { LinearGradient } from "expo-linear-gradient";
+import { sessions } from "@/mocks/mentors";
+import { 
+  Calendar, 
+  Clock, 
+  Video, 
+  Phone, 
+  MessageSquare,
+  Star,
+  CheckCircle,
+  XCircle,
+  RotateCcw,
+  Filter,
+  Search,
+  MoreVertical,
+  MapPin,
+  PlayCircle,
+} from "lucide-react-native";
+import { formatDate, formatTime, formatRelativeTime } from "@/utils/date-utils";
 
-type TabType = "upcoming" | "past";
+const { width, height } = Dimensions.get('window');
+
+// Responsive breakpoints
+const isTablet = width >= 768;
+const isLargeScreen = width >= 1024;
+
+// Responsive utilities
+const getResponsiveValue = (small: number, medium: number, large: number) => {
+  if (isLargeScreen) return large;
+  if (isTablet) return medium;
+  return small;
+};
+
+const getHorizontalPadding = () => {
+  return getResponsiveValue(20, 32, 48);
+};
+
+const getFontSize = (base: number) => {
+  const scale = getResponsiveValue(1, 1.1, 1.2);
+  return Math.round(base * scale);
+};
+
+const getSessionsPerRow = () => {
+  return getResponsiveValue(1, 2, 3);
+};
+
+type TabType = "upcoming" | "completed" | "cancelled";
+type SortType = "date" | "mentor" | "subject" | "status";
 
 export default function SessionsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
+  const [sortBy, setSortBy] = useState<SortType>("date");
+  const [refreshing, setRefreshing] = useState(false);
+  const [screenData, setScreenData] = useState(Dimensions.get('window'));
 
-  const upcomingSessions = sessions.filter(
-    (session) => new Date(session.date) > new Date()
-  );
-  
-  const pastSessions = sessions.filter(
-    (session) => new Date(session.date) <= new Date()
-  );
+  // Listen for orientation changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenData(window);
+    });
 
-  const renderSessionItem = ({ item }: { item: typeof sessions[0] }) => (
+    return () => subscription?.remove();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setRefreshing(false);
+  };
+
+  // Filter and sort sessions
+  const getFilteredSessions = () => {
+    let filtered = sessions;
+
+    // Filter by tab
+    const now = new Date();
+    switch (activeTab) {
+      case "upcoming":
+        filtered = sessions.filter(session => 
+          new Date(session.date) > now && session.status !== 'cancelled'
+        );
+        break;
+      case "completed":
+        filtered = sessions.filter(session => 
+          session.status === 'completed' || 
+          (new Date(session.date) <= now && session.status !== 'cancelled')
+        );
+        break;
+      case "cancelled":
+        filtered = sessions.filter(session => session.status === 'cancelled');
+        break;
+    }
+
+    // Sort sessions
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "date":
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case "mentor":
+          return a.mentor.name.localeCompare(b.mentor.name);
+        case "subject":
+          return a.subject.localeCompare(b.subject);
+        case "status":
+          return a.status.localeCompare(b.status);
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredSessions = getFilteredSessions();
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle size={16} color="#10B981" />;
+      case 'cancelled':
+        return <XCircle size={16} color="#EF4444" />;
+      case 'rescheduled':
+        return <RotateCcw size={16} color="#F59E0B" />;
+      default:
+        return <Clock size={16} color="#6B7280" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return '#10B981';
+      case 'cancelled':
+        return '#EF4444';
+      case 'rescheduled':
+        return '#F59E0B';
+      case 'ongoing':
+        return '#3B82F6';
+      default:
+        return '#6B7280';
+    }
+  };
+
+  const TabButton = ({ type, label, count }: { type: TabType; label: string; count: number }) => (
     <TouchableOpacity
-      style={styles.sessionCard}
-      onPress={() => router.push(`/mentor/${item.mentor.id}`)}
+      style={[
+        styles.tab,
+        activeTab === type && styles.activeTab,
+        { 
+          flex: 1,
+          paddingVertical: getResponsiveValue(12, 14, 16),
+        }
+      ]}
+      onPress={() => setActiveTab(type)}
     >
-      <View style={styles.sessionHeader}>
-        <Text style={styles.sessionSubject}>{item.subject}</Text>
-        <Text style={styles.sessionPrice}>${item.price}</Text>
-      </View>
-      
-      <Text style={styles.mentorName}>{item.mentor.name}</Text>
-      
-      <View style={styles.sessionDetails}>
-        <View style={styles.detailItem}>
-          <Calendar size={16} color="#666" />
-          <Text style={styles.detailText}>{formatDate(item.date)}</Text>
-        </View>
-        
-        <View style={styles.detailItem}>
-          <Clock size={16} color="#666" />
-          <Text style={styles.detailText}>{formatTime(item.date)}</Text>
-        </View>
-      </View>
-      
-      {activeTab === "upcoming" && (
-        <TouchableOpacity style={styles.joinButton}>
-          <Video size={16} color="#fff" />
-          <Text style={styles.joinButtonText}>Join Session</Text>
-        </TouchableOpacity>
-      )}
-      
-      {activeTab === "past" && (
-        <View style={styles.ratingContainer}>
-          <Text style={styles.ratingLabel}>Your Rating:</Text>
-          <View style={styles.starsContainer}>
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Text
-                key={star}
-                style={[
-                  styles.star,
-                  star <= (item.userRating || 0) && styles.filledStar,
-                ]}
-              >
-                ★
-              </Text>
-            ))}
-          </View>
+      <Text
+        style={[
+          styles.tabText,
+          activeTab === type && styles.activeTabText,
+          { fontSize: getFontSize(16) }
+        ]}
+      >
+        {label}
+      </Text>
+      {count > 0 && (
+        <View style={styles.tabBadge}>
+          <Text style={[styles.tabBadgeText, { fontSize: getFontSize(12) }]}>
+            {count}
+          </Text>
         </View>
       )}
     </TouchableOpacity>
   );
 
+  const SessionCard = ({ session, index }: { session: any; index: number }) => {
+    const isUpcoming = activeTab === "upcoming";
+    const canJoin = isUpcoming && new Date(session.date) <= new Date(Date.now() + 30 * 60 * 1000); // 30 min before
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.sessionCard,
+          { 
+            width: isTablet ? (screenData.width - getHorizontalPadding() * 2 - 16 * (getSessionsPerRow() - 1)) / getSessionsPerRow() : '100%',
+            marginRight: isTablet && (index + 1) % getSessionsPerRow() !== 0 ? 16 : 0,
+          }
+        ]}
+        onPress={() => router.push(`/session/${session.id}`)}
+        activeOpacity={0.8}
+      >
+        {/* Header */}
+        <View style={styles.sessionHeader}>
+          <View style={styles.sessionHeaderLeft}>
+            <Image source={{ uri: session.mentor.avatar }} style={styles.sessionAvatar} />
+            <View style={styles.sessionBasicInfo}>
+              <Text style={[styles.sessionMentorName, { fontSize: getFontSize(16) }]} numberOfLines={1}>
+                {session.mentor.name}
+              </Text>
+              <Text style={[styles.sessionSubject, { fontSize: getFontSize(14) }]} numberOfLines={1}>
+                {session.subject}
+              </Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity style={styles.moreButton}>
+            <MoreVertical size={getResponsiveValue(16, 18, 20)} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Session Details */}
+        <View style={styles.sessionDetails}>
+          <View style={styles.sessionDetailRow}>
+            <Calendar size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+            <Text style={[styles.sessionDetailText, { fontSize: getFontSize(14) }]}>
+              {formatDate(session.date)}
+            </Text>
+          </View>
+          
+          <View style={styles.sessionDetailRow}>
+            <Clock size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+            <Text style={[styles.sessionDetailText, { fontSize: getFontSize(14) }]}>
+              {formatTime(session.date)} • {session.sessionType.duration}min
+            </Text>
+          </View>
+          
+          <View style={styles.sessionDetailRow}>
+            <MapPin size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+            <Text style={[styles.sessionDetailText, { fontSize: getFontSize(14) }]}>
+              {session.sessionType.type === 'video_call' ? 'Video Call' : 
+               session.sessionType.type === 'audio_call' ? 'Audio Call' : 'In Person'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Status and Actions */}
+        <View style={styles.sessionFooter}>
+          <View style={styles.sessionStatus}>
+            {getStatusIcon(session.status)}
+            <Text style={[
+              styles.sessionStatusText,
+              { 
+                color: getStatusColor(session.status),
+                fontSize: getFontSize(12) 
+              }
+            ]}>
+              {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+            </Text>
+          </View>
+
+          <View style={styles.sessionActions}>
+            <Text style={[styles.sessionPrice, { fontSize: getFontSize(16) }]}>
+              ${session.price}
+            </Text>
+            
+            {isUpcoming && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  canJoin ? styles.joinButton : styles.rescheduleButton
+                ]}
+                onPress={() => {
+                  if (canJoin) {
+                    // Join session
+                    router.push(`/session/join/${session.id}`);
+                  } else {
+                    // Reschedule
+                    router.push(`/session/reschedule/${session.id}`);
+                  }
+                }}
+              >
+                {canJoin ? (
+                  <PlayCircle size={getResponsiveValue(16, 18, 20)} color="#fff" />
+                ) : (
+                  <Calendar size={getResponsiveValue(16, 18, 20)} color="#4F46E5" />
+                )}
+                <Text style={[
+                  canJoin ? styles.joinButtonText : styles.rescheduleButtonText,
+                  { fontSize: getFontSize(12) }
+                ]}>
+                  {canJoin ? 'Join' : 'Reschedule'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {activeTab === "completed" && session.userRating && (
+              <View style={styles.ratingContainer}>
+                <Star size={getResponsiveValue(14, 16, 18)} color="#F59E0B" fill="#F59E0B" />
+                <Text style={[styles.ratingText, { fontSize: getFontSize(12) }]}>
+                  {session.userRating}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Quick Access Buttons for Completed Sessions */}
+        {activeTab === "completed" && (
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.quickAction}>
+              <MessageSquare size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+              <Text style={[styles.quickActionText, { fontSize: getFontSize(11) }]}>
+                Message
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.quickAction}>
+              <RotateCcw size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+              <Text style={[styles.quickActionText, { fontSize: getFontSize(11) }]}>
+                Book Again
+              </Text>
+            </TouchableOpacity>
+            
+            {!session.userRating && (
+              <TouchableOpacity style={styles.quickAction}>
+                <Star size={getResponsiveValue(14, 16, 18)} color="#6B7280" />
+                <Text style={[styles.quickActionText, { fontSize: getFontSize(11) }]}>
+                  Rate
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const EmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconContainer}>
+        <Calendar size={getResponsiveValue(48, 56, 64)} color="#E5E7EB" />
+      </View>
+      <Text style={[styles.emptyTitle, { fontSize: getFontSize(20) }]}>
+        {activeTab === "upcoming" && "No upcoming sessions"}
+        {activeTab === "completed" && "No completed sessions"}
+        {activeTab === "cancelled" && "No cancelled sessions"}
+      </Text>
+      <Text style={[styles.emptySubtitle, { fontSize: getFontSize(16) }]}>
+        {activeTab === "upcoming" 
+          ? "Book a session with a mentor to start learning"
+          : "Your session history will appear here"
+        }
+      </Text>
+      {activeTab === "upcoming" && (
+        <TouchableOpacity
+          style={styles.findMentorsButton}
+          onPress={() => router.push("/(tabs)/search")}
+        >
+          <Text style={[styles.findMentorsButtonText, { fontSize: getFontSize(16) }]}>
+            Find Mentors
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // Get counts for tabs
+  const upcomingCount = sessions.filter(s => 
+    new Date(s.date) > new Date() && s.status !== 'cancelled'
+  ).length;
+  const completedCount = sessions.filter(s => 
+    s.status === 'completed' || (new Date(s.date) <= new Date() && s.status !== 'cancelled')
+  ).length;
+  const cancelledCount = sessions.filter(s => s.status === 'cancelled').length;
+
   return (
     <SafeAreaView style={styles.container} edges={["right", "left"]}>
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "upcoming" && styles.activeTab]}
-          onPress={() => setActiveTab("upcoming")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "upcoming" && styles.activeTabText,
-            ]}
-          >
-            Upcoming
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "past" && styles.activeTab]}
-          onPress={() => setActiveTab("past")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "past" && styles.activeTabText,
-            ]}
-          >
-            Past
-          </Text>
-        </TouchableOpacity>
+      {/* Header with Stats */}
+      <LinearGradient
+        colors={["#4F46E5", "#7C3AED"]}
+        style={[styles.headerSection, { paddingHorizontal: getHorizontalPadding() }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={[styles.headerTitle, { fontSize: getFontSize(24) }]}>
+              My Sessions
+            </Text>
+            <Text style={[styles.headerSubtitle, { fontSize: getFontSize(16) }]}>
+              Manage your learning schedule
+            </Text>
+          </View>
+          
+          <TouchableOpacity style={styles.headerAction}>
+            <Search size={getResponsiveValue(20, 22, 24)} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { fontSize: getFontSize(20) }]}>
+              {upcomingCount}
+            </Text>
+            <Text style={[styles.statLabel, { fontSize: getFontSize(12) }]}>
+              Upcoming
+            </Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { fontSize: getFontSize(20) }]}>
+              {completedCount}
+            </Text>
+            <Text style={[styles.statLabel, { fontSize: getFontSize(12) }]}>
+              Completed
+            </Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { fontSize: getFontSize(20) }]}>
+              {sessions.reduce((total, session) => total + session.sessionType.duration, 0)}
+            </Text>
+            <Text style={[styles.statLabel, { fontSize: getFontSize(12) }]}>
+              Total Hours
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Tabs */}
+      <View style={[styles.tabsContainer, { paddingHorizontal: getHorizontalPadding() }]}>
+        <TabButton type="upcoming" label="Upcoming" count={upcomingCount} />
+        <TabButton type="completed" label="Completed" count={completedCount} />
+        <TabButton type="cancelled" label="Cancelled" count={cancelledCount} />
       </View>
 
-      <FlatList
-        data={activeTab === "upcoming" ? upcomingSessions : pastSessions}
-        renderItem={renderSessionItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.sessionsList}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              {activeTab === "upcoming"
-                ? "No upcoming sessions"
-                : "No past sessions"}
-            </Text>
-            <TouchableOpacity
-              style={styles.findMentorsButton}
-              onPress={() => router.push("/(tabs)/")}
-            >
-              <Text style={styles.findMentorsButtonText}>Find Mentors</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      {/* Sessions List */}
+      {filteredSessions.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <FlatList
+          data={filteredSessions}
+          renderItem={({ item, index }) => <SessionCard session={item} index={index} />}
+          keyExtractor={(item) => item.id}
+          numColumns={getSessionsPerRow()}
+          key={getSessionsPerRow()} // Force re-render when columns change
+          contentContainerStyle={[
+            styles.sessionsList,
+            { 
+              paddingHorizontal: getHorizontalPadding(),
+              paddingBottom: getResponsiveValue(32, 40, 48) 
+            }
+          ]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -133,130 +470,258 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
+  headerSection: {
+    paddingTop: getResponsiveValue(20, 24, 32),
+    paddingBottom: getResponsiveValue(24, 28, 32),
+  },
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: getResponsiveValue(20, 24, 28),
+  },
+  headerTitle: {
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    color: "rgba(255, 255, 255, 0.8)",
+  },
+  headerAction: {
+    padding: getResponsiveValue(8, 10, 12),
+    borderRadius: getResponsiveValue(12, 14, 16),
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: getResponsiveValue(16, 18, 20),
+    padding: getResponsiveValue(16, 18, 20),
+  },
+  statItem: {
+    alignItems: "center",
+  },
+  statNumber: {
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  statLabel: {
+    color: "rgba(255, 255, 255, 0.8)",
+  },
   tabsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    backgroundColor: "#F9FAFB",
+    marginTop: getResponsiveValue(8, 10, 12),
+    marginBottom: getResponsiveValue(8, 10, 12),
+    borderRadius: getResponsiveValue(12, 14, 16),
+    padding: getResponsiveValue(4, 6, 8),
+    marginHorizontal: getHorizontalPadding(),
   },
   tab: {
-    flex: 1,
     alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    justifyContent: "center",
+    borderRadius: getResponsiveValue(8, 10, 12),
+    flexDirection: "row",
   },
   activeTab: {
-    borderBottomColor: "#5B8FF9",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   tabText: {
-    fontSize: 16,
     fontWeight: "600",
-    color: "#999",
+    color: "#6B7280",
   },
   activeTabText: {
-    color: "#5B8FF9",
+    color: "#4F46E5",
+  },
+  tabBadge: {
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 6,
+    minWidth: 18,
+    alignItems: "center",
+  },
+  tabBadgeText: {
+    color: "#fff",
+    fontWeight: "bold",
   },
   sessionsList: {
-    padding: 20,
+    paddingTop: getResponsiveValue(8, 10, 12),
   },
   sessionCard: {
-    backgroundColor: "#f9f9f9",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: "#fff",
+    borderRadius: getResponsiveValue(16, 18, 20),
+    padding: getResponsiveValue(16, 18, 20),
+    marginBottom: getResponsiveValue(16, 18, 20),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
   },
   sessionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(12, 14, 16),
+  },
+  sessionHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  sessionAvatar: {
+    width: getResponsiveValue(48, 52, 56),
+    height: getResponsiveValue(48, 52, 56),
+    borderRadius: getResponsiveValue(24, 26, 28),
+    marginRight: getResponsiveValue(12, 14, 16),
+  },
+  sessionBasicInfo: {
+    flex: 1,
+  },
+  sessionMentorName: {
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 2,
   },
   sessionSubject: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#5B8FF9",
+    color: "#4F46E5",
+    fontWeight: "500",
   },
-  sessionPrice: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  mentorName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 12,
+  moreButton: {
+    padding: getResponsiveValue(4, 6, 8),
   },
   sessionDetails: {
-    flexDirection: "row",
-    marginBottom: 16,
+    marginBottom: getResponsiveValue(12, 14, 16),
   },
-  detailItem: {
+  sessionDetailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 16,
+    marginBottom: getResponsiveValue(6, 8, 10),
   },
-  detailText: {
-    fontSize: 14,
-    color: "#666",
-    marginLeft: 6,
+  sessionDetailText: {
+    color: "#6B7280",
+    marginLeft: getResponsiveValue(8, 10, 12),
+  },
+  sessionFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sessionStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sessionStatusText: {
+    marginLeft: getResponsiveValue(6, 8, 10),
+    fontWeight: "500",
+  },
+  sessionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sessionPrice: {
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginRight: getResponsiveValue(12, 14, 16),
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: getResponsiveValue(12, 14, 16),
+    paddingVertical: getResponsiveValue(6, 8, 10),
+    borderRadius: getResponsiveValue(8, 10, 12),
   },
   joinButton: {
-    backgroundColor: "#5B8FF9",
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#10B981",
+  },
+  rescheduleButton: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#4F46E5",
   },
   joinButtonText: {
     color: "#fff",
-    fontSize: 14,
     fontWeight: "600",
-    marginLeft: 8,
+    marginLeft: getResponsiveValue(4, 6, 8),
+  },
+  rescheduleButtonText: {
+    color: "#4F46E5",
+    fontWeight: "600",
+    marginLeft: getResponsiveValue(4, 6, 8),
   },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
   },
-  ratingLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginRight: 8,
+  ratingText: {
+    color: "#F59E0B",
+    fontWeight: "600",
+    marginLeft: getResponsiveValue(4, 6, 8),
   },
-  starsContainer: {
+  quickActions: {
     flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: getResponsiveValue(12, 14, 16),
+    paddingTop: getResponsiveValue(12, 14, 16),
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
   },
-  star: {
-    fontSize: 18,
-    color: "#ddd",
-    marginRight: 2,
+  quickAction: {
+    alignItems: "center",
+    padding: getResponsiveValue(8, 10, 12),
   },
-  filledStar: {
-    color: "#FFD700",
+  quickActionText: {
+    color: "#6B7280",
+    fontWeight: "500",
+    marginTop: getResponsiveValue(4, 6, 8),
   },
   emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: getResponsiveValue(40, 48, 56),
+  },
+  emptyIconContainer: {
+    width: getResponsiveValue(80, 90, 100),
+    height: getResponsiveValue(80, 90, 100),
+    borderRadius: getResponsiveValue(40, 45, 50),
+    backgroundColor: "#F9FAFB",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    marginBottom: getResponsiveValue(20, 24, 28),
   },
-  emptyText: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 16,
+  emptyTitle: {
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: getResponsiveValue(8, 10, 12),
+    textAlign: "center",
+  },
+  emptySubtitle: {
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: getResponsiveValue(24, 26, 28),
+    marginBottom: getResponsiveValue(24, 28, 32),
   },
   findMentorsButton: {
-    backgroundColor: "#5B8FF9",
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    backgroundColor: "#4F46E5",
+    borderRadius: getResponsiveValue(12, 14, 16),
+    paddingHorizontal: getResponsiveValue(24, 28, 32),
+    paddingVertical: getResponsiveValue(12, 14, 16),
   },
   findMentorsButtonText: {
     color: "#fff",
-    fontSize: 16,
     fontWeight: "600",
   },
 });

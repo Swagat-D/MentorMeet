@@ -1,10 +1,11 @@
+// app/booking/[id].tsx - Updated Booking Page with Header
 import { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { mentors } from "@/mocks/mentors";
-import { Calendar, Clock, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react-native";
+import { Calendar, Clock, ArrowRight } from "lucide-react-native";
 import { formatDate } from "@/utils/date-utils";
+import SecondaryHeader from "@/components/navigation/SecondaryHeader";
 
 // Generate time slots from 9 AM to 5 PM
 const generateTimeSlots = () => {
@@ -45,9 +46,12 @@ export default function BookingScreen() {
   
   if (!mentor) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>Mentor not found</Text>
-      </SafeAreaView>
+      <View style={styles.container}>
+        <SecondaryHeader title="Booking" />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Mentor not found</Text>
+        </View>
+      </View>
     );
   }
 
@@ -65,13 +69,13 @@ export default function BookingScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["right", "left"]}>
-      <ScrollView>
-        <View style={styles.header}>
-          <Text style={styles.title}>Book a Session with</Text>
-          <Text style={styles.mentorName}>{mentor.name}</Text>
-        </View>
+    <View style={styles.container}>
+      <SecondaryHeader 
+        title="Book Session" 
+        subtitle={`with ${mentor.name}`}
+      />
 
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Session Type</Text>
           {mentor.sessionTypes.map((session: any, index: number) => (
@@ -149,68 +153,22 @@ export default function BookingScreen() {
             ))}
           </View>
         </View>
-
-        <View style={styles.summarySection}>
-          <Text style={styles.summaryTitle}>Booking Summary</Text>
-          
-          <View style={styles.summaryItem}>
-            <View style={styles.summaryItemLeft}>
-              <Calendar size={16} color="#666" />
-              <Text style={styles.summaryItemLabel}>Date</Text>
-            </View>
-            <Text style={styles.summaryItemValue}>
-              {selectedDate ? formatDate(selectedDate) : "Not selected"}
-            </Text>
-          </View>
-          
-          <View style={styles.summaryItem}>
-            <View style={styles.summaryItemLeft}>
-              <Clock size={16} color="#666" />
-              <Text style={styles.summaryItemLabel}>Time</Text>
-            </View>
-            <Text style={styles.summaryItemValue}>
-              {selectedTime || "Not selected"}
-            </Text>
-          </View>
-          
-          <View style={styles.summaryItem}>
-            <View style={styles.summaryItemLeft}>
-              <Text style={styles.summaryItemLabel}>Session</Text>
-            </View>
-            <Text style={styles.summaryItemValue}>
-              {selectedSessionType !== null
-                ? mentor.sessionTypes[selectedSessionType].title
-                : "Not selected"}
-            </Text>
-          </View>
-          
-          <View style={styles.summaryItem}>
-            <View style={styles.summaryItemLeft}>
-              <Text style={styles.summaryItemLabel}>Price</Text>
-            </View>
-            <Text style={styles.summaryItemValue}>
-              {selectedSessionType !== null
-                ? `$${mentor.sessionTypes[selectedSessionType].price}`
-                : "$0"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[
-              styles.continueButton,
-              (!selectedSessionType || !selectedTime) && styles.disabledButton,
-            ]}
-            onPress={handleContinue}
-            disabled={!selectedSessionType || !selectedTime}
-          >
-            <Text style={styles.continueButtonText}>Continue to Payment</Text>
-            <ArrowRight size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
       </ScrollView>
-    </SafeAreaView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[
+            styles.continueButton,
+            (!selectedSessionType || !selectedTime) && styles.disabledButton,
+          ]}
+          onPress={handleContinue}
+          disabled={!selectedSessionType || !selectedTime}
+        >
+          <Text style={styles.continueButtonText}>Continue to Payment</Text>
+          <ArrowRight size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -219,36 +177,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   errorText: {
     fontSize: 18,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 40,
+    color: "#6B7280",
   },
-  header: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  title: {
-    fontSize: 18,
-    color: "#666",
-  },
-  mentorName: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
-    marginTop: 4,
+  content: {
+    flex: 1,
   },
   section: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#F3F4F6",
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
     marginBottom: 16,
   },
   sessionTypeItem: {
@@ -257,28 +206,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#E5E7EB",
     borderRadius: 12,
     marginBottom: 12,
   },
   selectedSessionTypeItem: {
-    borderColor: "#5B8FF9",
-    backgroundColor: "#f0f7ff",
+    borderColor: "#4F46E5",
+    backgroundColor: "#F0F9FF",
   },
   sessionTypeTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: "#1F2937",
     marginBottom: 4,
   },
   sessionTypeDuration: {
     fontSize: 14,
-    color: "#666",
+    color: "#6B7280",
   },
   sessionTypePrice: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#5B8FF9",
+    color: "#4F46E5",
   },
   datesContainer: {
     flexDirection: "row",
@@ -288,23 +237,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#E5E7EB",
     borderRadius: 12,
     width: 45,
   },
   selectedDateItem: {
-    backgroundColor: "#5B8FF9",
-    borderColor: "#5B8FF9",
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
   },
   dateDay: {
     fontSize: 12,
-    color: "#666",
+    color: "#6B7280",
     marginBottom: 4,
   },
   dateNumber: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
   },
   selectedDateText: {
     color: "#fff",
@@ -317,62 +266,31 @@ const styles = StyleSheet.create({
     width: "30%",
     padding: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#E5E7EB",
     borderRadius: 8,
     marginRight: "5%",
     marginBottom: 12,
     alignItems: "center",
   },
-  timeSlot3n: {
-    marginRight: 0,
-  },
   selectedTimeSlot: {
-    backgroundColor: "#5B8FF9",
-    borderColor: "#5B8FF9",
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
   },
   timeSlotText: {
     fontSize: 14,
-    color: "#333",
+    color: "#1F2937",
   },
   selectedTimeSlotText: {
     color: "#fff",
   },
-  summarySection: {
-    padding: 20,
-    backgroundColor: "#f9f9f9",
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 16,
-  },
-  summaryItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  summaryItemLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  summaryItemLabel: {
-    fontSize: 16,
-    color: "#666",
-    marginLeft: 8,
-  },
-  summaryItemValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
   footer: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 30,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
   },
   continueButton: {
-    backgroundColor: "#5B8FF9",
+    backgroundColor: "#4F46E5",
     borderRadius: 12,
     height: 56,
     flexDirection: "row",
@@ -380,7 +298,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   disabledButton: {
-    backgroundColor: "#ccc",
+    backgroundColor: "#E5E7EB",
   },
   continueButtonText: {
     color: "#fff",

@@ -1,8 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Switch } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack } from "expo-router";
 import { useState } from "react";
 import { Bell } from "lucide-react-native";
+import SecondaryHeader from "@/components/navigation/SecondaryHeader";
 
 export default function NotificationsScreen() {
   const [sessionReminders, setSessionReminders] = useState(true);
@@ -13,13 +12,13 @@ export default function NotificationsScreen() {
   const [pushNotifications, setPushNotifications] = useState(true);
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <Stack.Screen options={{ title: "Notifications" }} />
+    <View style={styles.container}>
+      <SecondaryHeader title="Notifications" />
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Bell size={20} color="#5B8FF9" />
+            <Bell size={20} color="#4F46E5" />
             <Text style={styles.sectionTitle}>Notification Preferences</Text>
           </View>
           
@@ -33,7 +32,7 @@ export default function NotificationsScreen() {
             <Switch
               value={sessionReminders}
               onValueChange={setSessionReminders}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
@@ -48,7 +47,7 @@ export default function NotificationsScreen() {
             <Switch
               value={newMessages}
               onValueChange={setNewMessages}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
@@ -63,7 +62,7 @@ export default function NotificationsScreen() {
             <Switch
               value={mentorUpdates}
               onValueChange={setMentorUpdates}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
@@ -78,7 +77,7 @@ export default function NotificationsScreen() {
             <Switch
               value={promotions}
               onValueChange={setPromotions}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
@@ -97,7 +96,7 @@ export default function NotificationsScreen() {
             <Switch
               value={emailNotifications}
               onValueChange={setEmailNotifications}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
@@ -112,13 +111,13 @@ export default function NotificationsScreen() {
             <Switch
               value={pushNotifications}
               onValueChange={setPushNotifications}
-              trackColor={{ false: "#ddd", true: "#5B8FF9" }}
+              trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
               thumbColor="#fff"
             />
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -133,7 +132,7 @@ const styles = StyleSheet.create({
   section: {
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#F3F4F6",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -144,7 +143,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
     marginLeft: 12,
     paddingHorizontal: 20,
     marginBottom: 16,
@@ -156,7 +155,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#F9FAFB",
   },
   settingLeft: {
     flex: 1,
@@ -165,11 +164,12 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: "#1F2937",
     marginBottom: 4,
   },
   settingDescription: {
     fontSize: 14,
-    color: "#666",
+    color: "#6B7280",
   },
 });
+

@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { mentors } from "@/mocks/mentors";
 import { subjects } from "@/constants/subjects";
 import { Search as SearchIcon, Filter } from "lucide-react-native";
-import MentorCard from "@/components/MentorCard";
+import MentorCard from "@/components/cards/MentorCard";
 
 export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState("");

@@ -4,6 +4,15 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Types
+
+type UserStats = {
+  totalHoursLearned: number;
+  averageRating: number;
+  sessionsCompleted: number;
+  mentorsConnected: number;
+};
+
+
 export interface User {
   id: string;
   name: string;
@@ -16,6 +25,7 @@ export interface User {
   isEmailVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  stats?: UserStats;
 }
 
 export interface AuthState {
