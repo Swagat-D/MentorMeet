@@ -1,17 +1,17 @@
-// app/(onboarding)/_layout.tsx - Fixed Onboarding Layout with No Headers
+// app/(onboarding)/_layout.tsx - Updated Onboarding Layout with Warm Theme
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
 export default function OnboardingLayout() {
   return (
     <>
-      <StatusBar style="light" backgroundColor="transparent" translucent />
+      <StatusBar style="dark" backgroundColor="#fefbf3" translucent />
       <Stack
         screenOptions={{
           headerShown: false,
           gestureEnabled: false,
           animation: 'slide_from_right',
-          contentStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: '#fefbf3' },
         }}
       >
         <Stack.Screen 
@@ -19,20 +19,7 @@ export default function OnboardingLayout() {
           options={{ 
             headerShown: false,
             gestureEnabled: false,
-          }} 
-        />
-        <Stack.Screen 
-          name="role-selection" 
-          options={{ 
-            headerShown: false,
-            gestureEnabled: true,
-          }} 
-        />
-        <Stack.Screen 
-          name="interests" 
-          options={{ 
-            headerShown: false,
-            gestureEnabled: true,
+            title: "Welcome",
           }} 
         />
         <Stack.Screen 
@@ -40,6 +27,7 @@ export default function OnboardingLayout() {
           options={{ 
             headerShown: false,
             gestureEnabled: true,
+            title: "Learning Goals",
           }} 
         />
         <Stack.Screen 
@@ -47,6 +35,7 @@ export default function OnboardingLayout() {
           options={{ 
             headerShown: false,
             gestureEnabled: false,
+            title: "Setup Complete",
           }} 
         />
       </Stack>

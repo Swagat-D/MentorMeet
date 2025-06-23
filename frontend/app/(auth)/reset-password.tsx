@@ -1,4 +1,4 @@
-// app/(auth)/reset-password.tsx - Reset Password Screen
+// app/(auth)/reset-password.tsx - Warm Theme Reset Password Screen
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -37,6 +37,7 @@ export default function ResetPasswordScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const successAnim = useRef(new Animated.Value(0)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
     // Entry animations
@@ -52,6 +53,12 @@ export default function ResetPasswordScreen() {
         duration: 800,
         useNativeDriver: true,
         easing: Easing.out(Easing.back(1.2)),
+      }),
+      Animated.timing(logoScaleAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.back(1.1)),
       }),
     ]).start();
   }, []);
@@ -125,11 +132,20 @@ export default function ResetPasswordScreen() {
   if (isSuccess) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* Warm Background Gradient */}
         <LinearGradient
-          colors={['#4F46E5', '#7C3AED']}
+          colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
           style={styles.background}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
+        />
+
+        {/* Secondary Warm Overlay */}
+        <LinearGradient
+          colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+          style={styles.backgroundOverlay}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
         />
 
         <View style={styles.content}>
@@ -148,7 +164,14 @@ export default function ResetPasswordScreen() {
             ]}
           >
             <View style={styles.successIconContainer}>
-              <MaterialIcons name="check-circle" size={80} color="#10B981" />
+              <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.successIconGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <MaterialIcons name="check-circle" size={60} color="#059669" />
+              </LinearGradient>
             </View>
             
             <Text style={styles.successTitle}>Password Reset Successfully!</Text>
@@ -161,7 +184,7 @@ export default function ResetPasswordScreen() {
               onPress={() => router.replace("/(auth)/login")}
             >
               <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
+                colors={['#8b5a3c', '#d97706']}
                 style={styles.loginButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -178,12 +201,20 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background Gradient */}
+      {/* Warm Background Gradient */}
       <LinearGradient
-        colors={['#4F46E5', '#7C3AED']}
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+
+      {/* Secondary Warm Overlay */}
+      <LinearGradient
+        colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+        style={styles.backgroundOverlay}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
       <KeyboardAvoidingView
@@ -195,31 +226,44 @@ export default function ResetPasswordScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          {/* Header */}
+          {/* Back Button */}
           <Animated.View
             style={[
-              styles.header,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              styles.backButtonContainer,
+              { opacity: fadeAnim }
             ]}
           >
             <TouchableOpacity
               style={styles.backButton}
               onPress={() => router.back()}
             >
-              <MaterialIcons name="arrow-back" size={24} color="#fff" />
+              <MaterialIcons name="arrow-back" size={24} color="#5d4e37" />
             </TouchableOpacity>
+          </Animated.View>
 
+          {/* Header */}
+          <Animated.View
+            style={[
+              styles.header,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }, { scale: logoScaleAnim }],
+              },
+            ]}
+          >
             <View style={styles.logoContainer}>
-              <View style={styles.iconBackground}>
-                <MaterialIcons name="lock" size={40} color="#4F46E5" />
-              </View>
+              <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.logoGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <MaterialIcons name="lock-reset" size={40} color="#5d4e37" />
+              </LinearGradient>
             </View>
-            <Text style={styles.title}>Reset Password</Text>
+            <Text style={styles.title}>Create New Password</Text>
             <Text style={styles.subtitle}>
-              Create a new password for your account
+              Your new password must be different from previously used passwords
             </Text>
             {email && (
               <Text style={styles.emailText}>
@@ -241,7 +285,7 @@ export default function ResetPasswordScreen() {
             {/* General Error */}
             {errors.general && (
               <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+                <MaterialIcons name="error-outline" size={16} color="#d97706" />
                 <Text style={styles.errorText}>{errors.general}</Text>
               </View>
             )}
@@ -249,20 +293,29 @@ export default function ResetPasswordScreen() {
             {/* Password Requirements */}
             <View style={styles.requirementsContainer}>
               <Text style={styles.requirementsTitle}>Password Requirements:</Text>
-              <Text style={styles.requirementText}>• At least 8 characters long</Text>
-              <Text style={styles.requirementText}>• Contains uppercase and lowercase letters</Text>
-              <Text style={styles.requirementText}>• Contains at least one number</Text>
+              <View style={styles.requirementItem}>
+                <MaterialIcons name="check-circle" size={14} color="#059669" />
+                <Text style={styles.requirementText}>At least 8 characters long</Text>
+              </View>
+              <View style={styles.requirementItem}>
+                <MaterialIcons name="check-circle" size={14} color="#059669" />
+                <Text style={styles.requirementText}>Contains uppercase and lowercase letters</Text>
+              </View>
+              <View style={styles.requirementItem}>
+                <MaterialIcons name="check-circle" size={14} color="#059669" />
+                <Text style={styles.requirementText}>Contains at least one number</Text>
+              </View>
             </View>
 
             {/* New Password Input */}
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>New Password</Text>
               <View style={[styles.inputContainer, errors.password ? styles.inputError : null]}>
-                <MaterialIcons name="lock" size={20} color={errors.password ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="lock" size={20} color={errors.password ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your new password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#b8a082"
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
@@ -278,15 +331,15 @@ export default function ResetPasswordScreen() {
                   style={styles.eyeButton}
                 >
                   {showPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye-off" size={20} color="#a0916d" />
                   ) : (
-                    <Ionicons name="eye" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye" size={20} color="#a0916d" />
                   )}
                 </TouchableOpacity>
               </View>
               {errors.password && (
                 <View style={styles.fieldErrorContainer}>
-                  <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
                   <Text style={styles.fieldErrorText}>{errors.password}</Text>
                 </View>
               )}
@@ -296,11 +349,11 @@ export default function ResetPasswordScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Confirm New Password</Text>
               <View style={[styles.inputContainer, errors.confirmPassword ? styles.inputError : null]}>
-                <MaterialIcons name="lock" size={20} color={errors.password ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="lock" size={20} color={errors.confirmPassword ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
                   placeholder="Confirm your new password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#b8a082"
                   value={confirmPassword}
                   onChangeText={(text) => {
                     setConfirmPassword(text);
@@ -315,15 +368,15 @@ export default function ResetPasswordScreen() {
                   style={styles.eyeButton}
                 >
                   {showConfirmPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye-off" size={20} color="#a0916d" />
                   ) : (
-                    <Ionicons name="eye" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye" size={20} color="#a0916d" />
                   )}
                 </TouchableOpacity>
               </View>
               {errors.confirmPassword && (
                 <View style={styles.fieldErrorContainer}>
-                  <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
                   <Text style={styles.fieldErrorText}>{errors.confirmPassword}</Text>
                 </View>
               )}
@@ -336,17 +389,20 @@ export default function ResetPasswordScreen() {
               disabled={isLoading}
             >
               <LinearGradient
-                colors={isLoading ? ['#9CA3AF', '#9CA3AF'] : ['#4F46E5', '#7C3AED']}
+                colors={isLoading ? ['#b8a082', '#b8a082'] : ['#8b5a3c', '#d97706']}
                 style={styles.resetButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
                 {isLoading ? (
-                  <Text style={styles.resetButtonText}>Updating Password...</Text>
+                  <>
+                    <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
+                    <Text style={styles.resetButtonText}>Updating Password...</Text>
+                  </>
                 ) : (
                   <>
+                    <MaterialIcons name="check" size={20} color="#fff" />
                     <Text style={styles.resetButtonText}>Update Password</Text>
-                    <MaterialIcons name="arrow-forward" size={20} color="#fff" />
                   </>
                 )}
               </LinearGradient>
@@ -357,12 +413,13 @@ export default function ResetPasswordScreen() {
               style={styles.backToLoginContainer}
               onPress={() => router.replace("/(auth)/login")}
             >
-              <MaterialIcons name="arrow-back" size={24} color="#4F46E5" />
+              <MaterialIcons name="arrow-back" size={20} color="#8b5a3c" />
               <Text style={styles.backToLoginText}>Back to Sign In</Text>
             </TouchableOpacity>
 
             {/* Security Notice */}
             <View style={styles.securityContainer}>
+              <MaterialIcons name="security" size={16} color="#d97706" />
               <Text style={styles.securityText}>
                 🔒 This link will expire in 1 hour for security purposes
               </Text>
@@ -385,6 +442,13 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  backgroundOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   keyboardView: {
     flex: 1,
   },
@@ -398,46 +462,62 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  header: {
-    alignItems: "center",
-    marginTop: 20,
-    marginBottom: 40,
+  backButtonContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 24,
+    zIndex: 10,
   },
   backButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.2)',
+  },
+  header: {
+    alignItems: "center",
+    marginTop: 80,
+    marginBottom: 40,
   },
   logoContainer: {
-    marginBottom: 24,
-    marginTop: 40,
-  },
-  iconBackground: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: "#000",
+    marginBottom: 24,
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 12,
+  },
+  logoGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#4a3728",
     marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#8b7355",
     textAlign: "center",
     lineHeight: 24,
     paddingHorizontal: 20,
@@ -445,54 +525,61 @@ const styles = StyleSheet.create({
   },
   emailText: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.9)",
+    color: "#5d4e37",
     textAlign: "center",
     fontWeight: "500",
   },
   formContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "rgba(217, 119, 6, 0.1)",
     padding: 12,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "rgba(217, 119, 6, 0.2)",
   },
   errorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
   },
   requirementsContainer: {
-    backgroundColor: "#F0F9FF",
+    backgroundColor: "rgba(139, 115, 85, 0.08)",
     padding: 16,
     borderRadius: 12,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "#BAE6FD",
+    borderColor: "rgba(139, 115, 85, 0.15)",
   },
   requirementsTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#0369A1",
+    color: "#5d4e37",
     marginBottom: 8,
+  },
+  requirementItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
   },
   requirementText: {
     fontSize: 12,
-    color: "#0369A1",
-    marginBottom: 4,
+    color: "#8b7355",
+    marginLeft: 8,
   },
   inputWrapper: {
     marginBottom: 20,
@@ -500,28 +587,28 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
+    color: "#5d4e37",
     marginBottom: 8,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(184, 134, 100, 0.2)",
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   inputError: {
-    borderColor: "#FF5A5A",
-    backgroundColor: "#FEF2F2",
+    borderColor: "#d97706",
+    backgroundColor: "rgba(217, 119, 6, 0.05)",
   },
   input: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    color: "#374151",
+    color: "#4a3728",
   },
   eyeButton: {
     padding: 4,
@@ -533,7 +620,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   fieldErrorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 12,
     marginLeft: 4,
   },
@@ -541,7 +628,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 24,
-    shadowColor: "#4F46E5",
+    shadowColor: "#8b5a3c",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -561,7 +648,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "600",
-    marginRight: 8,
+    marginLeft: 8,
   },
   backToLoginContainer: {
     flexDirection: "row",
@@ -572,47 +659,71 @@ const styles = StyleSheet.create({
   },
   backToLoginText: {
     fontSize: 16,
-    color: "#4F46E5",
+    color: "#8b5a3c",
     fontWeight: "600",
     marginLeft: 8,
   },
   securityContainer: {
-    backgroundColor: "#FEF3C7",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(217, 119, 6, 0.08)",
     padding: 12,
     borderRadius: 12,
-    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(217, 119, 6, 0.15)",
   },
   securityText: {
     fontSize: 12,
-    color: "#92400E",
+    color: "#d97706",
     textAlign: "center",
     fontWeight: "500",
+    marginLeft: 6,
+    flex: 1,
   },
   // Success screen styles
   successContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 24,
     padding: 32,
     alignItems: "center",
-    shadowColor: "#000",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
   successIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     marginBottom: 24,
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  successIconGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   successTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#374151",
+    color: "#4a3728",
     marginBottom: 16,
     textAlign: "center",
   },
   successMessage: {
     fontSize: 16,
-    color: "#6B7280",
+    color: "#8b7355",
     textAlign: "center",
     lineHeight: 24,
     marginBottom: 32,
@@ -621,6 +732,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     width: "100%",
+    shadowColor: "#8b5a3c",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   loginButtonGradient: {
     height: 56,

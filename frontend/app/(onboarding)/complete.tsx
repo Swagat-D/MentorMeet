@@ -1,4 +1,4 @@
-// app/(onboarding)/complete.tsx - Onboarding Complete Screen
+// app/(onboarding)/complete.tsx - Onboarding Complete Screen with Warm Theme
 import { useRef, useEffect } from "react";
 import {
   View,
@@ -27,6 +27,9 @@ export default function OnboardingCompleteScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const confettiAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const starAnim1 = useRef(new Animated.Value(0)).current;
+  const starAnim2 = useRef(new Animated.Value(0)).current;
+  const starAnim3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const sequence = Animated.sequence([
@@ -67,7 +70,7 @@ export default function OnboardingCompleteScreen() {
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.1,
+          toValue: 1.05,
           duration: 1500,
           useNativeDriver: true,
           easing: Easing.inOut(Easing.ease),
@@ -81,16 +84,70 @@ export default function OnboardingCompleteScreen() {
       ])
     );
 
+    // Star animations
+    const starAnimations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(starAnim1, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(starAnim1, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(starAnim2, {
+            toValue: 1,
+            duration: 2500,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(starAnim2, {
+            toValue: 0,
+            duration: 2500,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(starAnim3, {
+            toValue: 1,
+            duration: 1800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(starAnim3, {
+            toValue: 0,
+            duration: 1800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ),
+    ];
+
     sequence.start();
     
-    // Start pulse animation after initial animations
+    // Start animations after initial sequence
     setTimeout(() => {
       pulseAnimation.start();
+      starAnimations.forEach(anim => anim.start());
     }, 2000);
 
     return () => {
       sequence.stop();
       pulseAnimation.stop();
+      starAnimations.forEach(anim => anim.stop());
     };
   }, []);
 
@@ -101,60 +158,74 @@ export default function OnboardingCompleteScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background Gradient */}
+      {/* Warm Background Gradient */}
       <LinearGradient
-        colors={['#4F46E5', '#7C3AED', '#EC4899']}
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
 
-      {/* Confetti Elements */}
+      {/* Secondary Warm Overlay */}
+      <LinearGradient
+        colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+        style={styles.backgroundOverlay}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
+
+      {/* Animated Stars */}
       <Animated.View 
         style={[
-          styles.confetti,
-          styles.confetti1,
+          styles.star,
+          styles.star1,
           {
-            opacity: confettiAnim,
+            opacity: starAnim1,
             transform: [{
-              translateY: confettiAnim.interpolate({
+              scale: starAnim1.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-100, 200],
+                outputRange: [0.5, 1.2],
               })
             }]
           }
         ]}
-      />
+      >
+        <MaterialIcons name="star" size={20} color="#d97706" />
+      </Animated.View>
       <Animated.View 
         style={[
-          styles.confetti,
-          styles.confetti2,
+          styles.star,
+          styles.star2,
           {
-            opacity: confettiAnim,
+            opacity: starAnim2,
             transform: [{
-              translateY: confettiAnim.interpolate({
+              scale: starAnim2.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-150, 300],
+                outputRange: [0.3, 1],
               })
             }]
           }
         ]}
-      />
+      >
+        <MaterialIcons name="auto-awesome" size={16} color="#059669" />
+      </Animated.View>
       <Animated.View 
         style={[
-          styles.confetti,
-          styles.confetti3,
+          styles.star,
+          styles.star3,
           {
-            opacity: confettiAnim,
+            opacity: starAnim3,
             transform: [{
-              translateY: confettiAnim.interpolate({
+              scale: starAnim3.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-80, 250],
+                outputRange: [0.7, 1.3],
               })
             }]
           }
         ]}
-      />
+      >
+        <MaterialIcons name="emoji-events" size={18} color="#8b5a3c" />
+      </Animated.View>
 
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
@@ -172,10 +243,17 @@ export default function OnboardingCompleteScreen() {
           ]}
         >
           <View style={styles.successIcon}>
-            <MaterialIcons name="check-circle" size={80} color="#10B981" />
+            <LinearGradient
+              colors={['#ffffff', '#f8fafc']}
+              style={styles.successIconGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <MaterialIcons name="check-circle" size={60} color="#059669" />
+            </LinearGradient>
           </View>
           <View style={styles.sparkleOverlay}>
-            <MaterialIcons name="auto-awesome" size={24} color="#FFD700" />
+            <MaterialIcons name="auto-awesome" size={20} color="#d97706" />
           </View>
         </Animated.View>
 
@@ -189,9 +267,9 @@ export default function OnboardingCompleteScreen() {
             },
           ]}
         >
-          <Text style={styles.title}>You're all set!</Text>
+          <Text style={styles.title}>Welcome aboard, {user?.name?.split(' ')[0]}! 🎉</Text>
           <Text style={styles.subtitle}>
-            Welcome to MentorMatch! Your profile is ready and we're excited to help you achieve your goals.
+            Your learning journey is ready to begin. We've matched your profile with the perfect mentors to help you achieve your goals.
           </Text>
         </Animated.View>
 
@@ -205,36 +283,31 @@ export default function OnboardingCompleteScreen() {
             },
           ]}
         >
-          {/* Role Card */}
+          {/* Profile Card */}
           <View style={styles.summaryCard}>
             <View style={styles.summaryIcon}>
-              <MaterialIcons name="group" size={28} color="#4ECDC4" />
+              <MaterialIcons name="person" size={24} color="#8b5a3c" />
             </View>
-            <Text style={styles.summaryTitle}>Your Role</Text>
+            <Text style={styles.summaryTitle}>Your Profile</Text>
             <Text style={styles.summaryValue}>
-              {user?.role === 'mentee' ? 'Learner & Mentee' : 'Expert & Mentor'}
+              {user?.studyLevel?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Student'}
             </Text>
-          </View>
-
-          {/* Interests Card */}
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIcon}>
-              <MaterialIcons name="auto-awesome" size={24} color="#10B981" />
-            </View>
-            <Text style={styles.summaryTitle}>Interests</Text>
-            <Text style={styles.summaryValue}>
-              {user?.interests?.length || 0} selected
+            <Text style={styles.summarySubtitle}>
+              Age: {user?.ageRange || 'Not specified'}
             </Text>
           </View>
 
           {/* Goals Card */}
           <View style={styles.summaryCard}>
             <View style={styles.summaryIcon}>
-              <MaterialIcons name="my-location" size={28} color="#F59E0B" />
+              <MaterialIcons name="my-location" size={24} color="#d97706" />
             </View>
-            <Text style={styles.summaryTitle}>Goals</Text>
+            <Text style={styles.summaryTitle}>Learning Goals</Text>
             <Text style={styles.summaryValue}>
               {user?.goals?.length || 0} selected
+            </Text>
+            <Text style={styles.summarySubtitle}>
+              Ready to achieve
             </Text>
           </View>
         </Animated.View>
@@ -249,41 +322,68 @@ export default function OnboardingCompleteScreen() {
             },
           ]}
         >
-          <Text style={styles.nextStepsTitle}>What's next?</Text>
+          <Text style={styles.nextStepsTitle}>Your learning journey starts now!</Text>
           
           <View style={styles.nextStep}>
             <View style={styles.stepIcon}>
-              <MaterialIcons name="star" size={20} color="#FFD700" />
+              <MaterialIcons name="search" size={20} color="#8b5a3c" />
             </View>
             <View style={styles.stepContent}>
               <Text style={styles.stepTitle}>Discover Mentors</Text>
               <Text style={styles.stepDescription}>
-                Browse through our curated list of expert mentors
+                Browse through our curated list of expert mentors matched to your goals
               </Text>
             </View>
           </View>
 
           <View style={styles.nextStep}>
             <View style={styles.stepIcon}>
-              <MaterialIcons name="group" size={28} color="#4ECDC4" />
+              <MaterialIcons name="event" size={20} color="#d97706" />
             </View>
             <View style={styles.stepContent}>
               <Text style={styles.stepTitle}>Book Sessions</Text>
               <Text style={styles.stepDescription}>
-                Schedule one-on-one sessions with your chosen mentors
+                Schedule personalized learning sessions that fit your schedule
               </Text>
             </View>
           </View>
 
           <View style={styles.nextStep}>
             <View style={styles.stepIcon}>
-              <MaterialIcons name="my-location" size={28} color="#FF6B6B" />
+              <MaterialIcons name="trending-up" size={20} color="#059669" />
             </View>
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Achieve Goals</Text>
+              <Text style={styles.stepTitle}>Track Progress</Text>
               <Text style={styles.stepDescription}>
-                Track your progress and reach your learning objectives
+                Monitor your learning journey and celebrate achievements
               </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Fun Stats */}
+        <Animated.View
+          style={[
+            styles.statsContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <Text style={styles.statsTitle}>Did you know?</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>500+</Text>
+              <Text style={styles.statLabel}>Expert Mentors</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>95%</Text>
+              <Text style={styles.statLabel}>Success Rate</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>24/7</Text>
+              <Text style={styles.statLabel}>Support</Text>
             </View>
           </View>
         </Animated.View>
@@ -304,19 +404,34 @@ export default function OnboardingCompleteScreen() {
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={['#10B981', '#059669']}
+              colors={['#8b5a3c', '#d97706']}
               style={styles.getStartedGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={styles.getStartedText}>Start Learning</Text>
-              <MaterialIcons name="arrow-forward" size={20} color="#fff" />
+              <MaterialIcons name="rocket-launch" size={20} color="#fff" />
+              <Text style={styles.getStartedText}>Start Learning Journey</Text>
             </LinearGradient>
           </TouchableOpacity>
           
           <Text style={styles.welcomeText}>
-            🎉 Welcome to your learning journey!
+            ✨ Ready to unlock your potential!
           </Text>
+        </Animated.View>
+
+        {/* Progress Indicator */}
+        <Animated.View 
+          style={[
+            styles.progressContainer,
+            { opacity: fadeAnim }
+          ]}
+        >
+          <View style={styles.progressDots}>
+            <View style={styles.progressDot} />
+            <View style={styles.progressDot} />
+            <View style={[styles.progressDot, styles.progressDotActive]} />
+          </View>
+          <Text style={styles.progressText}>3 of 3 - Complete!</Text>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -334,26 +449,28 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
-  confetti: {
+  backgroundOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  star: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    zIndex: 1,
   },
-  confetti1: {
-    backgroundColor: '#FFD700',
-    left: '20%',
-    top: 0,
+  star1: {
+    top: height * 0.15,
+    left: width * 0.1,
   },
-  confetti2: {
-    backgroundColor: '#FF6B6B',
-    left: '60%',
-    top: 0,
+  star2: {
+    top: height * 0.25,
+    right: width * 0.15,
   },
-  confetti3: {
-    backgroundColor: '#4ECDC4',
-    left: '80%',
-    top: 0,
+  star3: {
+    bottom: height * 0.3,
+    left: width * 0.2,
   },
   scrollContent: {
     flexGrow: 1,
@@ -364,26 +481,35 @@ const styles = StyleSheet.create({
   },
   successIconContainer: {
     position: 'relative',
-    marginBottom: 40,
+    marginBottom: 32,
   },
   successIcon: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 80,
-    padding: 20,
-    shadowColor: '#000',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 20,
+  },
+  successIconGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   sparkleOverlay: {
     position: 'absolute',
     top: -5,
     right: -5,
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 8,
-    shadowColor: '#000',
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -391,74 +517,85 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 32,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#4a3728',
     marginBottom: 16,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 18,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 16,
+    color: '#8b7355',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 24,
     paddingHorizontal: 20,
   },
   summaryContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 40,
+    marginBottom: 32,
     width: '100%',
   },
   summaryCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     alignItems: 'center',
-    width: (width - 72) / 3,
-    shadowColor: '#000',
+    width: (width - 72) / 2,
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.1)',
   },
   summaryIcon: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(139, 90, 60, 0.1)',
     borderRadius: 20,
-    padding: 8,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 12,
   },
   summaryTitle: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: 14,
+    color: '#8b7355',
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   summaryValue: {
-    fontSize: 14,
-    color: '#1F2937',
+    fontSize: 16,
+    color: '#4a3728',
     fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  summarySubtitle: {
+    fontSize: 12,
+    color: '#a0916d',
     textAlign: 'center',
   },
   nextStepsContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 20,
     padding: 24,
-    marginBottom: 40,
+    marginBottom: 32,
     width: '100%',
-    shadowColor: '#000',
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.1)',
   },
   nextStepsTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: '#4a3728',
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -468,9 +605,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   stepIcon: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    padding: 8,
+    backgroundColor: 'rgba(139, 90, 60, 0.1)',
+    borderRadius: 16,
+    padding: 12,
     marginRight: 16,
   },
   stepContent: {
@@ -479,22 +616,57 @@ const styles = StyleSheet.create({
   stepTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
+    color: '#4a3728',
     marginBottom: 4,
   },
   stepDescription: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#8b7355',
     lineHeight: 20,
+  },
+  statsContainer: {
+    backgroundColor: 'rgba(139, 90, 60, 0.05)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 32,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 90, 60, 0.1)',
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4a3728',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#8b5a3c',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#8b7355',
+    textAlign: 'center',
   },
   buttonContainer: {
     alignItems: 'center',
     width: '100%',
+    marginBottom: 32,
   },
   getStartedButton: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#10B981',
+    shadowColor: '#8b5a3c',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -510,15 +682,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   getStartedText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
-    marginRight: 12,
+    marginLeft: 8,
   },
   welcomeText: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#8b7355',
     textAlign: 'center',
+    fontWeight: '600',
+  },
+  progressContainer: {
+    alignItems: 'center',
+  },
+  progressDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(139, 115, 85, 0.3)',
+    marginHorizontal: 4,
+  },
+  progressDotActive: {
+    backgroundColor: '#8b5a3c',
+    width: 24,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#8b7355',
     fontWeight: '600',
   },
 });

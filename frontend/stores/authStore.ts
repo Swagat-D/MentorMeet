@@ -26,6 +26,8 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   stats?: UserStats;
+  ageRange:string;
+  studyLevel: string;
 }
 
 export interface AuthState {
@@ -74,6 +76,8 @@ const createUser = (userData: any): User => ({
   isEmailVerified: userData.isEmailVerified || false,
   createdAt: userData.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  ageRange: userData.ageRange || '',
+  studyLevel: userData.studyLevel || '',
 });
 
 export const useAuthStore = create<AuthState>()(
