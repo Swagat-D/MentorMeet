@@ -1,4 +1,4 @@
-// app/(auth)/register.tsx - Fixed Compact Register Screen
+// app/(auth)/register.tsx - Professional Sign-Up Screen with Warm Theme
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -11,12 +11,15 @@ import {
   ScrollView,
   Animated,
   Easing,
+  Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore } from "../../stores/authStore";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+
+const { width } = Dimensions.get('window');
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -41,19 +44,33 @@ export default function RegisterScreen() {
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const formSlideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     // Entry animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 800,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(logoScaleAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.back(1.1)),
+      }),
+      Animated.timing(formSlideAnim, {
+        toValue: 0,
+        duration: 700,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
       }),
@@ -137,14 +154,27 @@ export default function RegisterScreen() {
     }
   };
 
+  const handleGoogleSignUp = () => {
+    // Navigate to Google OAuth
+    console.log("Google Sign Up");
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background Gradient */}
+      {/* Warm Background Gradient */}
       <LinearGradient
-        colors={['#4F46E5', '#7C3AED']}
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+
+      {/* Secondary Warm Overlay */}
+      <LinearGradient
+        colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+        style={styles.backgroundOverlay}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
       <KeyboardAvoidingView
@@ -156,22 +186,31 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-
-          {/* App Logo & Title */}
+          {/* Logo Section */}
           <Animated.View
             style={[
               styles.logoSection,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [
+                  { translateY: slideAnim },
+                  { scale: logoScaleAnim }
+                ],
               },
             ]}
           >
             <View style={styles.logoContainer}>
-              <Text style={styles.logoText}>M</Text>
+              <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.logoGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.logoText}>M</Text>
+              </LinearGradient>
             </View>
-            <Text style={styles.appName}>Create Account</Text>
-            <Text style={styles.welcomeText}>Join our community</Text>
+            <Text style={styles.appName}>Join MentorMatch</Text>
+            <Text style={styles.welcomeText}>Start your learning journey today</Text>
           </Animated.View>
 
           {/* Main Form */}
@@ -180,26 +219,27 @@ export default function RegisterScreen() {
               styles.formContainer,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [{ translateY: formSlideAnim }],
               },
             ]}
           >
             {/* General Error */}
             {errors.general && (
               <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+                <MaterialIcons name="error-outline" size={16} color="#d97706" />
                 <Text style={styles.errorText}>{errors.general}</Text>
               </View>
             )}
 
             {/* Full Name Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Full Name</Text>
               <View style={[styles.inputContainer, errors.name ? styles.inputError : null]}>
-                <MaterialIcons name="person" size={20} color={errors.name ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="person" size={20} color={errors.name ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Full name"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter your full name"
+                  placeholderTextColor="#b8a082"
                   value={name}
                   onChangeText={(text) => {
                     setName(text);
@@ -212,18 +252,22 @@ export default function RegisterScreen() {
                 />
               </View>
               {errors.name && (
-                <Text style={styles.fieldErrorText}>{errors.name}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.name}</Text>
+                </View>
               )}
             </View>
 
             {/* Email Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Email Address</Text>
               <View style={[styles.inputContainer, errors.email ? styles.inputError : null]}>
-                <MaterialIcons name="email" size={20} color={errors.email ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="email" size={20} color={errors.email ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Email address"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter your email"
+                  placeholderTextColor="#b8a082"
                   value={email}
                   onChangeText={(text) => {
                     setEmail(text);
@@ -237,18 +281,22 @@ export default function RegisterScreen() {
                 />
               </View>
               {errors.email && (
-                <Text style={styles.fieldErrorText}>{errors.email}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.email}</Text>
+                </View>
               )}
             </View>
 
             {/* Password Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Password</Text>
               <View style={[styles.inputContainer, errors.password ? styles.inputError : null]}>
-                <MaterialIcons name="lock" size={20} color={errors.password ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="lock" size={20} color={errors.password ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Create a password"
+                  placeholderTextColor="#b8a082"
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
@@ -263,25 +311,29 @@ export default function RegisterScreen() {
                   style={styles.eyeButton}
                 >
                   {showPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye-off" size={20} color="#a0916d" />
                   ) : (
-                    <Ionicons name="eye" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye" size={20} color="#a0916d" />
                   )}
                 </TouchableOpacity>
               </View>
               {errors.password && (
-                <Text style={styles.fieldErrorText}>{errors.password}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.password}</Text>
+                </View>
               )}
             </View>
 
             {/* Confirm Password Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Confirm Password</Text>
               <View style={[styles.inputContainer, errors.confirmPassword ? styles.inputError : null]}>
-                <MaterialIcons name="lock" size={20} color={errors.password ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="lock" size={20} color={errors.confirmPassword ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Confirm password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Confirm your password"
+                  placeholderTextColor="#b8a082"
                   value={confirmPassword}
                   onChangeText={(text) => {
                     setConfirmPassword(text);
@@ -296,21 +348,24 @@ export default function RegisterScreen() {
                   style={styles.eyeButton}
                 >
                   {showConfirmPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye-off" size={20} color="#a0916d" />
                   ) : (
-                    <Ionicons name="eye" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye" size={20} color="#a0916d" />
                   )}
                 </TouchableOpacity>
               </View>
               {errors.confirmPassword && (
-                <Text style={styles.fieldErrorText}>{errors.confirmPassword}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.confirmPassword}</Text>
+                </View>
               )}
             </View>
 
             {/* Terms and Conditions */}
             <View style={styles.termsContainer}>
               <TouchableOpacity
-                style={styles.checkbox}
+                style={styles.termsCheckbox}
                 onPress={() => {
                   setAgreeToTerms(!agreeToTerms);
                   if (errors.terms) {
@@ -319,7 +374,7 @@ export default function RegisterScreen() {
                 }}
               >
                 <View style={[styles.checkboxBox, agreeToTerms && styles.checkboxChecked]}>
-                  {agreeToTerms && <Text style={styles.checkmark}>✓</Text>}
+                  {agreeToTerms && <MaterialIcons name="check" size={14} color="#fff" />}
                 </View>
                 <Text style={styles.termsText}>
                   I agree to the{" "}
@@ -329,18 +384,22 @@ export default function RegisterScreen() {
                 </Text>
               </TouchableOpacity>
               {errors.terms && (
-                <Text style={styles.fieldErrorText}>{errors.terms}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.terms}</Text>
+                </View>
               )}
             </View>
 
-            {/* Register Button */}
+            {/* Create Account Button */}
             <TouchableOpacity
               style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
               onPress={handleRegister}
               disabled={isLoading}
+              activeOpacity={0.8}
             >
               <LinearGradient
-                colors={isLoading ? ['#9CA3AF', '#9CA3AF'] : ['#4F46E5', '#7C3AED']}
+                colors={isLoading ? ['#b8a082', '#b8a082'] : ['#8b5a3c', '#d97706']}
                 style={styles.registerButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -353,6 +412,34 @@ export default function RegisterScreen() {
                     <MaterialIcons name="arrow-forward" size={20} color="#fff" />
                   </>
                 )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or sign up with</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Sign Up */}
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={handleGoogleSignUp}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#ffffff', '#fefbf3']}
+                style={styles.googleButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.googleIconContainer}>
+                  <View style={styles.googleG}>
+                    <Text style={styles.googleGText}>G</Text>
+                  </View>
+                </View>
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -383,71 +470,89 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  backgroundOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 0,
+    paddingTop: 20,
     paddingBottom: 40,
   },
   logoSection: {
     alignItems: "center",
-    marginBottom: 40,
-    marginTop: 40,
+    marginBottom: 32,
+    marginTop: 20,
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginBottom: 16,
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  logoGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   logoText: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#4F46E5',
+    color: '#5d4e37',
   },
   appName: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 8,
+    color: "#4a3728",
+    marginBottom: 6,
+    textAlign: "center",
   },
   welcomeText: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: 15,
+    color: "#8b7355",
+    textAlign: "center",
+    lineHeight: 20,
   },
   formContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "rgba(217, 119, 6, 0.1)",
     padding: 12,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "rgba(217, 119, 6, 0.2)",
   },
   errorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
@@ -455,39 +560,50 @@ const styles = StyleSheet.create({
   inputWrapper: {
     marginBottom: 16,
   },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#5d4e37",
+    marginBottom: 8,
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 56,
-    backgroundColor: "#F9FAFB",
+    borderColor: "rgba(184, 134, 100, 0.2)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 52,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   inputError: {
-    borderColor: "#FF5A5A",
-    backgroundColor: "#FEF2F2",
+    borderColor: "#d97706",
+    backgroundColor: "rgba(217, 119, 6, 0.05)",
   },
   input: {
     flex: 1,
     marginLeft: 12,
-    fontSize: 16,
-    color: "#374151",
+    fontSize: 15,
+    color: "#4a3728",
   },
   eyeButton: {
     padding: 4,
   },
-  fieldErrorText: {
-    color: "#EF4444",
-    fontSize: 12,
+  fieldErrorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 4,
+    marginLeft: 4,
+  },
+  fieldErrorText: {
+    color: "#d97706",
+    fontSize: 11,
     marginLeft: 4,
   },
   termsContainer: {
     marginBottom: 24,
   },
-  checkbox: {
+  termsCheckbox: {
     flexDirection: "row",
     alignItems: "flex-start",
   },
@@ -495,37 +611,33 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderWidth: 2,
-    borderColor: "#D1D5DB",
+    borderColor: "rgba(184, 134, 100, 0.4)",
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
     marginTop: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   checkboxChecked: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  checkmark: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
+    backgroundColor: "#8b5a3c",
+    borderColor: "#8b5a3c",
   },
   termsText: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#6b5b47",
     lineHeight: 20,
     flex: 1,
   },
   termsLink: {
-    color: "#4F46E5",
+    color: "#8b5a3c",
     fontWeight: "600",
   },
   registerButton: {
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 20,
-    shadowColor: "#4F46E5",
+    shadowColor: "#8b5a3c",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -543,9 +655,64 @@ const styles = StyleSheet.create({
   },
   registerButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     marginRight: 8,
+  },
+  dividerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(184, 134, 100, 0.2)",
+  },
+  dividerText: {
+    fontSize: 13,
+    color: "#a0916d",
+    marginHorizontal: 16,
+    fontWeight: "500",
+  },
+  googleButton: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 20,
+    shadowColor: "#8b7355",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  googleButtonGradient: {
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.2)",
+  },
+  googleIconContainer: {
+    marginRight: 12,
+  },
+  googleG: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#4285f4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleGText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  googleButtonText: {
+    fontSize: 15,
+    color: "#4a3728",
+    fontWeight: "600",
   },
   signInContainer: {
     flexDirection: "row",
@@ -553,12 +720,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signInText: {
-    fontSize: 16,
-    color: "#6B7280",
+    fontSize: 15,
+    color: "#8b7355",
   },
   signInLink: {
-    fontSize: 16,
-    color: "#4F46E5",
+    fontSize: 15,
+    color: "#8b5a3c",
     fontWeight: "600",
   },
 });

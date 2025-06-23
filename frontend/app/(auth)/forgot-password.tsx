@@ -1,4 +1,4 @@
-// app/(auth)/forgot-password.tsx - Forgot Password Screen
+// app/(auth)/forgot-password.tsx - Forgot Password with OTP Flow
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -8,20 +8,21 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Alert,
   Animated,
   Easing,
+  Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 
+const { width } = Dimensions.get('window');
+
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false);
   const [errors, setErrors] = useState<{
     email?: string;
     general?: string;
@@ -29,8 +30,9 @@ export default function ForgotPasswordScreen() {
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const successAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const formSlideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     // Entry animations
@@ -43,9 +45,21 @@ export default function ForgotPasswordScreen() {
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(logoScaleAnim, {
+        toValue: 1,
         duration: 800,
         useNativeDriver: true,
-        easing: Easing.out(Easing.back(1.2)),
+        easing: Easing.out(Easing.back(1.1)),
+      }),
+      Animated.timing(formSlideAnim, {
+        toValue: 0,
+        duration: 700,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
       }),
     ]).start();
   }, []);
@@ -66,7 +80,7 @@ export default function ForgotPasswordScreen() {
     return isValid;
   };
 
-  const handleSendResetEmail = async () => {
+  const handleSendOTP = async () => {
     if (!validateEmail()) {
       return;
     }
@@ -75,146 +89,89 @@ export default function ForgotPasswordScreen() {
     setErrors({});
 
     try {
-      // Simulate API call
+      // Simulate API call to send OTP
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Mock success - in real app, call password reset API
-      setIsEmailSent(true);
+      // Navigate to OTP verification screen
+      router.push({
+        pathname: "/(auth)/verify-otp",
+        params: { email: email.toLowerCase().trim() }
+      });
       
-      // Success animation
-      Animated.timing(successAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }).start();
-
     } catch (error) {
       setErrors({ 
-        general: "Failed to send reset email. Please try again." 
+        general: "Failed to send OTP. Please try again." 
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResendEmail = () => {
-    setIsEmailSent(false);
-    setErrors({});
-    
-    // Reset animations
-    successAnim.setValue(0);
-    
-    // Auto-trigger send again
-    setTimeout(() => {
-      handleSendResetEmail();
-    }, 100);
-  };
-
-  if (isEmailSent) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          style={styles.background}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-
-        <View style={styles.content}>
-          <Animated.View
-            style={[
-              styles.successContainer,
-              {
-                opacity: successAnim,
-                transform: [{
-                  scale: successAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.8, 1],
-                  })
-                }],
-              },
-            ]}
-          >
-            <View style={styles.successIconContainer}>
-              <MaterialIcons name="check-circle" size={80} color="#10B981" />
-            </View>
-            
-            <Text style={styles.successTitle}>Check Your Email</Text>
-            <Text style={styles.successMessage}>
-              We've sent a password reset link to
-            </Text>
-            <Text style={styles.emailText}>{email}</Text>
-            
-            <Text style={styles.instructionText}>
-              Click the link in the email to reset your password. 
-              If you don't see it, check your spam folder.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.resendButton}
-              onPress={handleResendEmail}
-            >
-              <Text style={styles.resendButtonText}>Resend Email</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.backToLoginButton}
-              onPress={() => router.back()}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#667eea" />
-              <Text style={styles.backToLoginText}>Back to Sign In</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background Gradient */}
+      {/* Warm Background Gradient */}
       <LinearGradient
-        colors={['#667eea', '#764ba2']}
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+
+      {/* Secondary Warm Overlay */}
+      <LinearGradient
+        colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+        style={styles.backgroundOverlay}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* Header */}
+        <View style={styles.content}>
+          {/* Back Button */}
           <Animated.View
             style={[
-              styles.header,
+              styles.backButtonContainer,
+              { opacity: fadeAnim }
+            ]}
+          >
+            <TouchableOpacity 
+              style={styles.backButton} 
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="arrow-back" size={24} color="#5d4e37" />
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Logo Section */}
+          <Animated.View
+            style={[
+              styles.logoSection,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [
+                  { translateY: slideAnim },
+                  { scale: logoScaleAnim }
+                ],
               },
             ]}
           >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
-
             <View style={styles.logoContainer}>
-              <View style={styles.iconBackground}>
-                <MaterialIcons name="lock" size={40} color="#4F46E5" />
-              </View>
+              <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.logoGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <MaterialIcons name="lock-reset" size={32} color="#5d4e37" />
+              </LinearGradient>
             </View>
-            <Text style={styles.title}>Forgot Password?</Text>
+            <Text style={styles.title}>Reset Password</Text>
             <Text style={styles.subtitle}>
-              No worries! Enter your email and we'll send you a reset link
+              We'll send a verification code to your email address to reset your password
             </Text>
           </Animated.View>
 
@@ -224,14 +181,14 @@ export default function ForgotPasswordScreen() {
               styles.formContainer,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [{ translateY: formSlideAnim }],
               },
             ]}
           >
             {/* General Error */}
             {errors.general && (
               <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={14} color="#FF5A5A" />
+                <MaterialIcons name="error-outline" size={16} color="#d97706" />
                 <Text style={styles.errorText}>{errors.general}</Text>
               </View>
             )}
@@ -240,11 +197,11 @@ export default function ForgotPasswordScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Email Address</Text>
               <View style={[styles.inputContainer, errors.email ? styles.inputError : null]}>
-              <MaterialIcons name="email" size={20} color="#9CA3AF" />
+                <MaterialIcons name="email" size={20} color={errors.email ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter your email address"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter your registered email"
+                  placeholderTextColor="#b8a082"
                   value={email}
                   onChangeText={(text) => {
                     setEmail(text);
@@ -260,56 +217,64 @@ export default function ForgotPasswordScreen() {
               </View>
               {errors.email && (
                 <View style={styles.fieldErrorContainer}>
-                  <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
                   <Text style={styles.fieldErrorText}>{errors.email}</Text>
                 </View>
               )}
             </View>
 
-            {/* Send Reset Email Button */}
+            {/* Send OTP Button */}
             <TouchableOpacity
-              style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
-              onPress={handleSendResetEmail}
+              style={[styles.sendButton, isLoading && styles.sendButtonDisabled]}
+              onPress={handleSendOTP}
               disabled={isLoading}
+              activeOpacity={0.8}
             >
               <LinearGradient
-                colors={isLoading ? ['#9CA3AF', '#9CA3AF'] : ['#667eea', '#764ba2']}
-                style={styles.resetButtonGradient}
+                colors={isLoading ? ['#b8a082', '#b8a082'] : ['#8b5a3c', '#d97706']}
+                style={styles.sendButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
                 {isLoading ? (
-                  <Text style={styles.resetButtonText}>Sending...</Text>
+                  <>
+                    <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
+                    <Text style={styles.sendButtonText}>Sending OTP...</Text>
+                  </>
                 ) : (
                   <>
-                    <Text style={styles.resetButtonText}>Send Reset Link</Text>
-                    <MaterialIcons name="arrow-forward" size={20} color="#fff" />
+                    <MaterialIcons name="send" size={20} color="#fff" />
+                    <Text style={styles.sendButtonText}>Send Verification Code</Text>
                   </>
                 )}
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Back to Login */}
-            <TouchableOpacity
-              style={styles.backToLoginContainer}
-              onPress={() => router.back()}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#667eea" />
-              <Text style={styles.backToLoginText}>Back to Sign In</Text>
-            </TouchableOpacity>
+            {/* Info Box */}
+            <View style={styles.infoContainer}>
+              <MaterialIcons name="info-outline" size={20} color="#8b5a3c" />
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>How it works:</Text>
+                <Text style={styles.infoText}>
+                  1. Enter your registered email address{'\n'}
+                  2. Check your email for a 6-digit verification code{'\n'}
+                  3. Enter the code to verify your identity{'\n'}
+                  4. Create a new password for your account
+                </Text>
+              </View>
+            </View>
 
-            {/* Help Text */}
-            <View style={styles.helpContainer}>
-              <Text style={styles.helpTitle}>Need help?</Text>
-              <Text style={styles.helpText}>
-                If you're having trouble accessing your account, contact our support team for assistance.
-              </Text>
-              <TouchableOpacity style={styles.contactSupportButton}>
-                <Text style={styles.contactSupportText}>Contact Support</Text>
+            {/* Back to Login */}
+            <View style={styles.backToLoginContainer}>
+              <Text style={styles.backToLoginText}>Remember your password? </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(auth)/login")}
+              >
+                <Text style={styles.backToLoginLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -326,85 +291,104 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  backgroundOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   keyboardView: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
   content: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: 24,
+    justifyContent: 'center',
   },
-  header: {
-    alignItems: "center",
-    marginTop: 20,
-    marginBottom: 40,
+  backButtonContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 24,
+    zIndex: 10,
   },
   backButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  logoContainer: {
-    marginBottom: 24,
-    marginTop: 40,
-  },
-  iconBackground: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#fff',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: "#000",
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.2)',
+  },
+  logoSection: {
+    alignItems: "center",
+    marginBottom: 40,
+  },
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginBottom: 24,
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 12,
+  },
+  logoGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#4a3728",
     marginBottom: 12,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#8b7355",
     textAlign: "center",
     lineHeight: 24,
     paddingHorizontal: 20,
   },
   formContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "rgba(217, 119, 6, 0.1)",
     padding: 12,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "rgba(217, 119, 6, 0.2)",
   },
   errorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
@@ -415,28 +399,28 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
+    color: "#5d4e37",
     marginBottom: 8,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(184, 134, 100, 0.2)",
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   inputError: {
-    borderColor: "#FF5A5A",
-    backgroundColor: "#FEF2F2",
+    borderColor: "#d97706",
+    backgroundColor: "rgba(217, 119, 6, 0.05)",
   },
   input: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    color: "#374151",
+    color: "#4a3728",
   },
   fieldErrorContainer: {
     flexDirection: "row",
@@ -445,135 +429,72 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   fieldErrorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 12,
     marginLeft: 4,
   },
-  resetButton: {
+  sendButton: {
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 24,
-    shadowColor: "#667eea",
+    shadowColor: "#8b5a3c",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
-  resetButtonDisabled: {
+  sendButtonDisabled: {
     shadowOpacity: 0,
     elevation: 0,
   },
-  resetButtonGradient: {
+  sendButtonGradient: {
     height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  resetButtonText: {
+  sendButtonText: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "600",
-    marginRight: 8,
+    marginLeft: 8,
+  },
+  infoContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(139, 90, 60, 0.08)",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "rgba(139, 90, 60, 0.15)",
+  },
+  infoTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  infoTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#8b5a3c",
+    marginBottom: 6,
+  },
+  infoText: {
+    fontSize: 13,
+    color: "#8b7355",
+    lineHeight: 18,
   },
   backToLoginContainer: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    marginBottom: 24,
+    alignItems: "center",
   },
   backToLoginText: {
     fontSize: 16,
-    color: "#667eea",
-    fontWeight: "600",
-    marginLeft: 8,
+    color: "#8b7355",
   },
-  helpContainer: {
-    backgroundColor: "#F9FAFB",
-    padding: 20,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  helpTitle: {
+  backToLoginLink: {
     fontSize: 16,
+    color: "#8b5a3c",
     fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  helpText: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  contactSupportButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  contactSupportText: {
-    fontSize: 14,
-    color: "#667eea",
-    fontWeight: "600",
-  },
-  // Success screen styles
-  successContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 32,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  successIconContainer: {
-    marginBottom: 24,
-  },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#374151",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  successMessage: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  emailText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#667eea",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  instructionText: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  resendButton: {
-    backgroundColor: "#F3F4F6",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  resendButtonText: {
-    fontSize: 16,
-    color: "#667eea",
-    fontWeight: "600",
-  },
-  backToLoginButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
   },
 });

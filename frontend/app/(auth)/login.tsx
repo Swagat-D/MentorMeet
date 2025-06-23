@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx - Fixed Compact Login Screen
+// app/(auth)/login.tsx - Professional Login Screen with Warm Theme
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -12,6 +12,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -38,19 +39,33 @@ export default function LoginScreen() {
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const formSlideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     // Entry animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 800,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(logoScaleAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.back(1.1)),
+      }),
+      Animated.timing(formSlideAnim, {
+        toValue: 0,
+        duration: 700,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
       }),
@@ -100,50 +115,72 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = () => {
     Alert.alert(
-      "Google Login",
-      "Google login will be implemented with Google OAuth SDK",
+      "Google Sign In",
+      "Google authentication will be implemented with OAuth integration",
       [{ text: "OK" }]
     );
   };
 
   const handleBiometricLogin = () => {
     Alert.alert(
-      "Biometric Login",
-      "Biometric authentication will be implemented",
+      "Biometric Authentication",
+      "Fingerprint/Face ID authentication will be implemented",
       [{ text: "OK" }]
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background Gradient */}
+      {/* Warm Background Gradient */}
       <LinearGradient
-        colors={['#4F46E5', '#7C3AED']}
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+
+      {/* Secondary Warm Overlay */}
+      <LinearGradient
+        colors={['rgba(251, 243, 219, 0.2)', 'rgba(254, 252, 243, 0.1)', 'rgba(245, 238, 228, 0.15)']}
+        style={styles.backgroundOverlay}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
-          {/* App Logo & Title */}
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Logo Section */}
           <Animated.View
             style={[
               styles.logoSection,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [
+                  { translateY: slideAnim },
+                  { scale: logoScaleAnim }
+                ],
               },
             ]}
           >
             <View style={styles.logoContainer}>
-              <Text style={styles.logoText}>M</Text>
+              <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.logoGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.logoText}>M</Text>
+              </LinearGradient>
             </View>
             <Text style={styles.appName}>MentorMatch</Text>
-            <Text style={styles.welcomeText}>Welcome back!</Text>
+            <Text style={styles.welcomeText}>Welcome back to your learning journey</Text>
           </Animated.View>
 
           {/* Main Form */}
@@ -152,26 +189,29 @@ export default function LoginScreen() {
               styles.formContainer,
               {
                 opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
+                transform: [{ translateY: formSlideAnim }],
               },
             ]}
           >
             {/* General Error */}
             {errors.general && (
-              <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={16} color="#FF5A5A" />
+              <Animated.View
+                style={styles.errorContainer}
+              >
+                <MaterialIcons name="error-outline" size={16} color="#d97706" />
                 <Text style={styles.errorText}>{errors.general}</Text>
-              </View>
+              </Animated.View>
             )}
 
             {/* Email Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Email Address</Text>
               <View style={[styles.inputContainer, errors.email ? styles.inputError : null]}>
-                <MaterialIcons name="email" size={20} color={errors.email ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="email" size={20} color={errors.email ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Email address"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter your email"
+                  placeholderTextColor="#b8a082"
                   value={email}
                   onChangeText={(text) => {
                     setEmail(text);
@@ -185,18 +225,22 @@ export default function LoginScreen() {
                 />
               </View>
               {errors.email && (
-                <Text style={styles.fieldErrorText}>{errors.email}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.email}</Text>
+                </View>
               )}
             </View>
 
             {/* Password Input */}
             <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>Password</Text>
               <View style={[styles.inputContainer, errors.password ? styles.inputError : null]}>
-                <MaterialIcons name="lock" size={20} color={errors.password ? "#FF5A5A" : "#9CA3AF"} />
+                <MaterialIcons name="lock" size={20} color={errors.password ? "#d97706" : "#a0916d"} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter your password"
+                  placeholderTextColor="#b8a082"
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
@@ -211,14 +255,17 @@ export default function LoginScreen() {
                   style={styles.eyeButton}
                 >
                   {showPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye-off" size={20} color="#a0916d" />
                   ) : (
-                    <Ionicons name="eye" size={20} color="#9CA3AF" />
+                    <Ionicons name="eye" size={20} color="#a0916d" />
                   )}
                 </TouchableOpacity>
               </View>
               {errors.password && (
-                <Text style={styles.fieldErrorText}>{errors.password}</Text>
+                <View style={styles.fieldErrorContainer}>
+                  <MaterialIcons name="error-outline" size={14} color="#d97706" />
+                  <Text style={styles.fieldErrorText}>{errors.password}</Text>
+                </View>
               )}
             </View>
 
@@ -229,7 +276,7 @@ export default function LoginScreen() {
                 onPress={() => setRememberMe(!rememberMe)}
               >
                 <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                  {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+                  {rememberMe && <MaterialIcons name="check" size={14} color="#fff" />}
                 </View>
                 <Text style={styles.rememberMeText}>Remember me</Text>
               </TouchableOpacity>
@@ -246,9 +293,10 @@ export default function LoginScreen() {
               style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
               onPress={handleLogin}
               disabled={isLoading}
+              activeOpacity={0.8}
             >
               <LinearGradient
-                colors={isLoading ? ['#9CA3AF', '#9CA3AF'] : ['#4F46E5', '#7C3AED']}
+                colors={isLoading ? ['#b8a082', '#b8a082'] : ['#8b5a3c', '#d97706']}
                 style={styles.loginButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -264,29 +312,46 @@ export default function LoginScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Alternative Login Options */}
-            <View style={styles.alternativeSection}>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>or</Text>
-                <View style={styles.dividerLine} />
-              </View>
+            {/* Divider */}
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or continue with</Text>
+              <View style={styles.dividerLine} />
+            </View>
 
-              {/* Google Login */}
+            {/* Social Login Options */}
+            <View style={styles.socialContainer}>
+              {/* Enhanced Google Login Button */}
               <TouchableOpacity
                 style={styles.googleButton}
                 onPress={handleGoogleLogin}
+                activeOpacity={0.8}
               >
-                <Text style={styles.googleButtonText}>G</Text>
-                <Text style={styles.googleButtonLabel}>Continue with Google</Text>
+                <LinearGradient
+                  colors={['#ffffff', '#fefbf3']}
+                  style={styles.googleButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.googleIconContainer}>
+                    {/* Google G Icon */}
+                    <View style={styles.googleG}>
+                      <Text style={styles.googleGText}>G</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </LinearGradient>
               </TouchableOpacity>
 
               {/* Biometric Login */}
               <TouchableOpacity
                 style={styles.biometricButton}
                 onPress={handleBiometricLogin}
+                activeOpacity={0.8}
               >
-                <MaterialIcons name="fingerprint" size={20} color="#4F46E5" />
+                <View style={styles.biometricIconContainer}>
+                  <MaterialIcons name="fingerprint" size={24} color="#8b5a3c" />
+                </View>
                 <Text style={styles.biometricText}>Use Biometric</Text>
               </TouchableOpacity>
             </View>
@@ -295,11 +360,11 @@ export default function LoginScreen() {
             <View style={styles.signUpContainer}>
               <Text style={styles.signUpText}>Don't have an account? </Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
-                <Text style={styles.signUpLink}>Sign Up</Text>
+                <Text style={styles.signUpLink}>Create Account</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -316,103 +381,133 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  backgroundOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   keyboardView: {
     flex: 1,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
-    justifyContent: 'center',
+    paddingVertical: 20,
   },
   logoSection: {
     alignItems: "center",
+    marginTop: 20,
     marginBottom: 40,
   },
   logoContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
+    marginBottom: 20,
+    shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 12,
   },
+  logoGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+  },
   logoText: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#4F46E5',
+    color: '#5d4e37',
   },
   appName: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#4a3728",
     marginBottom: 8,
+    textAlign: "center",
   },
   welcomeText: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#8b7355",
+    textAlign: "center",
+    lineHeight: 22,
   },
   formContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 24,
     padding: 24,
-    shadowColor: "#000",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "rgba(217, 119, 6, 0.1)",
     padding: 12,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "rgba(217, 119, 6, 0.2)",
   },
   errorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
   },
   inputWrapper: {
-    marginBottom: 16,
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#5d4e37",
+    marginBottom: 8,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(184, 134, 100, 0.2)",
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   inputError: {
-    borderColor: "#FF5A5A",
-    backgroundColor: "#FEF2F2",
+    borderColor: "#d97706",
+    backgroundColor: "rgba(217, 119, 6, 0.05)",
   },
   input: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    color: "#374151",
+    color: "#4a3728",
   },
   eyeButton: {
     padding: 4,
   },
+  fieldErrorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    marginLeft: 4,
+  },
   fieldErrorText: {
-    color: "#EF4444",
+    color: "#d97706",
     fontSize: 12,
-    marginTop: 4,
     marginLeft: 4,
   },
   optionsRow: {
@@ -429,35 +524,31 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderWidth: 2,
-    borderColor: "#D1D5DB",
+    borderColor: "rgba(184, 134, 100, 0.4)",
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   checkboxChecked: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  checkmark: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
+    backgroundColor: "#8b5a3c",
+    borderColor: "#8b5a3c",
   },
   rememberMeText: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#6b5b47",
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: "#4F46E5",
+    color: "#8b5a3c",
     fontWeight: "600",
   },
   loginButton: {
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 24,
-    shadowColor: "#4F46E5",
+    shadowColor: "#8b5a3c",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -479,57 +570,81 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginRight: 8,
   },
-  alternativeSection: {
-    marginBottom: 24,
-  },
-  divider: {
+  dividerContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 24,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "rgba(184, 134, 100, 0.2)",
   },
   dividerText: {
     fontSize: 14,
-    color: "#9CA3AF",
+    color: "#a0916d",
     marginHorizontal: 16,
+    fontWeight: "500",
+  },
+  socialContainer: {
+    marginBottom: 24,
   },
   googleButton: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 16,
+    shadowColor: "#8b7355",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  googleButtonGradient: {
+    height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    paddingVertical: 14,
-    backgroundColor: "#F9FAFB",
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.2)",
   },
-  googleButtonText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#4285F4",
+  googleIconContainer: {
     marginRight: 12,
   },
-  googleButtonLabel: {
+  googleG: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#4285f4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleGText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  googleButtonText: {
     fontSize: 16,
-    color: "#374151",
-    fontWeight: "500",
+    color: "#4a3728",
+    fontWeight: "600",
   },
   biometricButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
+    backgroundColor: "rgba(184, 134, 100, 0.1)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.2)",
+  },
+  biometricIconContainer: {
+    marginRight: 8,
   },
   biometricText: {
     fontSize: 14,
-    color: "#4F46E5",
+    color: "#8b5a3c",
     fontWeight: "600",
-    marginLeft: 8,
   },
   signUpContainer: {
     flexDirection: "row",
@@ -538,11 +653,11 @@ const styles = StyleSheet.create({
   },
   signUpText: {
     fontSize: 16,
-    color: "#6B7280",
+    color: "#8b7355",
   },
   signUpLink: {
     fontSize: 16,
-    color: "#4F46E5",
+    color: "#8b5a3c",
     fontWeight: "600",
   },
 });
