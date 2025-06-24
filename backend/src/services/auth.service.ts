@@ -1,6 +1,6 @@
 // src/services/auth.service.ts - Authentication Business Logic Service
 import User, { IUser, OnboardingStatus } from '@/models/User.model';
-import OTP, { OTPType } from '@/models/OTP.model';
+import { OTPType } from '@/models/OTP.model';
 import { generateTokenPair, createTokenResponse } from '@/utils/jwt.utils';
 import { createOTP, verifyOTPWithAttempts, canRequestOTP } from '@/utils/otp.utils';
 import emailService from '@/services/email.service';

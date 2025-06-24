@@ -160,7 +160,7 @@ export const errorHandler = (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   // Log error
   console.error('Error occurred:', {
@@ -190,7 +190,7 @@ export const catchAsync = (fn: Function) => {
 };
 
 // 404 Not Found handler
-export const notFound = (req: Request, res: Response, next: NextFunction) => {
+export const notFound = (req: Request, _res: Response, next: NextFunction) => {
   const err = new AppError(`Route ${req.originalUrl} not found`, 404);
   next(err);
 };

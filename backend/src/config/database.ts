@@ -192,7 +192,7 @@ export const createIndexes = async (): Promise<void> => {
     if (!mongoose.connection.db) {
       throw new Error('Database connection is not established.');
     }
-    const collections = await mongoose.connection.db.listCollections().toArray();
+    //const collections = await mongoose.connection.db.listCollections().toArray();
     
     // Create indexes only if collections exist or will be created
     // User indexes

@@ -1,4 +1,4 @@
-// app/(auth)/verify-otp.tsx - Complete OTP Verification Screen
+// app/(auth)/verify-otp.tsx - Complete OTP Verification Screen with Backend Integration
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -17,11 +17,18 @@ import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from "../../stores/authStore";
 
 const { width } = Dimensions.get('window');
 
+type OTPPurpose = 'email-verification' | 'password-reset';
+
 export default function VerifyOTPScreen() {
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { email, purpose = 'email-verification' } = useLocalSearchParams<{ 
+    email: string; 
+    purpose?: OTPPurpose;
+  }>();
+  
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -31,6 +38,8 @@ export default function VerifyOTPScreen() {
     otp?: string;
     general?: string;
   }>({});
+
+  const { verifyEmail, resendOTP } = useAuthStore();
 
   // Refs for OTP inputs
   const otpRefs = useRef<Array<TextInput | null>>([]);
@@ -117,13 +126,16 @@ export default function VerifyOTPScreen() {
   const handleOTPChange = (value: string, index: number) => {
     if (value.length > 1) return; // Prevent multiple characters
 
+    // Only allow numeric input
+    if (value && !/^\d$/.test(value)) return;
+
     const newOTP = [...otp];
     newOTP[index] = value;
     setOtp(newOTP);
 
     // Clear errors when user starts typing
-    if (errors.otp) {
-      setErrors(prev => ({ ...prev, otp: undefined }));
+    if (errors.otp || errors.general) {
+      setErrors({});
     }
 
     // Auto-focus next input
@@ -156,27 +168,25 @@ export default function VerifyOTPScreen() {
     setErrors({});
 
     try {
-      // Simulate API call to verify OTP
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock verification - in real app, verify with backend
-      if (otpString === '123456') {
-        // Navigate to reset password screen
+      if (purpose === 'email-verification') {
+        await verifyEmail(email, otpString);
+        
+        // Navigate to onboarding after successful verification
+        router.replace("/(onboarding)/welcome");
+      } else if (purpose === 'password-reset') {
+        // For password reset, navigate to reset password screen with the OTP
         router.push({
           pathname: "/(auth)/reset-password",
-          params: { email, token: `verified_${Date.now()}` }
+          params: { email, otp: otpString }
         });
-      } else {
-        setErrors({ general: "Invalid verification code. Please try again." });
-        // Clear OTP inputs on error
-        setOtp(['', '', '', '', '', '']);
-        otpRefs.current[0]?.focus();
       }
-      
-    } catch (error) {
-      setErrors({ 
-        general: "Verification failed. Please try again." 
-      });
+    } catch (error: any) {
+      setErrors({ general: error.message });
+      // Clear OTP inputs on error
+      setOtp(['', '', '', '', '', '']);
+      setTimeout(() => {
+        otpRefs.current[0]?.focus();
+      }, 100);
     } finally {
       setIsLoading(false);
     }
@@ -188,10 +198,10 @@ export default function VerifyOTPScreen() {
     setIsResending(true);
     setTimer(60);
     setCanResend(false);
+    setErrors({});
 
     try {
-      // Simulate API call to resend OTP
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await resendOTP(email);
       
       // Reset timer
       const interval = setInterval(() => {
@@ -207,8 +217,16 @@ export default function VerifyOTPScreen() {
 
       Alert.alert("Code Sent", "A new verification code has been sent to your email");
       
-    } catch (error) {
-      Alert.alert("Error", "Failed to resend code. Please try again.");
+      // Clear OTP inputs
+      setOtp(['', '', '', '', '', '']);
+      setTimeout(() => {
+        otpRefs.current[0]?.focus();
+      }, 100);
+      
+    } catch (error: any) {
+      setErrors({ general: error.message });
+      setCanResend(true);
+      setTimer(0);
     } finally {
       setIsResending(false);
     }
@@ -218,6 +236,23 @@ export default function VerifyOTPScreen() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTitle = () => {
+    return purpose === 'password-reset' ? 'Verify Reset Code' : 'Verify Your Email';
+  };
+
+  const getSubtitle = () => {
+    return purpose === 'password-reset' 
+      ? "We've sent a 6-digit reset code to" 
+      : "We've sent a 6-digit verification code to";
+  };
+
+  const getButtonText = () => {
+    if (isLoading) {
+      return purpose === 'password-reset' ? 'Verifying Reset Code...' : 'Verifying...';
+    }
+    return purpose === 'password-reset' ? 'Verify Reset Code' : 'Verify Code';
   };
 
   return (
@@ -268,12 +303,16 @@ export default function VerifyOTPScreen() {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <MaterialIcons name="mark-email-read" size={32} color="#5d4e37" />
+                <MaterialIcons 
+                  name={purpose === 'password-reset' ? "lock-reset" : "mark-email-read"} 
+                  size={32} 
+                  color="#5d4e37" 
+                />
               </LinearGradient>
             </Animated.View>
-            <Text style={styles.title}>Verify Your Email</Text>
+            <Text style={styles.title}>{getTitle()}</Text>
             <Text style={styles.subtitle}>
-              We've sent a 6-digit verification code to
+              {getSubtitle()}
             </Text>
             <Text style={styles.emailText}>{email}</Text>
           </Animated.View>
@@ -315,6 +354,7 @@ export default function VerifyOTPScreen() {
                     keyboardType="number-pad"
                     maxLength={1}
                     selectTextOnFocus
+                    editable={!isLoading}
                   />
                 ))}
               </View>
@@ -332,7 +372,7 @@ export default function VerifyOTPScreen() {
                 <TouchableOpacity
                   style={styles.resendButton}
                   onPress={handleResendOTP}
-                  disabled={isResending}
+                  disabled={isResending || isLoading}
                 >
                   {isResending ? (
                     <>
@@ -358,7 +398,7 @@ export default function VerifyOTPScreen() {
 
             {/* Verify Button */}
             <TouchableOpacity
-              style={[styles.verifyButton, isLoading && styles.verifyButtonDisabled]}
+              style={[styles.verifyButton, (isLoading || otp.some(digit => !digit)) && styles.verifyButtonDisabled]}
               onPress={() => handleVerifyOTP()}
               disabled={isLoading || otp.some(digit => !digit)}
               activeOpacity={0.8}
@@ -372,12 +412,12 @@ export default function VerifyOTPScreen() {
                 {isLoading ? (
                   <>
                     <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
-                    <Text style={styles.verifyButtonText}>Verifying...</Text>
+                    <Text style={styles.verifyButtonText}>{getButtonText()}</Text>
                   </>
                 ) : (
                   <>
                     <MaterialIcons name="verified" size={20} color="#fff" />
-                    <Text style={styles.verifyButtonText}>Verify Code</Text>
+                    <Text style={styles.verifyButtonText}>{getButtonText()}</Text>
                   </>
                 )}
               </LinearGradient>
@@ -388,16 +428,25 @@ export default function VerifyOTPScreen() {
               <MaterialIcons name="help-outline" size={16} color="#8b7355" />
               <Text style={styles.helpText}>
                 Didn't receive the code? Check your spam folder or try resending.
+                {purpose === 'email-verification' 
+                  ? ' The code expires in 10 minutes.' 
+                  : ' The reset code expires in 15 minutes.'
+                }
               </Text>
             </View>
 
             {/* Back to Login */}
             <View style={styles.backToLoginContainer}>
-              <Text style={styles.backToLoginText}>Wrong email? </Text>
+              <Text style={styles.backToLoginText}>
+                {purpose === 'password-reset' ? 'Remember your password? ' : 'Wrong email? '}
+              </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(auth)/login")}
+                disabled={isLoading}
               >
-                <Text style={styles.backToLoginLink}>Sign In Again</Text>
+                <Text style={styles.backToLoginLink}>
+                  {purpose === 'password-reset' ? 'Sign In' : 'Sign In Again'}
+                </Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
