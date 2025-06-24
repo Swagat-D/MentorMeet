@@ -1,4 +1,4 @@
-// src/models/User.model.ts - Complete User Model for Authentication
+// src/models/User.model.ts - Complete User Model for Authentication (Fixed Indexes)
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -113,7 +113,6 @@ const userSchema = new Schema<IUser>({
     lowercase: true,
     trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
-    index: true
   },
   
   name: {
@@ -212,13 +211,11 @@ const userSchema = new Schema<IUser>({
   isEmailVerified: {
     type: Boolean,
     default: false,
-    index: true
   },
   
   isActive: {
     type: Boolean,
     default: true,
-    index: true
   },
   
   isOnboarded: {
@@ -257,11 +254,8 @@ const userSchema = new Schema<IUser>({
   versionKey: false // Disable __v version key
 });
 
-// Indexes for better query performance
-userSchema.index({ email: 1 }, { unique: true });
+// Create indexes separately to avoid duplication warnings
 userSchema.index({ role: 1 });
-userSchema.index({ isActive: 1 });
-userSchema.index({ isEmailVerified: 1 });
 userSchema.index({ onboardingStatus: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ lastLoginAt: -1 });

@@ -1,7 +1,21 @@
-// src/utils/jwt.utils.ts - JWT Token Management Utilities
-import jwt from 'jsonwebtoken';
-import { jwtConfig } from '@/config/environment';
-import { IUser } from '@/models/User.model';
+// src/utils/jwt.utils.ts - JWT Token Management Utilities (Fixed ExpiresIn Types)
+import jwt, { SignOptions } from 'jsonwebtoken';
+import { IUser } from '../models/User.model';
+
+// Direct environment variable access with validation
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+
+// Validate required environment variables
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
+if (!JWT_REFRESH_SECRET) {
+  throw new Error('JWT_REFRESH_SECRET environment variable is required');
+}
 
 // Token payload interface
 export interface JWTPayload {
@@ -32,15 +46,15 @@ export interface TokenPair {
  * Generate JWT access token
  */
 export const generateAccessToken = (user: IUser): string => {
-  const payload: JWTPayload = {
+  const payload = {
     userId: user.id,
     email: user.email,
     role: user.role,
     isEmailVerified: user.isEmailVerified,
   };
 
-  return jwt.sign(payload, jwtConfig.secret, {
-    expiresIn: jwtConfig.expiresIn,
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '15m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -50,14 +64,14 @@ export const generateAccessToken = (user: IUser): string => {
  * Generate JWT refresh token
  */
 export const generateRefreshToken = (user: IUser): string => {
-  const payload: RefreshTokenPayload = {
+  const payload = {
     userId: user.id,
     email: user.email,
-    tokenVersion: 1, // Can be used for token invalidation
+    tokenVersion: 1,
   };
 
-  return jwt.sign(payload, jwtConfig.refreshSecret, {
-    expiresIn: jwtConfig.refreshExpiresIn,
+  return jwt.sign(payload, JWT_REFRESH_SECRET!, {
+    expiresIn: '15m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -78,7 +92,7 @@ export const generateTokenPair = (user: IUser): TokenPair => {
  */
 export const verifyAccessToken = (token: string): JWTPayload => {
   try {
-    const decoded = jwt.verify(token, jwtConfig.secret, {
+    const decoded = jwt.verify(token, JWT_SECRET, {
       issuer: 'mentormatch-api',
       audience: 'mentormatch-app',
     }) as JWTPayload;
@@ -100,7 +114,7 @@ export const verifyAccessToken = (token: string): JWTPayload => {
  */
 export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   try {
-    const decoded = jwt.verify(token, jwtConfig.refreshSecret, {
+    const decoded = jwt.verify(token, JWT_REFRESH_SECRET, {
       issuer: 'mentormatch-api',
       audience: 'mentormatch-app',
     }) as RefreshTokenPayload;
@@ -125,12 +139,10 @@ export const extractTokenFromHeader = (authHeader: string | undefined): string |
     return null;
   }
 
-  // Check if header starts with 'Bearer '
   if (!authHeader.startsWith('Bearer ')) {
     return null;
   }
 
-  // Extract token (remove 'Bearer ' prefix)
   const token = authHeader.substring(7);
   
   if (!token || token === 'null' || token === 'undefined') {
@@ -183,8 +195,8 @@ export const generatePasswordResetToken = (userId: string, email: string): strin
     type: 'password-reset',
   };
 
-  return jwt.sign(payload, jwtConfig.secret, {
-    expiresIn: '15m', // Short-lived for security
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '15m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -195,7 +207,7 @@ export const generatePasswordResetToken = (userId: string, email: string): strin
  */
 export const verifyPasswordResetToken = (token: string): { userId: string; email: string } => {
   try {
-    const decoded = jwt.verify(token, jwtConfig.secret, {
+    const decoded = jwt.verify(token, JWT_SECRET, {
       issuer: 'mentormatch-api',
       audience: 'mentormatch-app',
     }) as any;
@@ -239,7 +251,7 @@ export const createTokenResponse = (user: IUser, tokens: TokenPair) => {
       tokens: {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        expiresIn: jwtConfig.expiresIn,
+        expiresIn: JWT_EXPIRES_IN,
       },
     },
   };

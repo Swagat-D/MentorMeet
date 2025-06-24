@@ -1,4 +1,4 @@
-// src/models/OTP.model.ts - OTP Model for Email Verification
+// src/models/OTP.model.ts - OTP Model for Email Verification (Fixed Indexes)
 import mongoose, { Document, Schema } from 'mongoose';
 
 // OTP Types
@@ -53,14 +53,12 @@ const otpSchema = new Schema<IOTP>({
     lowercase: true,
     trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
-    index: true
   },
   
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
     default: null,
-    index: true
   },
   
   code: {
@@ -74,14 +72,12 @@ const otpSchema = new Schema<IOTP>({
     type: String,
     enum: Object.values(OTPType),
     required: [true, 'OTP type is required'],
-    index: true
   },
   
   status: {
     type: String,
     enum: Object.values(OTPStatus),
     default: OTPStatus.PENDING,
-    index: true
   },
   
   attempts: {
@@ -101,7 +97,6 @@ const otpSchema = new Schema<IOTP>({
   expiresAt: {
     type: Date,
     required: [true, 'Expiry date is required'],
-    index: { expireAfterSeconds: 0 } // MongoDB TTL index for auto-deletion
   },
   
   verifiedAt: {
@@ -133,12 +128,12 @@ const otpSchema = new Schema<IOTP>({
   versionKey: false
 });
 
-// Compound indexes for better query performance
+// Create indexes separately to avoid duplication warnings
 otpSchema.index({ email: 1, type: 1 });
 otpSchema.index({ email: 1, type: 1, status: 1 });
 otpSchema.index({ code: 1, type: 1 });
 otpSchema.index({ userId: 1, type: 1 });
-otpSchema.index({ expiresAt: 1 }); // For TTL
+otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 otpSchema.index({ createdAt: -1 });
 
 // Virtual for OTP ID as string

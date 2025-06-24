@@ -1,9 +1,9 @@
-// src/routes/auth.routes.ts - Authentication Routes
+// src/routes/auth.routes.ts - Authentication Routes (Fixed with relative imports)
 import { Router } from 'express';
-import authController from '@/controllers/auth.controller';
-import { authenticate, requireEmailVerification } from '@/middleware/auth.middleware';
-import { authRateLimit, otpRateLimit, passwordResetRateLimit } from '@/middleware/rateLimit.middleware';
-import { validate } from '@/middleware/validation.middleware';
+import authController from '../controllers/auth.controller';
+import { authenticate, requireEmailVerification } from '../middleware/auth.middleware';
+import { authRateLimit, otpRateLimit, passwordResetRateLimit } from '../middleware/rateLimit.middleware';
+import { validate } from '../middleware/validation.middleware';
 import {
   registerSchema,
   loginSchema,
@@ -15,7 +15,7 @@ import {
   updateProfileSchema,
   onboardingBasicSchema,
   onboardingGoalsSchema,
-} from '@/validations/auth.validation';
+} from '../validations/auth.validation';
 
 const router = Router();
 

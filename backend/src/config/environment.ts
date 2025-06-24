@@ -1,4 +1,4 @@
-// src/config/environment.ts - Environment Configuration for MongoDB
+// src/config/environment.ts - Environment Configuration for MongoDB (Fixed)
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
@@ -107,15 +107,13 @@ export const config = {
     uri: env.NODE_ENV === 'test' ? env.MONGODB_TEST_URI || env.MONGODB_URI : env.MONGODB_URI,
     options: {
       retryWrites: true,
-      w: 'majority',
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
-      bufferMaxEntries: 0,
     },
   },
   
-  // JWT Configuration
+  // JWT Configuration - Fixed types
   jwt: {
     secret: env.JWT_SECRET,
     refreshSecret: env.JWT_REFRESH_SECRET,

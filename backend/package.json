@@ -4,7 +4,7 @@
   "description": "Backend API for MentorMatch - Student-Mentor Learning Platform",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon",
     "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
     "start:prod": "NODE_ENV=production node dist/server.js",
@@ -35,7 +35,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^1.4.11",
     "@types/nodemailer": "^6.4.14",
     "@types/swagger-jsdoc": "^6.0.4",
@@ -54,6 +54,7 @@
     "nodemailer": "^6.9.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
+    "tsconfig-paths": "^4.2.0",
     "winston": "^3.11.0",
     "zod": "^3.22.4"
   },

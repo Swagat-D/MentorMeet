@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API Configuration
 const API_BASE_URL = __DEV__ 
-  ? 'http://localhost:5000/api/v1' // Development
+  ? 'http://192.168.120.210:5000/api/v1' // Development
   : 'https://your-production-api.com/api/v1'; // Production
 
 const REQUEST_TIMEOUT = 30000; // 30 seconds
