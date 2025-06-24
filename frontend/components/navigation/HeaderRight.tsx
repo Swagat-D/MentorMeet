@@ -1,4 +1,4 @@
-// components/navigation/HeaderRight.tsx - Enhanced Header Right Component  
+// components/navigation/HeaderRight.tsx - Fixed Header Right Component  
 import React from "react";
 import { View, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { router } from "expo-router";
@@ -18,11 +18,11 @@ export default function HeaderRight() {
         activeOpacity={0.7}
       >
         <View style={styles.iconContainer}>
-          <MaterialIcons name="bookmark-border" size={22} color="#1F2937" strokeWidth={2} />
+          <MaterialIcons name="bookmark-border" size={22} color="#5d4e37" strokeWidth={2} />
           {favoriteCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
-                {favoriteCount > 99 ? '99+' : favoriteCount}
+                {favoriteCount > 99 ? '99+' : favoriteCount.toString()}
               </Text>
             </View>
           )}
@@ -35,7 +35,7 @@ export default function HeaderRight() {
         activeOpacity={0.7}
       >
         <View style={styles.iconContainer}>
-          <MaterialIcons name="notifications" size={22} color="#1F2937" strokeWidth={2} />
+          <MaterialIcons name="notifications" size={22} color="#5d4e37" strokeWidth={2} />
           {/* Notification badge - you can make this dynamic */}
           <View style={[styles.badge, styles.notificationBadge]}>
             <Text style={styles.badgeText}>3</Text>
@@ -58,15 +58,17 @@ const styles = StyleSheet.create({
     position: "relative",
     padding: 8,
     borderRadius: 12,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.2)",
   },
   badge: {
     position: "absolute",
     top: 2,
     right: 2,
-    backgroundColor: "#4F46E5",
+    backgroundColor: "#8b5a3c",
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -75,7 +77,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notificationBadge: {
-    backgroundColor: "#EF4444",
+    backgroundColor: "#d97706",
   },
   badgeText: {
     fontSize: 10,

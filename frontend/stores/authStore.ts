@@ -1,17 +1,19 @@
-// stores/authStore.ts - Simplified Auth Store
+// stores/authStore.ts - Enhanced Auth Store with Student-Relevant Stats
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Types
-
 type UserStats = {
   totalHoursLearned: number;
   averageRating: number;
   sessionsCompleted: number;
   mentorsConnected: number;
+  studyStreak: number;
+  completionRate: number;
+  monthlyHours: number;
+  weeklyGoalProgress: number;
 };
-
 
 export interface User {
   id: string;
@@ -26,7 +28,7 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   stats?: UserStats;
-  ageRange:string;
+  ageRange: string;
   studyLevel: string;
 }
 
@@ -78,6 +80,16 @@ const createUser = (userData: any): User => ({
   updatedAt: new Date().toISOString(),
   ageRange: userData.ageRange || '',
   studyLevel: userData.studyLevel || '',
+  stats: userData.stats || {
+    totalHoursLearned: 42,
+    averageRating: 4.8,
+    sessionsCompleted: 15,
+    mentorsConnected: 5,
+    studyStreak: 7,
+    completionRate: 85,
+    monthlyHours: 28,
+    weeklyGoalProgress: 75,
+  },
 });
 
 export const useAuthStore = create<AuthState>()(

@@ -1,4 +1,4 @@
-// app/(tabs)/_layout.tsx - Enhanced Professional Tab Layout
+// app/(tabs)/_layout.tsx - Updated Professional Tab Layout with Warm Theme
 import { useState } from "react";
 import { Tabs } from "expo-router";
 import { View, StyleSheet, Modal, Dimensions, Platform, StatusBar } from "react-native";
@@ -19,79 +19,80 @@ export default function TabLayout() {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  const tabBarHeight = Platform.OS === 'ios' ? 85 : 65;
+  const tabBarHeight = Platform.OS === 'ios' ? 90 : 75;
 
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      <Tabs
+      <StatusBar barStyle="dark-content" backgroundColor="#fefbf3" />
+        <Tabs
         screenOptions={{
-          tabBarActiveTintColor: "#4F46E5",
-          tabBarInactiveTintColor: "#9CA3AF",
+          tabBarActiveTintColor: "#5d4e37",
+          tabBarInactiveTintColor: "#a0916d",
           tabBarStyle: {
-  bottom: 10,
-  left: 10,
-  right: 10,
-  height: Platform.OS === 'ios' ? 80 : 70,
-  paddingBottom: Platform.OS === 'ios' ? 25 : 15,
-  paddingTop: 10,
-  borderRadius: 20,
-  backgroundColor: '#ffffff',
-  borderTopWidth: 0,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.1,
-  shadowRadius: 10,
-  elevation: 8,
+            position: 'absolute',
+            height: tabBarHeight,
+            borderTopWidth: 0.5,
+            borderTopColor: '#d5c7b2',
+            backgroundColor: '#fefbf3',
+            elevation: 10,
+            shadowColor: '#a7936c',
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 6,
           },
           tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: "600",
-            marginTop: 4,
+            fontSize: 11,
+            fontWeight: "500",
+            marginBottom: -4, 
           },
           tabBarItemStyle: {
-            paddingVertical: 4,
+            paddingTop: 2,
+            paddingBottom: 6,
+            borderRadius: 10,
           },
           headerStyle: {
-            backgroundColor: "#ffffff",
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.1,
-            shadowRadius: 4,
-            elevation: 5,
-            borderBottomWidth: 0,
+            backgroundColor: "#fefbf3",
+            elevation: 4,
+            shadowColor: "#8b7355",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 6,
+            borderBottomWidth: 0.5,
+            borderBottomColor: "rgba(184, 134, 100, 0.1)",
           },
           headerTitleStyle: {
             fontWeight: "700",
             fontSize: 20,
-            color: "#1F2937",
+            color: "#4a3728",
           },
           headerTitleAlign: "left",
           headerLeft: () => <HeaderLeft onMenuPress={toggleSidebar} />,
           headerRight: () => <HeaderRight />,
           headerLeftContainerStyle: {
-            paddingLeft: 16,
+            paddingLeft: 14,
           },
           headerRightContainerStyle: {
-            paddingRight: 16,
+            paddingRight: 14,
           },
         }}
       >
+
         <Tabs.Screen
           name="index"
           options={{
-            title: "Dashboard",
+            title: "Home",
             headerTitle: `Welcome back, ${user?.name?.split(' ')[0] || 'Student'}!`,
             tabBarIcon: ({ color, focused }) => (
               <View style={[
                 styles.tabIconContainer,
                 focused && styles.tabIconContainerActive
               ]}>
-                <MaterialIcons name="home" 
-                  size={focused ? 26 : 24} 
+                <MaterialIcons 
+                  name="home" 
+                  size={focused ? 24 : 22} 
                   color={color} 
-                  strokeWidth={focused ? 2.5 : 2}
                 />
+                {focused && <View style={styles.activeIndicator} />}
               </View>
             ),
           }}
@@ -100,17 +101,18 @@ export default function TabLayout() {
           name="search"
           options={{
             title: "Explore",
-            headerTitle: "Find Your Mentor",
+            headerTitle: "Find Your Perfect Mentor",
             tabBarIcon: ({ color, focused }) => (
               <View style={[
                 styles.tabIconContainer,
                 focused && styles.tabIconContainerActive
               ]}>
-                <MaterialIcons name="search" 
-                  size={focused ? 26 : 24} 
+                <MaterialIcons 
+                  name="search" 
+                  size={focused ? 24 : 22} 
                   color={color}
-                  strokeWidth={focused ? 2.5 : 2}
                 />
+                {focused && <View style={styles.activeIndicator} />}
               </View>
             ),
           }}
@@ -125,14 +127,14 @@ export default function TabLayout() {
                 styles.tabIconContainer,
                 focused && styles.tabIconContainerActive
               ]}>
-                <MaterialIcons name="event" 
-                  size={focused ? 26 : 24} 
+                <MaterialIcons 
+                  name="event" 
+                  size={focused ? 24 : 22} 
                   color={color}
-                  strokeWidth={focused ? 2.5 : 2}
                 />
+                {focused && <View style={styles.activeIndicator} />}
               </View>
             ),
-            tabBarBadge: undefined, // You can add session count here
           }}
         />
         <Tabs.Screen
@@ -145,18 +147,19 @@ export default function TabLayout() {
                 styles.tabIconContainer,
                 focused && styles.tabIconContainerActive
               ]}>
-                <MaterialIcons name="person" 
-                  size={focused ? 26 : 24} 
+                <MaterialIcons 
+                  name="person" 
+                  size={focused ? 24 : 22} 
                   color={color}
-                  strokeWidth={focused ? 2.5 : 2}
                 />
+                {focused && <View style={styles.activeIndicator} />}
               </View>
             ),
           }}
         />
       </Tabs>
 
-      {/* Enhanced Sidebar Modal */}
+      {/* Enhanced Sidebar Modal with Warm Background */}
       <Modal
         visible={isSidebarOpen}
         transparent={true}
@@ -170,12 +173,12 @@ export default function TabLayout() {
             onClose={() => setIsSidebarOpen(false)} 
           />
           
-          {/* Blur Overlay */}
+          {/* Warm Blur Overlay */}
           {Platform.OS === 'ios' ? (
             <BlurView
               style={styles.overlay}
               intensity={20}
-              tint="dark"
+              tint="light"
               onTouchEnd={() => setIsSidebarOpen(false)}
             />
           ) : (
@@ -199,18 +202,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlayAndroid: {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(139, 115, 85, 0.3)",
   },
   tabIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 40,
-    height: 32,
-    borderRadius: 16,
-    marginBottom: 2,
-  },
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 38,
+  height: 30,
+  borderRadius: 12,
+  backgroundColor: 'transparent',
+},
   tabIconContainerActive: {
-    backgroundColor: '#EEF2FF',
-    transform: [{ scale: 1.1 }],
+    backgroundColor: 'rgba(93, 78, 55, 0.08)',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: -5,
+    width: 6,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#5d4e37',
   },
 });

@@ -1,4 +1,3 @@
-// app/(auth)/forgot-password.tsx - Forgot Password with OTP Flow
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -130,22 +129,6 @@ export default function ForgotPasswordScreen() {
         style={styles.keyboardView}
       >
         <View style={styles.content}>
-          {/* Back Button */}
-          <Animated.View
-            style={[
-              styles.backButtonContainer,
-              { opacity: fadeAnim }
-            ]}
-          >
-            <TouchableOpacity 
-              style={styles.backButton} 
-              onPress={() => router.back()}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#5d4e37" />
-            </TouchableOpacity>
-          </Animated.View>
-
           {/* Logo Section */}
           <Animated.View
             style={[
@@ -305,27 +288,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: 'center',
-  },
-  backButtonContainer: {
-    position: 'absolute',
-    top: 60,
-    left: 24,
-    zIndex: 10,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(184, 134, 100, 0.2)',
   },
   logoSection: {
     alignItems: "center",
