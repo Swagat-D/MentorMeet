@@ -1,4 +1,4 @@
-// stores/authStore.ts - Enhanced Auth Store with Student-Relevant Stats
+// stores/authStore.ts - Enhanced Auth Store with Gender Field
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +30,7 @@ export interface User {
   stats?: UserStats;
   ageRange: string;
   studyLevel: string;
+  gender: string; // Added gender field
 }
 
 export interface AuthState {
@@ -80,6 +81,7 @@ const createUser = (userData: any): User => ({
   updatedAt: new Date().toISOString(),
   ageRange: userData.ageRange || '',
   studyLevel: userData.studyLevel || '',
+  gender: userData.gender || '', // Added gender field
   stats: userData.stats || {
     totalHoursLearned: 42,
     averageRating: 4.8,

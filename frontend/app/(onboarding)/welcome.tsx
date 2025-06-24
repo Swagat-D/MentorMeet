@@ -1,4 +1,4 @@
-// app/(onboarding)/welcome.tsx - Updated Welcome Screen with Student Info
+// app/(onboarding)/welcome.tsx - Updated Welcome Screen with Gender Selection
 import { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -9,7 +9,6 @@ import {
   Easing,
   Dimensions,
   ScrollView,
-  TextInput,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -35,16 +34,24 @@ const ageRanges = [
   { id: '28+', label: '28+ years' },
 ];
 
+// Gender options
+const genderOptions = [
+  { id: 'male', label: 'Male', icon: 'person' },
+  { id: 'female', label: 'Female', icon: 'person' },
+  { id: 'other', label: 'Other', icon: 'person' },
+  { id: 'prefer-not-to-say', label: 'Prefer not to say', icon: 'person' },
+];
+
 export default function OnboardingWelcomeScreen() {
-  const { updateProfile } = useAuthStore();
+  const { updateProfile, user } = useAuthStore();
   
-  const [name, setName] = useState("");
   const [selectedAge, setSelectedAge] = useState<string>("");
   const [selectedStudyLevel, setSelectedStudyLevel] = useState<string>("");
+  const [selectedGender, setSelectedGender] = useState<string>("");
   const [errors, setErrors] = useState<{
-    name?: string;
     age?: string;
     studyLevel?: string;
+    gender?: string;
   }>({});
 
   // Animation refs
@@ -153,14 +160,6 @@ export default function OnboardingWelcomeScreen() {
     const newErrors: typeof errors = {};
     let isValid = true;
 
-    if (!name.trim()) {
-      newErrors.name = "Please enter your name";
-      isValid = false;
-    } else if (name.trim().length < 2) {
-      newErrors.name = "Name must be at least 2 characters";
-      isValid = false;
-    }
-
     if (!selectedAge) {
       newErrors.age = "Please select your age range";
       isValid = false;
@@ -168,6 +167,11 @@ export default function OnboardingWelcomeScreen() {
 
     if (!selectedStudyLevel) {
       newErrors.studyLevel = "Please select your study level";
+      isValid = false;
+    }
+
+    if (!selectedGender) {
+      newErrors.gender = "Please select your gender";
       isValid = false;
     }
 
@@ -182,9 +186,9 @@ export default function OnboardingWelcomeScreen() {
 
     // Update profile with basic info
     updateProfile({
-      name: name.trim(),
       ageRange: selectedAge,
       studyLevel: selectedStudyLevel,
+      gender: selectedGender,
       role: 'mentee', // Fixed as student/mentee
     });
 
@@ -300,7 +304,9 @@ export default function OnboardingWelcomeScreen() {
 
           <Text style={styles.welcomeText}>Welcome to</Text>
           <Text style={styles.appName}>MentorMatch</Text>
-          <Text style={styles.tagline}>Let's personalize your learning journey</Text>
+          <Text style={styles.tagline}>
+            Hello {user?.name?.split(' ')[0] || 'Student'}! Let's personalize your learning journey
+          </Text>
         </Animated.View>
 
         {/* Main Form */}
@@ -313,34 +319,6 @@ export default function OnboardingWelcomeScreen() {
             },
           ]}
         >
-          {/* Name Input */}
-          <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>What should we call you?</Text>
-            <View style={[styles.inputContainer, errors.name ? styles.inputError : null]}>
-              <MaterialIcons name="person" size={20} color={errors.name ? "#d97706" : "#a0916d"} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your name"
-                placeholderTextColor="#b8a082"
-                value={name}
-                onChangeText={(text) => {
-                  setName(text);
-                  if (errors.name) {
-                    setErrors(prev => ({ ...prev, name: undefined }));
-                  }
-                }}
-                autoCapitalize="words"
-                autoFocus={true}
-              />
-            </View>
-            {errors.name && (
-              <View style={styles.errorContainer}>
-                <MaterialIcons name="error-outline" size={12} color="#d97706" />
-                <Text style={styles.errorText}>{errors.name}</Text>
-              </View>
-            )}
-          </View>
-
           {/* Age Selection */}
           <View style={styles.selectionSection}>
             <Text style={styles.sectionTitle}>How old are you?</Text>
@@ -378,6 +356,47 @@ export default function OnboardingWelcomeScreen() {
               <View style={styles.errorContainer}>
                 <MaterialIcons name="error-outline" size={12} color="#d97706" />
                 <Text style={styles.errorText}>{errors.age}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Gender Selection */}
+          <View style={styles.selectionSection}>
+            <Text style={styles.sectionTitle}>Gender</Text>
+            <View style={styles.optionsGrid}>
+              {genderOptions.map((gender) => (
+                <TouchableOpacity
+                  key={gender.id}
+                  style={[
+                    styles.optionCard,
+                    selectedGender === gender.id && styles.optionCardSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedGender(gender.id);
+                    if (errors.gender) {
+                      setErrors(prev => ({ ...prev, gender: undefined }));
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons 
+                    name={gender.icon as any} 
+                    size={20} 
+                    color={selectedGender === gender.id ? "#fff" : "#8b5a3c"} 
+                  />
+                  <Text style={[
+                    styles.optionText,
+                    selectedGender === gender.id && styles.optionTextSelected,
+                  ]}>
+                    {gender.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {errors.gender && (
+              <View style={styles.errorContainer}>
+                <MaterialIcons name="error-outline" size={12} color="#d97706" />
+                <Text style={styles.errorText}>{errors.gender}</Text>
               </View>
             )}
           </View>
@@ -595,6 +614,7 @@ const styles = StyleSheet.create({
     color: '#8b7355',
     textAlign: 'center',
     lineHeight: 24,
+    paddingHorizontal: 20,
   },
   formContainer: {
     backgroundColor: "rgba(255, 255, 255, 0.9)",
@@ -609,9 +629,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(184, 134, 100, 0.1)",
   },
-  inputSection: {
-    marginBottom: 32,
-  },
   selectionSection: {
     marginBottom: 32,
   },
@@ -621,37 +638,6 @@ const styles = StyleSheet.create({
     color: "#4a3728",
     marginBottom: 16,
     textAlign: "center",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 56,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-  },
-  inputError: {
-    borderColor: "#d97706",
-    backgroundColor: "rgba(217, 119, 6, 0.05)",
-  },
-  input: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: "#4a3728",
-  },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-    justifyContent: "center",
-  },
-  errorText: {
-    color: "#d97706",
-    fontSize: 12,
-    marginLeft: 4,
   },
   optionsGrid: {
     flexDirection: "row",
@@ -731,8 +717,20 @@ const styles = StyleSheet.create({
   studyLevelDescriptionSelected: {
     color: "rgba(255, 255, 255, 0.8)",
   },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    justifyContent: "center",
+  },
+  errorText: {
+    color: "#d97706",
+    fontSize: 12,
+    marginLeft: 4,
+  },
   ctaContainer: {
     alignItems: 'center',
+    width: '100%',
     marginBottom: 32,
   },
   getStartedButton: {
