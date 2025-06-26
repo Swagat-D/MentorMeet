@@ -16,10 +16,12 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../stores/authStore'; // Adjust the path as needed
 
 const { width } = Dimensions.get('window');
 
 export default function ForgotPasswordScreen() {
+  const { forgotPassword } = useAuthStore();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{
@@ -80,31 +82,33 @@ export default function ForgotPasswordScreen() {
   };
 
   const handleSendOTP = async () => {
-    if (!validateEmail()) {
-      return;
-    }
+  if (!validateEmail()) {
+    return;
+  }
 
-    setIsLoading(true);
-    setErrors({});
+  setIsLoading(true);
+  setErrors({});
 
-    try {
-      // Simulate API call to send OTP
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Navigate to OTP verification screen
-      router.push({
-        pathname: "/(auth)/verify-otp",
-        params: { email: email.toLowerCase().trim() }
-      });
-      
-    } catch (error) {
-      setErrors({ 
-        general: "Failed to send OTP. Please try again." 
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  try {
+    await forgotPassword(email.toLowerCase().trim());
+    
+    // Navigate to OTP verification screen for password reset
+    router.push({
+      pathname: "/(auth)/verify-otp",
+      params: { 
+        email: email.toLowerCase().trim(),
+        purpose: 'password-reset'
+      }
+    });
+    
+  } catch (error: any) {
+    setErrors({ 
+      general: error.message || "Failed to send reset code. Please try again." 
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>

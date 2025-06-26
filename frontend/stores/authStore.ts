@@ -112,23 +112,27 @@ export const useAuthStore = create<AuthStore>()(
 
       // Authentication actions
       register: async (data: RegisterData) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/register', data);
-          
-          if (response.data.success) {
-            // Registration successful, but email verification required
-            set({ isLoading: false });
-          } else {
-            throw new Error(response.data.message || 'Registration failed');
-          }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
+  set({ isLoading: true, error: null });
+  
+  try {
+    const response = await apiClient.post('/auth/register', data);
+    
+    if (response.data.success) {
+      // Registration successful, but email verification required
+      // Don't set user data yet, wait for email verification
+      set({ isLoading: false });
+      
+      // The response should contain user info but we don't set it as authenticated yet
+      console.log('Registration successful, email verification required');
+    } else {
+      throw new Error(response.data.message || 'Registration failed');
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
+    set({ error: errorMessage, isLoading: false });
+    throw new Error(errorMessage);
+  }
+},
 
       verifyEmail: async (email: string, otp: string) => {
         set({ isLoading: true, error: null });
@@ -177,32 +181,41 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       login: async (email: string, password: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/login', { email, password });
-          
-          if (response.data.success) {
-            const { user, tokens } = response.data.data;
-            
-            // Set tokens in API client
-            apiClient.setAuthTokens(tokens.accessToken, tokens.refreshToken);
-            
-            set({
-              user,
-              tokens,
-              isAuthenticated: true,
-              isLoading: false,
-            });
-          } else {
-            throw new Error(response.data.message || 'Login failed');
-          }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Login failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
+  set({ isLoading: true, error: null });
+  
+  try {
+    const response = await apiClient.post('/auth/login', { email, password });
+    
+    if (response.data.success) {
+      const { user, tokens } = response.data.data;
+      
+      // Set tokens in API client
+      await apiClient.setAuthTokens(tokens.accessToken, tokens.refreshToken);
+      
+      set({
+        user,
+        tokens,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } else {
+      throw new Error(response.data.message || 'Login failed');
+    }
+  } catch (error: any) {
+    let errorMessage = 'Login failed. Please try again.';
+    
+    if (error.response?.status === 401) {
+      errorMessage = 'Invalid email or password';
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    set({ error: errorMessage, isLoading: false });
+    throw new Error(errorMessage);
+  }
+},
 
       logout: async () => {
         set({ isLoading: true });

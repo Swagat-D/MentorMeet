@@ -128,31 +128,37 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = async () => {
-    if (!validateForm()) {
-      return;
-    }
+  if (!validateForm()) {
+    return;
+  }
 
-    setIsLoading(true);
-    setErrors({});
+  setIsLoading(true);
+  setErrors({});
 
-    try {
-      await register({
-        name: name.trim(),
+  try {
+    await register({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: 'mentee',
+    });
+    
+    // Navigate to OTP verification screen instead of onboarding
+    router.push({
+      pathname: "/(auth)/verify-otp",
+      params: { 
         email: email.toLowerCase().trim(),
-        password,
-        role: 'mentee',
-      });
-      
-      // Navigate to onboarding after successful registration
-      router.replace("/(onboarding)/welcome");
-    } catch (error) {
-      setErrors({ 
-        general: "Registration failed. Please try again." 
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        purpose: 'email-verification'
+      }
+    });
+  } catch (error: any) {
+    setErrors({ 
+      general: error.message || "Registration failed. Please try again." 
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleGoogleSignUp = () => {
     // Navigate to Google OAuth

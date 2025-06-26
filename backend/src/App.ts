@@ -17,7 +17,13 @@ import authRoutes from './routes/auth.routes';
 const app = express();
 
 // Trust proxy (important for rate limiting behind reverse proxy)
-app.set('trust proxy', 1);
+if (process.env.NODE_ENV === 'production') {
+  // In production, trust the first proxy (load balancer)
+  app.set('trust proxy', 1);
+} else {
+  // In development, trust all proxies for easier testing
+  app.set('trust proxy', true);
+}
 
 // Security middleware
 app.use(helmet({

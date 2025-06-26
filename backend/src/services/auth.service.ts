@@ -29,56 +29,24 @@ class AuthService {
    * Register a new user and send email verification OTP
    */
   async register(
-    registerData: RegisterData,
-    metadata?: { ipAddress?: string; userAgent?: string }
-  ): Promise<AuthResult> {
-    const { name, email, password } = registerData;
+  registerData: RegisterData,
+  metadata?: { ipAddress?: string; userAgent?: string }
+): Promise<AuthResult> {
+  const { name, email, password } = registerData;
 
-    try {
-      // Check if user already exists
-      const existingUser = await User.findOne({ email: email.toLowerCase() });
-      
-      if (existingUser) {
-        if (existingUser.isEmailVerified) {
-          return {
-            success: false,
-            message: 'An account with this email already exists',
-          };
-        }
-        
-        // User exists but not verified - allow resending OTP
-        const rateLimit = await canRequestOTP(email, OTPType.EMAIL_VERIFICATION);
-        
-        if (!rateLimit.canRequest) {
-          return {
-            success: false,
-            message: rateLimit.message,
-          };
-        }
-        
-        // Create new OTP for existing unverified user
-        const { code } = await createOTP(
-          email,
-          OTPType.EMAIL_VERIFICATION,
-          existingUser.id,
-          metadata
-        );
-        
-        // Send OTP email
-        await emailService.sendOTP(email, code, OTPType.EMAIL_VERIFICATION, name);
-        
+  try {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    
+    if (existingUser) {
+      if (existingUser.isEmailVerified) {
         return {
-          success: true,
-          message: 'Verification code sent to your email',
-          data: {
-            userId: existingUser.id,
-            email: existingUser.email,
-            requiresVerification: true,
-          },
+          success: false,
+          message: 'An account with this email already exists',
         };
       }
-
-      // Check rate limiting for new registrations
+      
+      // User exists but not verified - allow resending OTP
       const rateLimit = await canRequestOTP(email, OTPType.EMAIL_VERIFICATION);
       
       if (!rateLimit.canRequest) {
@@ -87,47 +55,95 @@ class AuthService {
           message: rateLimit.message,
         };
       }
-
-      // Create new user (unverified)
-      const newUser = new User({
-        name: name.trim(),
-        email: email.toLowerCase(),
-        password, // Will be hashed by the pre-save middleware
-        isEmailVerified: false,
-        onboardingStatus: OnboardingStatus.NOT_STARTED,
-      });
-
-      await newUser.save();
-      console.log(`New user registered: ${email}`);
-
-      // Create OTP for email verification
+      
+      // Create new OTP for existing unverified user
       const { code } = await createOTP(
         email,
         OTPType.EMAIL_VERIFICATION,
-        newUser.id,
+        existingUser.id,
         metadata
       );
-
-      // Send verification email
+      
+      // Send OTP email
       await emailService.sendOTP(email, code, OTPType.EMAIL_VERIFICATION, name);
-
+      
       return {
         success: true,
-        message: 'Account created successfully. Please check your email for verification code.',
+        message: 'Verification code sent to your email',
+        data: {
+          userId: existingUser.id,
+          email: existingUser.email,
+          requiresVerification: true,
+        },
+      };
+    }
+
+    // Check rate limiting for new registrations
+    const rateLimit = await canRequestOTP(email, OTPType.EMAIL_VERIFICATION);
+    
+    if (!rateLimit.canRequest) {
+      return {
+        success: false,
+        message: rateLimit.message,
+      };
+    }
+
+    // Create new user (unverified)
+    const newUser = new User({
+      name: name.trim(),
+      email: email.toLowerCase(),
+      password, // Will be hashed by the pre-save middleware
+      isEmailVerified: false,
+      onboardingStatus: OnboardingStatus.NOT_STARTED,
+    });
+
+    await newUser.save();
+    console.log(`New user registered: ${email}`);
+
+    // Create OTP for email verification
+    const { code } = await createOTP(
+      email,
+      OTPType.EMAIL_VERIFICATION,
+      newUser.id,
+      metadata
+    );
+
+    // Send verification email
+    const emailResult = await emailService.sendOTP(email, code, OTPType.EMAIL_VERIFICATION, name);
+    
+    if (!emailResult.success) {
+      console.error('Failed to send verification email:', emailResult.error);
+      // Still return success but mention email issue
+      return {
+        success: true,
+        message: 'Account created successfully. Please check your email for verification code. If you don\'t receive it, you can request a new one.',
         data: {
           userId: newUser.id,
           email: newUser.email,
           requiresVerification: true,
+          emailSent: false,
         },
       };
-    } catch (error) {
-      console.error('Registration error:', error);
-      return {
-        success: false,
-        message: 'Registration failed. Please try again.',
-      };
     }
+
+    return {
+      success: true,
+      message: 'Account created successfully. Please check your email for verification code.',
+      data: {
+        userId: newUser.id,
+        email: newUser.email,
+        requiresVerification: true,
+        emailSent: true,
+      },
+    };
+  } catch (error) {
+    console.error('Registration error:', error);
+    return {
+      success: false,
+      message: 'Registration failed. Please try again.',
+    };
   }
+}
 
   /**
    * Verify email with OTP and complete registration
@@ -307,60 +323,60 @@ class AuthService {
    * Initiate password reset process
    */
   async forgotPassword(
-    email: string,
-    metadata?: { ipAddress?: string; userAgent?: string }
-  ): Promise<AuthResult> {
-    try {
-      // Check rate limiting
-      const rateLimit = await canRequestOTP(email, OTPType.PASSWORD_RESET);
-      
-      if (!rateLimit.canRequest) {
-        return {
-          success: false,
-          message: rateLimit.message,
-        };
-      }
+  email: string,
+  metadata?: { ipAddress?: string; userAgent?: string }
+): Promise<AuthResult> {
+  try {
+    // Check rate limiting first
+    const rateLimit = await canRequestOTP(email, OTPType.PASSWORD_RESET);
+    
+    if (!rateLimit.canRequest) {
+      return {
+        success: false,
+        message: rateLimit.message,
+      };
+    }
 
-      // Find user
-      const user = await User.findOne({ 
-        email: email.toLowerCase(),
-        isEmailVerified: true,
-        isActive: true,
-      });
-      
-      if (!user) {
-        // Don't reveal if email exists or not for security
-        return {
-          success: true,
-          message: 'If an account with this email exists, a password reset code will be sent.',
-        };
-      }
-
-      // Create password reset OTP
-      const { code } = await createOTP(
-        email,
-        OTPType.PASSWORD_RESET,
-        user.id,
-        metadata
-      );
-
-      // Send password reset email
-      await emailService.sendOTP(email, code, OTPType.PASSWORD_RESET, user.name);
-
-      console.log(`Password reset OTP sent to: ${email}`);
-
+    // Find user - only send email if user exists and is verified
+    const user = await User.findOne({ 
+      email: email.toLowerCase(),
+      isEmailVerified: true,
+      isActive: true,
+    });
+    
+    if (!user) {
+      // Don't reveal if email exists or not for security, but don't send email
       return {
         success: true,
         message: 'If an account with this email exists, a password reset code will be sent.',
       };
-    } catch (error) {
-      console.error('Forgot password error:', error);
-      return {
-        success: false,
-        message: 'Failed to process password reset request. Please try again.',
-      };
     }
+
+    // Create password reset OTP
+    const { code } = await createOTP(
+      email,
+      OTPType.PASSWORD_RESET,
+      user.id,
+      metadata
+    );
+
+    // Send password reset email
+    const emailResult = await emailService.sendOTP(email, code, OTPType.PASSWORD_RESET, user.name);
+    
+    console.log(`Password reset OTP sent to: ${email}`);
+
+    return {
+      success: true,
+      message: 'If an account with this email exists, a password reset code will be sent.',
+    };
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return {
+      success: false,
+      message: 'Failed to process password reset request. Please try again.',
+    };
   }
+}
 
   /**
    * Reset password with OTP verification

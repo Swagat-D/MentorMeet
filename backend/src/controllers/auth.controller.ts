@@ -13,6 +13,7 @@ import {
 import { IUser } from '@/models/User.model';
 import { AuthenticatedRequest } from '@/middleware/auth.middleware';
 import { catchAsync } from '@/middleware/error.middleware';
+import { extractClientIP } from '../utils/ip.utils';
 
 /**
  * Register a new user
@@ -20,9 +21,9 @@ import { catchAsync } from '@/middleware/error.middleware';
 export const register = catchAsync(async (req: Request<{}, {}, RegisterInput>, res: Response) => {
   const { name, email, password } = req.body;
   
-  // Get client metadata
+  // Get client metadata with production-ready IP extraction
   const metadata: { ipAddress?: string; userAgent?: string } = {};
-  if (req.ip !== undefined) metadata.ipAddress = req.ip;
+  metadata.ipAddress = extractClientIP(req);
   const userAgent = req.get('User-Agent');
   if (userAgent !== undefined) metadata.userAgent = userAgent;
 
@@ -31,8 +32,11 @@ export const register = catchAsync(async (req: Request<{}, {}, RegisterInput>, r
     metadata
   );
 
-  const statusCode = result.success ? 201 : 400;
-  res.status(statusCode).json(result);
+  if (result.success) {
+    res.status(201).json(result);
+  } else {
+    res.status(400).json(result);
+  }
 });
 
 /**
@@ -54,7 +58,7 @@ export const resendOTP = catchAsync(async (req: Request<{}, {}, ResendOTPInput>,
   const { email } = req.body;
   
   const metadata: { ipAddress?: string; userAgent?: string } = {};
-  if (req.ip !== undefined) metadata.ipAddress = req.ip;
+  metadata.ipAddress = extractClientIP(req);
   const userAgent = req.get('User-Agent');
   if (userAgent !== undefined) metadata.userAgent = userAgent;
 
@@ -83,13 +87,12 @@ export const forgotPassword = catchAsync(async (req: Request<{}, {}, ForgotPassw
   const { email } = req.body;
   
   const metadata: { ipAddress?: string; userAgent?: string } = {};
-  if (req.ip !== undefined) metadata.ipAddress = req.ip;
+  metadata.ipAddress = extractClientIP(req);
   const userAgent = req.get('User-Agent');
   if (userAgent !== undefined) metadata.userAgent = userAgent;
 
   const result = await authService.forgotPassword(email, metadata);
 
-  // Always return 200 for security (don't reveal if email exists)
   res.status(200).json(result);
 });
 

@@ -1,5 +1,6 @@
 // src/models/OTP.model.ts - OTP Model for Email Verification (Fixed Indexes)
 import mongoose, { Document, Schema } from 'mongoose';
+import { isValidIP } from '../utils/ip.utils';
 
 // OTP Types
 export enum OTPType {
@@ -106,18 +107,16 @@ const otpSchema = new Schema<IOTP>({
   
   // Metadata for security tracking
   ipAddress: {
-    type: String,
-    default: null,
-    validate: {
-      validator: function(v: string) {
-        if (!v) return true;
-        // Basic IP validation (IPv4 and IPv6)
-        return /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(v);
-      },
-      message: 'Invalid IP address format'
-    }
-  },
-  
+  type: String,
+  default: null,
+  validate: {
+    validator: function(v: string) {
+      if (!v) return true;
+      return isValidIP(v);
+    },
+    message: 'Invalid IP address format'
+  }
+},
   userAgent: {
     type: String,
     default: null,
