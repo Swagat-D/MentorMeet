@@ -1,4 +1,4 @@
-// src/middleware/validation.middleware.ts - Request Validation Middleware
+// src/middleware/validation.middleware.ts - Debug Request Validation Middleware
 import { Request, Response, NextFunction } from 'express';
 import { ZodSchema, ZodError } from 'zod';
 
@@ -16,11 +16,24 @@ export interface ValidatedRequest<
 }
 
 /**
- * Generic validation middleware factory
+ * Generic validation middleware factory with enhanced debugging
  */
 export const validate = (schema: ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Log the incoming request data for debugging
+      console.log('🔍 [VALIDATION] Incoming request data:', {
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        params: req.params,
+        query: req.query,
+        headers: {
+          'content-type': req.get('content-type'),
+          'user-agent': req.get('user-agent'),
+        },
+      });
+
       // Parse and validate request data
       const validatedData = schema.parse({
         body: req.body,
@@ -30,6 +43,8 @@ export const validate = (schema: ZodSchema) => {
         files: req.files,
       });
 
+      console.log('✅ [VALIDATION] Validation successful');
+
       // Assign validated data back to request
       req.body = validatedData.body || req.body;
       req.params = validatedData.params || req.params;
@@ -38,17 +53,31 @@ export const validate = (schema: ZodSchema) => {
       next();
       return;
     } catch (error) {
+      console.error('❌ [VALIDATION] Validation failed:', {
+        error: error instanceof ZodError ? error.errors : error,
+        requestBody: req.body,
+        requestPath: req.path,
+      });
+
       if (error instanceof ZodError) {
         const errorMessages = error.errors.map((err) => ({
           field: err.path.slice(1).join('.'), // Remove the first element (body/params/query)
           message: err.message,
           code: err.code,
+          received: err.code === 'invalid_type' ? (err as any).received : undefined,
+          expected: err.code === 'invalid_type' ? (err as any).expected : undefined,
         }));
+
+        console.error('📋 [VALIDATION] Detailed validation errors:', errorMessages);
 
         return res.status(400).json({
           success: false,
           message: 'Validation failed',
           errors: errorMessages,
+          debug: {
+            receivedBody: req.body,
+            expectedSchema: 'Check the API documentation for required fields',
+          },
         });
       }
 
@@ -61,27 +90,43 @@ export const validate = (schema: ZodSchema) => {
 };
 
 /**
- * Validation middleware for request body only
+ * Validation middleware for request body only with debugging
  */
 export const validateBody = (schema: ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log('🔍 [VALIDATE BODY] Incoming body:', req.body);
+      
       const validatedBody = schema.parse(req.body);
       req.body = validatedBody;
+      
+      console.log('✅ [VALIDATE BODY] Body validation successful');
       next();
       return;
     } catch (error) {
+      console.error('❌ [VALIDATE BODY] Body validation failed:', {
+        error: error instanceof ZodError ? error.errors : error,
+        requestBody: req.body,
+      });
+
       if (error instanceof ZodError) {
         const errorMessages = error.errors.map((err) => ({
           field: err.path.join('.'),
           message: err.message,
           code: err.code,
+          received: err.code === 'invalid_type' ? (err as any).received : undefined,
+          expected: err.code === 'invalid_type' ? (err as any).expected : undefined,
         }));
+
+        console.error('📋 [VALIDATE BODY] Detailed body validation errors:', errorMessages);
 
         return res.status(400).json({
           success: false,
           message: 'Request validation failed',
           errors: errorMessages,
+          debug: {
+            receivedBody: req.body,
+          },
         });
       }
 
@@ -163,6 +208,8 @@ export const validateQuery = (schema: ZodSchema) => {
  * Sanitize request data to prevent common issues
  */
 export const sanitizeRequest = (req: Request, _res: Response, next: NextFunction) => {
+  console.log('🧹 [SANITIZE] Sanitizing request data...');
+  
   // Sanitize body
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);
@@ -173,6 +220,7 @@ export const sanitizeRequest = (req: Request, _res: Response, next: NextFunction
     req.query = sanitizeObject(req.query);
   }
 
+  console.log('✅ [SANITIZE] Request data sanitized');
   next();
 };
 

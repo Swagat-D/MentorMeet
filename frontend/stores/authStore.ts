@@ -1,9 +1,10 @@
-// stores/authStore.ts - Updated Auth Store with Backend Integration
+// frontend/stores/authStore.ts - Updated Auth Store with API Integration
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiClient } from '../services/api';
+import { ApiService, API_ENDPOINTS } from '../services/api';
 
+// Types
 export interface User {
   id: string;
   email: string;
@@ -17,70 +18,14 @@ export interface User {
   bio?: string;
   location?: string;
   timezone?: string;
-  goals: string[];
-  interests: string[];
+  goals?: string[];
+  interests?: string[];
   isEmailVerified: boolean;
   isOnboarded: boolean;
-  onboardingStatus: 'not-started' | 'in-progress' | 'completed';
-  stats?: {
-    totalHoursLearned: number;
-    sessionsCompleted: number;
-    mentorsConnected: number;
-    studyStreak: number;
-    completionRate: number;
-    monthlyHours: number;
-    weeklyGoalProgress: number;
-    averageRating: number;
-  };
-  lastLoginAt?: string;
-  createdAt: string;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: string;
-}
-
-interface AuthState {
-  user: User | null;
-  tokens: AuthTokens | null;
-  isLoading: boolean;
-  error: string | null;
-  isAuthenticated: boolean;
-}
-
-interface AuthActions {
-  // Authentication
-  register: (data: RegisterData) => Promise<void>;
-  verifyEmail: (email: string, otp: string) => Promise<void>;
-  resendOTP: (email: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  
-  // Password management
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
-  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  
-  // Profile management
-  updateProfile: (data: Partial<User>) => Promise<void>;
-  refreshProfile: () => Promise<void>;
-  
-  // Onboarding
-  updateOnboarding: (data: OnboardingData) => Promise<void>;
-  completeOnboarding: (interests?: string[], goals?: string[]) => Promise<void>;
-  
-  // State management
-  setUser: (user: User | null) => void;
-  setTokens: (tokens: AuthTokens | null) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  clearAuth: () => void;
-  
-  // Utilities
-  checkAuthStatus: () => Promise<boolean>;
-  refreshToken: () => Promise<boolean>;
+  onboardingStatus?: string;
+  stats?: any;
+  lastLoginAt?: Date;
+  createdAt: Date;
 }
 
 export interface RegisterData {
@@ -90,432 +35,410 @@ export interface RegisterData {
   role: 'mentee' | 'mentor';
 }
 
-export interface OnboardingData {
-  gender?: string;
-  ageRange?: string;
-  studyLevel?: string;
-  goals?: string[];
-  interests?: string[];
+interface AuthState {
+  // State
+  user: User | null;
+  isAuthenticated: boolean;
+  isOnboarded: boolean;
+  isLoading: boolean;
+  
+  // Actions
+  register: (data: RegisterData) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  verifyEmail: (email: string, otp: string) => Promise<void>;
+  resendOTP: (email: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
+  updateProfile: (data: Partial<User>) => Promise<void>;
+  completeOnboarding: (interests?: string[], goals?: string[]) => Promise<void>;
+  checkAuthStatus: () => Promise<void>;
+  clearAuth: () => void;
 }
 
-type AuthStore = AuthState & AuthActions;
+// Token management
+const TokenManager = {
+  async setTokens(accessToken: string, refreshToken?: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem('access_token', accessToken);
+      if (refreshToken) {
+        await AsyncStorage.setItem('refresh_token', refreshToken);
+      }
+    } catch (error) {
+      console.error('Error saving tokens:', error);
+    }
+  },
 
-export const useAuthStore = create<AuthStore>()(
+  async getAccessToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem('access_token');
+    } catch (error) {
+      console.error('Error getting access token:', error);
+      return null;
+    }
+  },
+
+  async clearTokens(): Promise<void> {
+    try {
+      await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+    } catch (error) {
+      console.error('Error clearing tokens:', error);
+    }
+  },
+};
+
+export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       // Initial state
       user: null,
-      tokens: null,
-      isLoading: false,
-      error: null,
       isAuthenticated: false,
+      isOnboarded: false,
+      isLoading: false,
 
-      // Authentication actions
+      // Register action
       register: async (data: RegisterData) => {
-  set({ isLoading: true, error: null });
-  
-  try {
-    const response = await apiClient.post('/auth/register', data);
-    
-    if (response.data.success) {
-      // Registration successful, but email verification required
-      // Don't set user data yet, wait for email verification
-      set({ isLoading: false });
-      
-      // The response should contain user info but we don't set it as authenticated yet
-      console.log('Registration successful, email verification required');
-    } else {
-      throw new Error(response.data.message || 'Registration failed');
-    }
-  } catch (error: any) {
-    const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
-    set({ error: errorMessage, isLoading: false });
-    throw new Error(errorMessage);
-  }
-},
-
-      verifyEmail: async (email: string, otp: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/verify-email', { email, otp });
-          
-          if (response.data.success) {
-            const { user, tokens } = response.data.data;
-            
-            // Set tokens in API client
-            apiClient.setAuthTokens(tokens.accessToken, tokens.refreshToken);
-            
-            set({
-              user,
-              tokens,
-              isAuthenticated: true,
-              isLoading: false,
-            });
-          } else {
-            throw new Error(response.data.message || 'Email verification failed');
-          }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Email verification failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
-
-      resendOTP: async (email: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/resend-otp', { email });
-          
-          if (!response.data.success) {
-            throw new Error(response.data.message || 'Failed to resend OTP');
-          }
-          
-          set({ isLoading: false });
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Failed to resend OTP';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
-
-      login: async (email: string, password: string) => {
-  set({ isLoading: true, error: null });
-  
-  try {
-    const response = await apiClient.post('/auth/login', { email, password });
-    
-    if (response.data.success) {
-      const { user, tokens } = response.data.data;
-      
-      // Set tokens in API client
-      await apiClient.setAuthTokens(tokens.accessToken, tokens.refreshToken);
-      
-      set({
-        user,
-        tokens,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } else {
-      throw new Error(response.data.message || 'Login failed');
-    }
-  } catch (error: any) {
-    let errorMessage = 'Login failed. Please try again.';
-    
-    if (error.response?.status === 401) {
-      errorMessage = 'Invalid email or password';
-    } else if (error.response?.data?.message) {
-      errorMessage = error.response.data.message;
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    set({ error: errorMessage, isLoading: false });
-    throw new Error(errorMessage);
-  }
-},
-
-      logout: async () => {
         set({ isLoading: true });
-        
         try {
-          // Call logout endpoint if authenticated
-          const { tokens } = get();
-          if (tokens) {
-            await apiClient.post('/auth/logout');
+          console.log('🔐 Registering user:', data.email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.REGISTER, data);
+          
+          if (response.success) {
+            console.log('✅ Registration successful');
+            // Don't set user as authenticated yet, need email verification
+            set({ isLoading: false });
+          } else {
+            throw new Error(response.message || 'Registration failed');
           }
         } catch (error) {
-          console.log('Logout API call failed:', error);
-          // Continue with local logout even if API call fails
-        }
-        
-        // Clear tokens from API client
-        apiClient.clearAuth();
-        
-        // Clear auth state
-        set({
-          user: null,
-          tokens: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: null,
-        });
-      },
-
-      // Password management
-      forgotPassword: async (email: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/forgot-password', { email });
-          
-          if (!response.data.success) {
-            throw new Error(response.data.message || 'Failed to send reset code');
-          }
-          
           set({ isLoading: false });
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Failed to send reset code';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
+          console.error('❌ Registration error:', error);
+          throw error;
         }
       },
 
-      resetPassword: async (email: string, otp: string, newPassword: string) => {
-        set({ isLoading: true, error: null });
-        
+      // Login action
+      login: async (email: string, password: string) => {
+        set({ isLoading: true });
         try {
-          const response = await apiClient.post('/auth/reset-password', {
+          console.log('🔐 Logging in user:', email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.LOGIN, {
+            email,
+            password,
+          });
+
+          if (response.success && response.data) {
+            const { user, tokens } = response.data;
+            
+            // Save tokens
+            await TokenManager.setTokens(
+              tokens.accessToken,
+              tokens.refreshToken
+            );
+
+            // Update state
+            set({
+              user,
+              isAuthenticated: true,
+              isOnboarded: user.isOnboarded || false,
+              isLoading: false,
+            });
+
+            console.log('✅ Login successful');
+          } else {
+            throw new Error(response.message || 'Login failed');
+          }
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Login error:', error);
+          throw error;
+        }
+      },
+
+      // Verify email action
+      verifyEmail: async (email: string, otp: string) => {
+        set({ isLoading: true });
+        try {
+          console.log('📧 Verifying email:', email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.VERIFY_EMAIL, {
+            email,
+            otp,
+          });
+
+          if (response.success && response.data) {
+            const { user, tokens } = response.data;
+            
+            // Save tokens
+            await TokenManager.setTokens(
+              tokens.accessToken,
+              tokens.refreshToken
+            );
+
+            // Update state
+            set({
+              user,
+              isAuthenticated: true,
+              isOnboarded: user.isOnboarded || false,
+              isLoading: false,
+            });
+
+            console.log('✅ Email verification successful');
+          } else {
+            throw new Error(response.message || 'Email verification failed');
+          }
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Email verification error:', error);
+          throw error;
+        }
+      },
+
+      // Resend OTP action
+      resendOTP: async (email: string) => {
+        set({ isLoading: true });
+        try {
+          console.log('📧 Resending OTP to:', email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.RESEND_OTP, {
+            email,
+          });
+
+          set({ isLoading: false });
+
+          if (response.success) {
+            console.log('✅ OTP resent successfully');
+          } else {
+            throw new Error(response.message || 'Failed to resend OTP');
+          }
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Resend OTP error:', error);
+          throw error;
+        }
+      },
+
+      // Forgot password action
+      forgotPassword: async (email: string) => {
+        set({ isLoading: true });
+        try {
+          console.log('🔑 Requesting password reset for:', email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.FORGOT_PASSWORD, {
+            email,
+          });
+
+          set({ isLoading: false });
+
+          if (response.success) {
+            console.log('✅ Password reset email sent');
+          } else {
+            throw new Error(response.message || 'Failed to send reset email');
+          }
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Forgot password error:', error);
+          throw error;
+        }
+      },
+
+      // Reset password action
+      resetPassword: async (email: string, otp: string, newPassword: string) => {
+        set({ isLoading: true });
+        try {
+          console.log('🔑 Resetting password for:', email);
+          
+          const response = await ApiService.post(API_ENDPOINTS.RESET_PASSWORD, {
             email,
             otp,
             newPassword,
           });
-          
-          if (!response.data.success) {
-            throw new Error(response.data.message || 'Password reset failed');
-          }
-          
-          set({ isLoading: false });
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Password reset failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
 
-      changePassword: async (currentPassword: string, newPassword: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.post('/auth/change-password', {
-            currentPassword,
-            newPassword,
-          });
-          
-          if (!response.data.success) {
-            throw new Error(response.data.message || 'Password change failed');
-          }
-          
           set({ isLoading: false });
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Password change failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
 
-      // Profile management
-      updateProfile: async (data: Partial<User>) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const response = await apiClient.put('/auth/profile', data);
-          
-          if (response.data.success) {
-            const updatedUser = response.data.data.user;
-            
-            set(state => ({
-              user: state.user ? { ...state.user, ...updatedUser } : updatedUser,
-              isLoading: false,
-            }));
+          if (response.success) {
+            console.log('✅ Password reset successful');
           } else {
-            throw new Error(response.data.message || 'Profile update failed');
-          }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Profile update failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
-        }
-      },
-
-      refreshProfile: async () => {
-        try {
-          const response = await apiClient.get('/auth/me');
-          
-          if (response.data.success) {
-            const user = response.data.data.user;
-            set({ user });
+            throw new Error(response.message || 'Password reset failed');
           }
         } catch (error) {
-          console.log('Failed to refresh profile:', error);
+          set({ isLoading: false });
+          console.error('❌ Reset password error:', error);
+          throw error;
         }
       },
 
-      // Onboarding
-      updateOnboarding: async (data: OnboardingData) => {
-        set({ isLoading: true, error: null });
-        
+      // Update profile action
+      updateProfile: async (data: Partial<User>) => {
+        set({ isLoading: true });
         try {
-          let endpoint = '/auth/onboarding/basic';
-          let payload = data;
+          console.log('👤 Updating profile');
           
-          // Determine endpoint based on data type
-          if (data.goals || data.interests) {
-            endpoint = '/auth/onboarding/goals';
-            payload = {
-              goals: data.goals || [],
-              interests: data.interests || [],
-            };
-          } else {
-            payload = {
-              gender: data.gender,
-              ageRange: data.ageRange,
-              studyLevel: data.studyLevel,
-            };
-          }
-          
-          const response = await apiClient.put(endpoint, payload);
-          
-          if (response.data.success) {
-            const updatedUser = response.data.data.user;
+          const response = await ApiService.put(API_ENDPOINTS.UPDATE_PROFILE, data);
+
+          if (response.success && response.data) {
+            const { user: updatedUser } = response.data;
             
+            // Update state
             set(state => ({
-              user: state.user ? { ...state.user, ...updatedUser } : updatedUser,
+              user: { ...state.user, ...updatedUser },
               isLoading: false,
             }));
+
+            console.log('✅ Profile updated successfully');
           } else {
-            throw new Error(response.data.message || 'Onboarding update failed');
+            throw new Error(response.message || 'Profile update failed');
           }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Onboarding update failed';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Update profile error:', error);
+          throw error;
         }
       },
 
+      // Complete onboarding action
       completeOnboarding: async (interests?: string[], goals?: string[]) => {
-        set({ isLoading: true, error: null });
-        
+        const { user } = get();
+        if (!user) return;
+
+        set({ isLoading: true });
         try {
-          const response = await apiClient.post('/auth/onboarding/complete', {
-            interests: interests || [],
-            goals: goals || [],
-          });
+          console.log('🎯 Completing onboarding');
           
-          if (response.data.success) {
-            const updatedUser = response.data.data.user;
-            
+          const updateData: Partial<User> = {
+            isOnboarded: true,
+            onboardingStatus: 'completed',
+          };
+          
+          if (interests) updateData.interests = interests;
+          if (goals) updateData.goals = goals;
+
+          const response = await ApiService.put(API_ENDPOINTS.UPDATE_PROFILE, updateData);
+
+          if (response.success) {
             set(state => ({
-              user: state.user ? { ...state.user, ...updatedUser, isOnboarded: true } : updatedUser,
+              user: state.user ? { ...state.user, ...updateData } : state.user,
+              isOnboarded: true,
               isLoading: false,
             }));
+
+            console.log('✅ Onboarding completed successfully');
           } else {
-            throw new Error(response.data.message || 'Failed to complete onboarding');
+            throw new Error(response.message || 'Onboarding completion failed');
           }
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.message || error.message || 'Failed to complete onboarding';
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Complete onboarding error:', error);
+          throw error;
         }
       },
 
-      // State management
-      setUser: (user: User | null) => {
-        set({ user, isAuthenticated: !!user });
-      },
+      // Check auth status
+      checkAuthStatus: async () => {
+        const token = await TokenManager.getAccessToken();
+        if (!token) {
+          set({ isAuthenticated: false, user: null, isOnboarded: false });
+          return;
+        }
 
-      setTokens: (tokens: AuthTokens | null) => {
-        set({ tokens });
-        
-        if (tokens) {
-          apiClient.setAuthTokens(tokens.accessToken, tokens.refreshToken);
-        } else {
-          apiClient.clearAuth();
+        try {
+          console.log('🔍 Checking auth status');
+          
+          const response = await ApiService.get(API_ENDPOINTS.CHECK_AUTH);
+
+          if (response.success && response.data) {
+            const { user } = response.data;
+            set({
+              user,
+              isAuthenticated: true,
+              isOnboarded: user.isOnboarded || false,
+            });
+
+            console.log('✅ Auth status verified');
+          } else {
+            throw new Error('Auth check failed');
+          }
+        } catch (error) {
+          console.error('❌ Auth check error:', error);
+          await TokenManager.clearTokens();
+          set({ isAuthenticated: false, user: null, isOnboarded: false });
         }
       },
 
-      setLoading: (isLoading: boolean) => {
-        set({ isLoading });
+      // Logout action
+      logout: async () => {
+        set({ isLoading: true });
+        try {
+          console.log('🚪 Logging out');
+          
+          // Call logout endpoint (optional)
+          try {
+            await ApiService.post(API_ENDPOINTS.LOGOUT);
+          } catch (error) {
+            // Ignore logout endpoint errors
+            console.warn('Logout endpoint failed, continuing with local logout');
+          }
+
+          // Clear tokens and state
+          await TokenManager.clearTokens();
+          set({
+            user: null,
+            isAuthenticated: false,
+            isOnboarded: false,
+            isLoading: false,
+          });
+
+          console.log('✅ Logout successful');
+        } catch (error) {
+          set({ isLoading: false });
+          console.error('❌ Logout error:', error);
+        }
       },
 
-      setError: (error: string | null) => {
-        set({ error });
-      },
-
+      // Clear auth (for errors)
       clearAuth: () => {
-        apiClient.clearAuth();
+        TokenManager.clearTokens();
         set({
           user: null,
-          tokens: null,
           isAuthenticated: false,
+          isOnboarded: false,
           isLoading: false,
-          error: null,
         });
-      },
-
-      // Utilities
-      checkAuthStatus: async () => {
-        const { tokens } = get();
-        
-        if (!tokens) {
-          return false;
-        }
-        
-        try {
-          const response = await apiClient.get('/auth/check');
-          
-          if (response.data.success) {
-            const user = response.data.data.user;
-            set({ user, isAuthenticated: true });
-            return true;
-          } else {
-            get().clearAuth();
-            return false;
-          }
-        } catch (error) {
-          console.log('Auth check failed:', error);
-          get().clearAuth();
-          return false;
-        }
-      },
-
-      refreshToken: async () => {
-        const { tokens } = get();
-        
-        if (!tokens?.refreshToken) {
-          return false;
-        }
-        
-        try {
-          const response = await apiClient.post('/auth/refresh-token', {
-            refreshToken: tokens.refreshToken,
-          });
-          
-          if (response.data.success) {
-            const newTokens = response.data.data.tokens;
-            get().setTokens(newTokens);
-            return true;
-          } else {
-            get().clearAuth();
-            return false;
-          }
-        } catch (error) {
-          console.log('Token refresh failed:', error);
-          get().clearAuth();
-          return false;
-        }
       },
     }),
     {
-      name: 'mentormatch-auth',
-      storage: {
+      name: 'auth-storage',
+              storage: {
         getItem: async (name: string) => {
-          const value = await AsyncStorage.getItem(name);
-          return value ? JSON.parse(value) : null;
+          try {
+            const value = await AsyncStorage.getItem(name);
+            return value ? JSON.parse(value) : null;
+          } catch (error) {
+            console.error('Error getting item from storage:', error);
+            return null;
+          }
         },
         setItem: async (name: string, value: any) => {
-          await AsyncStorage.setItem(name, JSON.stringify(value));
+          try {
+            await AsyncStorage.setItem(name, JSON.stringify(value));
+          } catch (error) {
+            console.error('Error setting item to storage:', error);
+          }
         },
         removeItem: async (name: string) => {
-          await AsyncStorage.removeItem(name);
+          try {
+            await AsyncStorage.removeItem(name);
+          } catch (error) {
+            console.error('Error removing item from storage:', error);
+          }
         },
       },
       partialize: (state) => ({
         user: state.user,
-        tokens: state.tokens,
         isAuthenticated: state.isAuthenticated,
+        isOnboarded: state.isOnboarded,
       }),
     }
   )

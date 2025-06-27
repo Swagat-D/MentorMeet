@@ -1,30 +1,57 @@
-// src/validations/auth.validation.ts - Authentication Validation Schemas
+// src/validations/auth.validation.ts - Debug Authentication Validation Schemas
 import { z } from 'zod';
-import { Gender, StudyLevel, AgeRange } from '@/models/User.model';
+import { Gender, StudyLevel, AgeRange } from '../models/User.model';
 
-// User registration validation
+// User registration validation with detailed error messages
 export const registerSchema = z.object({
   body: z.object({
     name: z
-      .string({ required_error: 'Name is required' })
+      .string({ 
+        required_error: 'Name is required',
+        invalid_type_error: 'Name must be a string'
+      })
       .min(2, 'Name must be at least 2 characters long')
       .max(50, 'Name cannot exceed 50 characters')
       .trim()
       .regex(/^[a-zA-Z\s]+$/, 'Name can only contain letters and spaces'),
     
     email: z
-      .string({ required_error: 'Email is required' })
+      .string({ 
+        required_error: 'Email is required',
+        invalid_type_error: 'Email must be a string'
+      })
       .email('Please enter a valid email address')
       .toLowerCase()
       .trim(),
     
     password: z
-      .string({ required_error: 'Password is required' })
+      .string({ 
+        required_error: 'Password is required',
+        invalid_type_error: 'Password must be a string'
+      })
       .min(8, 'Password must be at least 8 characters long')
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
         'Password must contain at least one uppercase letter, one lowercase letter, and one number'
       ),
+    
+    // Make role optional with default value
+    role: z
+      .enum(['mentee', 'mentor'], {
+        invalid_type_error: 'Role must be either "mentee" or "mentor"'
+      })
+      .optional()
+      .default('mentee'),
+  }).strict(), // Only allow specified fields
+});
+
+// Alternative simpler registration schema for testing
+export const registerSchemaSimple = z.object({
+  body: z.object({
+    name: z.string().min(1, 'Name is required'),
+    email: z.string().email('Valid email is required'),
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    role: z.enum(['mentee', 'mentor']).optional().default('mentee'),
   }),
 });
 
@@ -268,14 +295,24 @@ export type OnboardingGoalsInput = z.infer<typeof onboardingGoalsSchema>['body']
 export const validateSchema = (schema: z.ZodSchema) => {
   return (req: any, res: any, next: any) => {
     try {
+      console.log('🔍 [VALIDATE SCHEMA] Validating request:', {
+        body: req.body,
+        params: req.params,
+        query: req.query,
+      });
+
       schema.parse({
         body: req.body,
         params: req.params,
         query: req.query,
         file: req.file,
       });
+      
+      console.log('✅ [VALIDATE SCHEMA] Validation successful');
       next();
     } catch (error) {
+      console.error('❌ [VALIDATE SCHEMA] Validation failed:', error);
+      
       if (error instanceof z.ZodError) {
         const errorMessages = error.errors.map((err) => ({
           field: err.path.join('.'),
