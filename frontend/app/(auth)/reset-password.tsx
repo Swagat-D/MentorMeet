@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   Animated,
   Easing,
 } from "react-native";
@@ -17,9 +16,11 @@ import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from "../../stores/authStore"; // Add this import
 
 export default function ResetPasswordScreen() {
-  const { token, email } = useLocalSearchParams<{ token: string; email: string }>();
+  const { email, otp } = useLocalSearchParams<{ email: string; otp: string }>();
+  const { resetPassword } = useAuthStore(); // Add this
   
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -97,14 +98,18 @@ export default function ResetPasswordScreen() {
       return;
     }
 
+    if (!email || !otp) {
+      setErrors({ general: "Missing email or verification code" });
+      return;
+    }
+
     setIsLoading(true);
     setErrors({});
 
     try {
-      // Simulate API call to reset password
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call the actual reset password API
+      await resetPassword(email, otp, password);
       
-      // Mock success - in real app, call password reset API with token
       setIsSuccess(true);
       
       // Success animation
@@ -120,15 +125,16 @@ export default function ResetPasswordScreen() {
         router.replace("/(auth)/login");
       }, 3000);
 
-    } catch (error) {
+    } catch (error: any) {
       setErrors({ 
-        general: "Failed to reset password. Please try again." 
+        general: error.message || "Failed to reset password. Please try again." 
       });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Rest of the component remains the same...
   if (isSuccess) {
     return (
       <SafeAreaView style={styles.container}>

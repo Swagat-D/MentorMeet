@@ -68,7 +68,6 @@ export interface IUser extends Document {
   
   // Learning Information
   goals: string[]; // Array of goal names/IDs
-  interests: string[]; // Array of interest names
   
   // Account Status
   isEmailVerified: boolean;
@@ -202,11 +201,6 @@ const userSchema = new Schema<IUser>({
     trim: true
   }],
   
-  interests: [{
-    type: String,
-    trim: true
-  }],
-  
   // Account Status
   isEmailVerified: {
     type: Boolean,
@@ -326,9 +320,6 @@ userSchema.methods.completeOnboarding = async function(data: {
   interests?: string[] 
 }): Promise<void> {
   this.goals = data.goals;
-  if (data.interests) {
-    this.interests = data.interests;
-  }
   this.onboardingStatus = OnboardingStatus.COMPLETED;
   this.isOnboarded = true;
   await this.save();

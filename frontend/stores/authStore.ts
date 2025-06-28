@@ -245,30 +245,33 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // Reset password action
-      resetPassword: async (email: string, otp: string, newPassword: string) => {
-        set({ isLoading: true });
-        try {
-          console.log('🔑 Resetting password for:', email);
-          
-          const response = await ApiService.post(API_ENDPOINTS.RESET_PASSWORD, {
-            email,
-            otp,
-            newPassword,
-          });
-
-          set({ isLoading: false });
-
-          if (response.success) {
-            console.log('✅ Password reset successful');
-          } else {
-            throw new Error(response.message || 'Password reset failed');
-          }
-        } catch (error) {
-          set({ isLoading: false });
-          console.error('❌ Reset password error:', error);
-          throw error;
-        }
+      
+resetPassword: async (email: string, otp: string, newPassword: string) => {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.RESET_PASSWORD}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        email,
+        otp,
+        newPassword,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Password reset failed');
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    throw new Error(error.message || 'Password reset failed');
+  }
+},
 
       // Update profile action
       updateProfile: async (data: Partial<User>) => {
