@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiService, API_ENDPOINTS } from '../services/api';
+import { googleAuthService } from '../services/googleAuth';
+import { Alert } from 'react-native';
 
 // Types
 export interface User {
@@ -26,6 +28,8 @@ export interface User {
   stats?: any;
   lastLoginAt?: Date;
   createdAt: Date;
+  provider?: string;
+  canChangePassword?: boolean;
 }
 
 export interface RegisterData {
@@ -54,6 +58,8 @@ interface AuthState {
   completeOnboarding: (interests?: string[], goals?: string[]) => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   clearAuth: () => void;
+  authenticateWithGoogleToken: (googleToken: string) => Promise<any>;
+  unlinkGoogleAccount: (password: string) => Promise<any>;
 }
 
 // Token management
@@ -156,6 +162,101 @@ export const useAuthStore = create<AuthState>()(
           throw error;
         }
       },
+
+googleSignIn: async () => {
+  try {
+    set({ isLoading: true });
+    
+    // Import Google auth at the component level since hooks can't be used in stores
+    // We'll handle this differently - see the updated component approach below
+    
+  } catch (error: any) {
+    console.error('Google sign-in error:', error);
+    set({
+      isLoading: false,
+    });
+  }
+},
+
+// ADD this method for handling Google token from frontend:
+// ADD this method for handling Google token from frontend:
+authenticateWithGoogleToken: async (googleToken: string) => {
+  try {
+    set({ isLoading: true });
+    
+    const response = await fetch(`${API_ENDPOINTS.AUTHENTICATION_WITH_GOOGLETOKEN}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token: googleToken }),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Google sign-in failed');
+    }
+    
+    // Store tokens and user data
+    await AsyncStorage.setItem('accessToken', data.data.tokens.accessToken);
+    await AsyncStorage.setItem('refreshToken', data.data.tokens.refreshToken);
+    
+    set({
+      user: data.data.user,
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    
+    return data;
+    
+  } catch (error: any) {
+    console.error('Google authentication error:', error);
+    set({
+      isLoading: false,
+    });
+    throw error;
+  }
+},
+// ADD this method for unlinking Google account:
+unlinkGoogleAccount: async (password: string) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    const response = await fetch(`${API_ENDPOINTS.UNLINK_GOOGLEACCOUNT}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to unlink Google account');
+    }
+    
+    // Update user to reflect email provider
+    const currentUser = get().user;
+    if (currentUser) {
+      set({
+        user: {
+          ...currentUser,
+          provider: 'email',
+          canChangePassword: true,
+        }
+      });
+    }
+    
+    return data;
+    
+  } catch (error: any) {
+    console.error('Unlink Google error:', error);
+    throw new Error(error.message || 'Failed to unlink Google account');
+  }
+},
 
       // Verify email action
       verifyEmail: async (email: string, otp: string) => {

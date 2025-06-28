@@ -19,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore } from "../../stores/authStore";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { GoogleSignInButton } from "../../components/auth/GoogleSignInButton";
 
 const { width } = Dimensions.get('window');
 
@@ -322,26 +323,20 @@ export default function LoginScreen() {
             {/* Social Login Options */}
             <View style={styles.socialContainer}>
               {/* Enhanced Google Login Button */}
-              <TouchableOpacity
-                style={styles.googleButton}
-                onPress={handleGoogleLogin}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#ffffff', '#fefbf3']}
-                  style={styles.googleButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <View style={styles.googleIconContainer}>
-                    {/* Google G Icon */}
-                    <View style={styles.googleG}>
-                      <Text style={styles.googleGText}>G</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              <GoogleSignInButton
+                style={{ marginBottom: 16 }}
+                onSuccess={(isNewUser) => {
+                if (isNewUser) {
+                  router.replace("/(onboarding)/welcome");
+                } else {
+                  router.replace("/(tabs)");
+                }
+                }}
+                  onError={(error) => {
+                  setErrors({ general: error });
+                }}
+                  disabled={isLoading}
+              />
 
               {/* Biometric Login */}
               <TouchableOpacity

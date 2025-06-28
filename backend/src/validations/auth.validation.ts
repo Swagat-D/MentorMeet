@@ -60,6 +60,27 @@ export const loginSchema = z.object({
   }),
 });
 
+
+export const googleAuthSchema = z.object({
+  body: z.object({
+    token: z
+      .string({ required_error: 'Google token is required' })
+      .min(1, 'Google token cannot be empty'),
+  }),
+});
+
+export const unlinkGoogleSchema = z.object({
+  body: z.object({
+    password: z
+      .string({ required_error: 'Password is required' })
+      .min(8, 'Password must be at least 8 characters long')
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+      ),
+  }),
+});
+
 // OTP verification validation
 export const verifyOTPSchema = z.object({
   body: z.object({

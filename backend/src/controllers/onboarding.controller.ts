@@ -185,6 +185,7 @@ export const completeOnboarding = catchAsync(async (req: Request<{}, {}, Complet
         },
       },
     });
+    return;
   } catch (error: any) {
     console.error('💥 Complete onboarding error:', {
       userId,
@@ -196,6 +197,7 @@ export const completeOnboarding = catchAsync(async (req: Request<{}, {}, Complet
       message: 'Failed to complete onboarding',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
+    return;
   }
 });
 
@@ -312,7 +314,7 @@ export const resetOnboarding = catchAsync(async (req: AuthenticatedRequest, res:
       message: 'Onboarding reset successfully',
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Onboarding has been reset. You can start the process again.',
       data: {
@@ -336,7 +338,7 @@ export const resetOnboarding = catchAsync(async (req: AuthenticatedRequest, res:
       error: error.message,
     });
     
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to reset onboarding',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,

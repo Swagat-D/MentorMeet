@@ -1,6 +1,7 @@
 // src/routes/auth.routes.ts - Authentication Routes (Fixed with relative imports)
 import { Router } from 'express';
 import authController from '../controllers/auth.controller';
+import googleAuthController from '../controllers/google-auth.controller';
 import { authenticate, requireEmailVerification } from '../middleware/auth.middleware';
 import { authRateLimit, otpRateLimit, passwordResetRateLimit } from '../middleware/rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -16,6 +17,7 @@ import {
   onboardingBasicSchema,
   onboardingGoalsSchema,
 } from '../validations/auth.validation';
+import { googleAuthSchema, unlinkGoogleSchema } from '../validations/auth.validation';
 
 const router = Router();
 
@@ -43,6 +45,31 @@ router.post(
   authRateLimit,
   validate(verifyOTPSchema),
   authController.verifyEmail
+);
+
+/**
+ * @route   POST /api/v1/auth/google
+ * @desc    Google OAuth login/signup
+ * @access  Public
+ */
+router.post(
+  '/google',
+  authRateLimit,
+  validate(googleAuthSchema),
+  googleAuthController.googleAuth
+);
+
+/**
+ * @route   POST /api/v1/auth/unlink-google
+ * @desc    Unlink Google account and set password
+ * @access  Private
+ */
+router.post(
+  '/unlink-google',
+  authenticate,
+  requireEmailVerification,
+  validate(unlinkGoogleSchema),
+  googleAuthController.unlinkGoogle
 );
 
 /**

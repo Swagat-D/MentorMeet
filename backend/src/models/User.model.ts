@@ -57,6 +57,11 @@ export interface IUser extends Document {
   role: UserRole;
   avatar?: string;
   phone?: string;
+
+  // OAuth fields
+  provider: 'email' | 'google';
+  googleId?: string;
+  canChangePassword: boolean; // Derived from provider
   
   // Profile Information (from onboarding)
   gender?: Gender;
@@ -158,6 +163,20 @@ const userSchema = new Schema<IUser>({
       message: 'Please enter a valid phone number'
     }
   },
+
+  // OAuth Provider
+  provider: {
+    type: String,
+    enum: ['email', 'google'],
+    default: 'email',
+    required: true,
+  },
+  
+  googleId: {
+    type: String,
+    default: null,
+    sparse: true, // Allows multiple null values but unique non-null values
+  },
   
   // Profile Information (set during onboarding)
   gender: {
@@ -253,10 +272,15 @@ userSchema.index({ role: 1 });
 userSchema.index({ onboardingStatus: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ lastLoginAt: -1 });
+userSchema.index({ provider: 1, googleId: 1 }, { unique: true, sparse: true });
 
 // Virtual for user ID as string
 userSchema.virtual('id').get(function() {
   return this._id.toHexString();
+});
+
+userSchema.virtual('canChangePassword').get(function() {
+  return this.provider === 'email';
 });
 
 // Ensure virtual fields are serialized
