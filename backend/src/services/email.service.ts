@@ -1,7 +1,7 @@
-// src/services/email.service.ts - Email Service for OTP and Notifications
+// src/services/email.service.ts - Email Service for OTP and Notifications (Fixed)
 import nodemailer from 'nodemailer';
-import { emailConfig } from '@/config/environment';
-import { OTPType } from '@/models/OTP.model';
+import { emailConfig } from '../config/environment';
+import { OTPType } from '../models/OTP.model';
 
 // Email template interface
 interface EmailTemplate {
@@ -322,15 +322,6 @@ MentorMatch - Connecting minds, shaping futures
       border-top: 1px solid #E5E7EB; 
       color: #8b7355; 
       font-size: 14px; 
-    }
-    .app-store-buttons {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .app-store-button {
-      display: inline-block;
-      margin: 0 10px;
-      text-decoration: none;
     }
     .button {
       background: linear-gradient(135deg, #8b5a3c, #d97706);

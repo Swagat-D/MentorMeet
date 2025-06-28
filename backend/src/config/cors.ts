@@ -1,4 +1,4 @@
-// src/config/cors.ts - CORS Configuration for Mobile Access
+// src/config/cors.ts - CORS Configuration for Mobile Access (Fixed)
 import { CorsOptions } from 'cors';
 import { corsConfig } from './environment';
 

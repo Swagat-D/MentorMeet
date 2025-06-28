@@ -1,6 +1,6 @@
-// src/utils/otp.utils.ts - OTP Management Utilities
-import OTP, { OTPType, OTPStatus } from '@/models/OTP.model';
-import { otpConfig } from '@/config/environment';
+// src/utils/otp.utils.ts - OTP Management Utilities (Fixed)
+import OTP, { OTPType, OTPStatus } from '../models/OTP.model';
+import { otpConfig } from '../config/environment';
 
 export interface OTPCreationResult {
   success: boolean;

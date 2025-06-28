@@ -1,4 +1,4 @@
-// src/controllers/auth.controller.ts - Enhanced Authentication Controller with Logging
+// src/controllers/auth.controller.ts - Complete Authentication Controller Implementation
 import { Request, Response } from 'express';
 import authService from '../services/auth.service';
 import { 
@@ -19,11 +19,12 @@ import { extractClientIP } from '../utils/ip.utils';
  * Register a new user
  */
 export const register = catchAsync(async (req: Request<{}, {}, RegisterInput>, res: Response) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role } = req.body;
   
   console.log('🔐 Registration attempt:', {
     email,
     name,
+    role,
     passwordLength: password?.length,
     clientIP: extractClientIP(req),
     userAgent: req.get('User-Agent'),
@@ -38,7 +39,7 @@ export const register = catchAsync(async (req: Request<{}, {}, RegisterInput>, r
   try {
     console.log('📝 Calling auth service register...');
     const result = await authService.register(
-      { name, email, password },
+      { name, email, password, role },
       metadata
     );
 
@@ -208,6 +209,7 @@ export const forgotPassword = catchAsync(async (req: Request<{}, {}, ForgotPassw
       message: result.message,
     });
 
+    // Always return 200 for forgot password for security
     res.status(200).json(result);
   } catch (error: any) {
     console.error('💥 Password reset error:', {
@@ -407,27 +409,17 @@ export const updateOnboarding = catchAsync(async (req: AuthenticatedRequest, res
  */
 export const completeOnboarding = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.userId;
-  const { goals, interests } = req.body;
+  const { goals } = req.body;
 
   console.log('🎯 Complete onboarding attempt:', {
     userId,
     goalsCount: goals?.length,
-    interestsCount: interests?.length,
   });
 
   try {
     const result = await authService.updateOnboarding(userId, {
       goals,
-      interests,
     });
-
-    if (result.success) {
-      // Mark onboarding as completed
-      const user = req.user;
-      if (user) {
-        await user.updateOnboardingStatus('completed' as any);
-      }
-    }
 
     console.log('📋 Complete onboarding result:', {
       success: result.success,
@@ -545,7 +537,6 @@ export const getDashboard = catchAsync(async (req: AuthenticatedRequest, res: Re
         onboardingStatus: user.onboardingStatus,
         stats: user.stats,
         goals: user.goals,
-        interests: user.interests,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
       },

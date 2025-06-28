@@ -1,4 +1,4 @@
-// src/services/auth.service.ts - Authentication Service with Enhanced Debugging
+// src/services/auth.service.ts - Complete Authentication Service Implementation
 import User, { IUser, OnboardingStatus } from '../models/User.model';
 import { OTPType } from '../models/OTP.model';
 import { generateTokenPair, createTokenResponse } from '../utils/jwt.utils';
@@ -9,6 +9,7 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
+  role?: 'mentee' | 'mentor';
 }
 
 export interface LoginData {
@@ -32,12 +33,13 @@ class AuthService {
     registerData: RegisterData,
     metadata?: { ipAddress?: string; userAgent?: string }
   ): Promise<AuthResult> {
-    const { name, email, password } = registerData;
+    const { name, email, password, role = 'mentee' } = registerData;
 
     try {
       console.log('🔍 [AUTH SERVICE] Starting registration process:', {
         email,
         name,
+        role,
         hasPassword: !!password,
         passwordLength: password?.length,
         metadata,
@@ -134,6 +136,7 @@ class AuthService {
         name: name.trim(),
         email: email.toLowerCase(),
         password, // Will be hashed by the pre-save middleware
+        role,
         isEmailVerified: false,
         onboardingStatus: OnboardingStatus.NOT_STARTED,
       });
@@ -143,6 +146,7 @@ class AuthService {
       console.log('✅ [AUTH SERVICE] New user created successfully:', {
         userId: newUser.id,
         email: newUser.email,
+        role: newUser.role,
       });
 
       // Step 4: Create OTP for email verification
@@ -398,11 +402,8 @@ class AuthService {
     }
   }
 
-  // ... (rest of the methods remain the same)
-  // I'll include the login method as an example, but you can keep the others as they were
-
   /**
-   * Login user with email and password
+   * User login with email and password
    */
   async login(loginData: LoginData): Promise<AuthResult> {
     const { email, password } = loginData;
@@ -480,40 +481,526 @@ class AuthService {
     }
   }
 
-  // Add placeholder methods for the rest (keep your existing implementations)
-  async forgotPassword(email: string, metadata?: { ipAddress?: string; userAgent?: string }): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+  /**
+   * Initiate forgot password process
+   */
+  async forgotPassword(
+    email: string, 
+    metadata?: { ipAddress?: string; userAgent?: string }
+  ): Promise<AuthResult> {
+    try {
+      console.log('🔑 [AUTH SERVICE] Starting forgot password process:', {
+        email,
+        metadata,
+      });
+
+      // Check rate limiting
+      const rateLimit = await canRequestOTP(email, OTPType.PASSWORD_RESET);
+      
+      if (!rateLimit.canRequest) {
+        console.log('🚫 [AUTH SERVICE] Rate limit exceeded for password reset:', rateLimit.message);
+        return {
+          success: false,
+          message: rateLimit.message,
+        };
+      }
+
+      // Find user
+      const user = await User.findOne({ email: email.toLowerCase() });
+      
+      // Always return success message for security (don't reveal if email exists)
+      const successMessage = 'If an account with this email exists, you will receive a password reset code shortly.';
+      
+      if (!user) {
+        console.log('❌ [AUTH SERVICE] User not found for password reset');
+        // Return success to prevent email enumeration
+        return {
+          success: true,
+          message: successMessage,
+        };
+      }
+
+      // Check if account is active
+      if (!user.isActive) {
+        console.log('⚠️ [AUTH SERVICE] Account deactivated for password reset');
+        return {
+          success: true,
+          message: successMessage,
+        };
+      }
+
+      // Check if email is verified
+      if (!user.isEmailVerified) {
+        console.log('⚠️ [AUTH SERVICE] Email not verified for password reset');
+        return {
+          success: false,
+          message: 'Please verify your email first before resetting password',
+        };
+      }
+
+      // Create OTP for password reset
+      console.log('📧 [AUTH SERVICE] Creating password reset OTP...');
+      const otpResult = await createOTP(email, OTPType.PASSWORD_RESET, user.id, metadata);
+
+      if (!otpResult.success) {
+        console.error('❌ [AUTH SERVICE] Failed to create password reset OTP');
+        return {
+          success: false,
+          message: 'Failed to generate reset code. Please try again.',
+        };
+      }
+
+      // Send password reset email
+      console.log('📤 [AUTH SERVICE] Sending password reset email...');
+      const emailResult = await emailService.sendOTP(email, otpResult.code, OTPType.PASSWORD_RESET, user.name);
+
+      console.log('📧 [AUTH SERVICE] Password reset email result:', emailResult);
+
+      return {
+        success: true,
+        message: successMessage,
+        data: {
+          emailSent: emailResult.success,
+        },
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Forgot password error:', {
+        email,
+        error: error.message,
+        stack: error.stack,
+      });
+      return {
+        success: false,
+        message: 'Failed to process password reset request. Please try again.',
+      };
+    }
   }
 
+  /**
+   * Reset password with OTP
+   */
   async resetPassword(email: string, otp: string, newPassword: string): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('🔐 [AUTH SERVICE] Starting password reset with OTP:', {
+        email,
+        otpLength: otp?.length,
+        newPasswordLength: newPassword?.length,
+      });
+
+      // Verify OTP
+      console.log('🔐 [AUTH SERVICE] Verifying password reset OTP...');
+      const otpResult = await verifyOTPWithAttempts(
+        email,
+        otp,
+        OTPType.PASSWORD_RESET
+      );
+
+      if (!otpResult.success) {
+        console.log('❌ [AUTH SERVICE] Password reset OTP verification failed:', otpResult.message);
+        return {
+          success: false,
+          message: otpResult.message,
+        };
+      }
+
+      console.log('✅ [AUTH SERVICE] Password reset OTP verified successfully');
+
+      // Find user
+      const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+      
+      if (!user) {
+        console.error('❌ [AUTH SERVICE] User not found for password reset');
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      // Check if account is active
+      if (!user.isActive) {
+        console.log('⚠️ [AUTH SERVICE] Account deactivated during password reset');
+        return {
+          success: false,
+          message: 'Account has been deactivated. Please contact support.',
+        };
+      }
+
+      // Update password
+      console.log('🔐 [AUTH SERVICE] Updating user password...');
+      user.password = newPassword; // Will be hashed by pre-save middleware
+      await user.save();
+
+      console.log('✅ [AUTH SERVICE] Password updated successfully');
+
+      // Send password reset success email
+      try {
+        await emailService.sendPasswordResetSuccessEmail(user.email, user.name);
+        console.log('✅ [AUTH SERVICE] Password reset success email sent');
+      } catch (emailError) {
+        console.warn('⚠️ [AUTH SERVICE] Password reset success email failed:', emailError);
+      }
+
+      console.log('🎉 [AUTH SERVICE] Password reset completed successfully');
+
+      return {
+        success: true,
+        message: 'Password has been reset successfully. You can now sign in with your new password.',
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Password reset error:', {
+        email,
+        error: error.message,
+        stack: error.stack,
+      });
+      return {
+        success: false,
+        message: 'Password reset failed. Please try again.',
+      };
+    }
   }
 
+  /**
+   * Change password for authenticated user
+   */
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('🔐 [AUTH SERVICE] Starting password change:', {
+        userId,
+        currentPasswordLength: currentPassword?.length,
+        newPasswordLength: newPassword?.length,
+      });
+
+      // Find user with password
+      const user = await User.findById(userId).select('+password');
+      
+      if (!user) {
+        console.error('❌ [AUTH SERVICE] User not found for password change');
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      // Check if account is active
+      if (!user.isActive) {
+        console.log('⚠️ [AUTH SERVICE] Account deactivated during password change');
+        return {
+          success: false,
+          message: 'Account has been deactivated. Please contact support.',
+        };
+      }
+
+      // Verify current password
+      console.log('🔐 [AUTH SERVICE] Verifying current password...');
+      const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+      
+      if (!isCurrentPasswordValid) {
+        console.log('❌ [AUTH SERVICE] Current password invalid');
+        return {
+          success: false,
+          message: 'Current password is incorrect',
+        };
+      }
+
+      // Check if new password is different
+      const isSamePassword = await user.comparePassword(newPassword);
+      if (isSamePassword) {
+        return {
+          success: false,
+          message: 'New password must be different from current password',
+        };
+      }
+
+      // Update password
+      console.log('🔐 [AUTH SERVICE] Updating password...');
+      user.password = newPassword; // Will be hashed by pre-save middleware
+      await user.save();
+
+      console.log('✅ [AUTH SERVICE] Password changed successfully');
+
+      return {
+        success: true,
+        message: 'Password has been changed successfully',
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Password change error:', {
+        userId,
+        error: error.message,
+        stack: error.stack,
+      });
+      return {
+        success: false,
+        message: 'Password change failed. Please try again.',
+      };
+    }
   }
 
+  /**
+   * Get user profile
+   */
   async getUserProfile(userId: string): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('👤 [AUTH SERVICE] Getting user profile:', { userId });
+
+      const user = await User.findById(userId);
+      
+      if (!user) {
+        console.log('❌ [AUTH SERVICE] User not found for profile');
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      if (!user.isActive) {
+        return {
+          success: false,
+          message: 'Account has been deactivated',
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Profile retrieved successfully',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            avatar: user.avatar,
+            phone: user.phone,
+            gender: user.gender,
+            ageRange: user.ageRange,
+            studyLevel: user.studyLevel,
+            bio: user.bio,
+            location: user.location,
+            timezone: user.timezone,
+            goals: user.goals,
+            isEmailVerified: user.isEmailVerified,
+            isOnboarded: user.isOnboarded,
+            onboardingStatus: user.onboardingStatus,
+            stats: user.stats,
+            lastLoginAt: user.lastLoginAt,
+            createdAt: user.createdAt,
+          },
+        },
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Get profile error:', {
+        userId,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: 'Failed to retrieve profile',
+      };
+    }
   }
 
+  /**
+   * Update user profile
+   */
   async updateProfile(userId: string, updateData: Partial<IUser>): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('👤 [AUTH SERVICE] Updating user profile:', {
+        userId,
+        updateFields: Object.keys(updateData),
+      });
+
+      const user = await User.findById(userId);
+      
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      if (!user.isActive) {
+        return {
+          success: false,
+          message: 'Account has been deactivated',
+        };
+      }
+
+      // Update allowed fields
+      const allowedFields = [
+        'name', 'phone', 'gender', 'ageRange', 'studyLevel', 'bio', 
+        'location', 'timezone', 'goals', 'avatar'
+      ];
+
+      Object.keys(updateData).forEach(field => {
+        if (allowedFields.includes(field) && updateData[field as keyof IUser] !== undefined) {
+          (user as any)[field] = updateData[field as keyof IUser];
+        }
+      });
+
+      await user.save();
+
+      console.log('✅ [AUTH SERVICE] Profile updated successfully');
+
+      return {
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            avatar: user.avatar,
+            phone: user.phone,
+            gender: user.gender,
+            ageRange: user.ageRange,
+            studyLevel: user.studyLevel,
+            bio: user.bio,
+            location: user.location,
+            timezone: user.timezone,
+            goals: user.goals,
+            isEmailVerified: user.isEmailVerified,
+            isOnboarded: user.isOnboarded,
+            onboardingStatus: user.onboardingStatus,
+            stats: user.stats,
+          },
+        },
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Update profile error:', {
+        userId,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: 'Failed to update profile',
+      };
+    }
   }
 
+  /**
+   * Update onboarding information
+   */
   async updateOnboarding(userId: string, onboardingData: any): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('🎯 [AUTH SERVICE] Updating onboarding data:', {
+        userId,
+        onboardingFields: Object.keys(onboardingData),
+      });
+
+      const user = await User.findById(userId);
+      
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      if (!user.isActive) {
+        return {
+          success: false,
+          message: 'Account has been deactivated',
+        };
+      }
+
+      // Update onboarding fields
+      const allowedFields = [
+        'gender', 'ageRange', 'studyLevel', 'goals'
+      ];
+
+      Object.keys(onboardingData).forEach(field => {
+        if (allowedFields.includes(field) && onboardingData[field] !== undefined) {
+          (user as any)[field] = onboardingData[field];
+        }
+      });
+
+      // Update onboarding status based on progress
+      if (user.gender && user.ageRange && user.studyLevel) {
+        if (user.goals && user.goals.length > 0) {
+          user.onboardingStatus = OnboardingStatus.COMPLETED;
+          user.isOnboarded = true;
+        } else {
+          user.onboardingStatus = OnboardingStatus.IN_PROGRESS;
+        }
+      }
+
+      await user.save();
+
+      console.log('✅ [AUTH SERVICE] Onboarding updated successfully');
+
+      return {
+        success: true,
+        message: 'Onboarding information updated successfully',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            gender: user.gender,
+            ageRange: user.ageRange,
+            studyLevel: user.studyLevel,
+            goals: user.goals,
+            isOnboarded: user.isOnboarded,
+            onboardingStatus: user.onboardingStatus,
+          },
+        },
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Update onboarding error:', {
+        userId,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: 'Failed to update onboarding information',
+      };
+    }
   }
 
+  /**
+   * Deactivate user account
+   */
   async deactivateAccount(userId: string): Promise<AuthResult> {
-    // Keep your existing implementation
-    throw new Error('Method not implemented in this debug version');
+    try {
+      console.log('🗑️ [AUTH SERVICE] Deactivating account:', { userId });
+
+      const user = await User.findById(userId);
+      
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+      if (!user.isActive) {
+        return {
+          success: false,
+          message: 'Account is already deactivated',
+        };
+      }
+
+      // Deactivate account
+      user.isActive = false;
+      await user.save();
+
+      console.log('✅ [AUTH SERVICE] Account deactivated successfully');
+
+      return {
+        success: true,
+        message: 'Account has been deactivated successfully',
+      };
+    } catch (error: any) {
+      console.error('💥 [AUTH SERVICE] Deactivate account error:', {
+        userId,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: 'Failed to deactivate account',
+      };
+    }
   }
 }
 

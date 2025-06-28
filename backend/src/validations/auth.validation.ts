@@ -1,4 +1,4 @@
-// src/validations/auth.validation.ts - Debug Authentication Validation Schemas
+// src/validations/auth.validation.ts - Complete Authentication Validation Schemas
 import { z } from 'zod';
 import { Gender, StudyLevel, AgeRange } from '../models/User.model';
 
@@ -43,16 +43,6 @@ export const registerSchema = z.object({
       .optional()
       .default('mentee'),
   }).strict(), // Only allow specified fields
-});
-
-// Alternative simpler registration schema for testing
-export const registerSchemaSimple = z.object({
-  body: z.object({
-    name: z.string().min(1, 'Name is required'),
-    email: z.string().email('Valid email is required'),
-    password: z.string().min(6, 'Password must be at least 6 characters'),
-    role: z.enum(['mentee', 'mentor']).optional().default('mentee'),
-  }),
 });
 
 // User login validation
@@ -206,6 +196,17 @@ export const updateProfileSchema = z.object({
       .enum(Object.values(StudyLevel) as [string, ...string[]])
       .optional()
       .nullable(),
+
+    goals: z
+      .array(z.string().trim().min(1, 'Goal cannot be empty'))
+      .max(10, 'Maximum 10 goals allowed')
+      .optional(),
+
+    avatar: z
+      .string()
+      .url('Avatar must be a valid URL')
+      .optional()
+      .nullable(),
   }),
 });
 
@@ -236,11 +237,16 @@ export const onboardingGoalsSchema = z.object({
       .array(z.string().trim().min(1, 'Goal cannot be empty'))
       .min(1, 'At least one goal is required')
       .max(10, 'Maximum 10 goals allowed'),
-      
-    interests: z
-      .array(z.string().trim().min(1, 'Interest cannot be empty'))
-      .max(15, 'Maximum 15 interests allowed')
-      .optional(),
+  }),
+});
+
+// Complete onboarding validation
+export const completeOnboardingSchema = z.object({
+  body: z.object({
+    goals: z
+      .array(z.string().trim().min(1, 'Goal cannot be empty'))
+      .min(1, 'At least one goal is required')
+      .max(10, 'Maximum 10 goals allowed'),
   }),
 });
 
@@ -290,6 +296,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>['body'];
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>['body'];
 export type OnboardingBasicInput = z.infer<typeof onboardingBasicSchema>['body'];
 export type OnboardingGoalsInput = z.infer<typeof onboardingGoalsSchema>['body'];
+export type CompleteOnboardingInput = z.infer<typeof completeOnboardingSchema>['body'];
 
 // Validation middleware helper
 export const validateSchema = (schema: z.ZodSchema) => {
