@@ -121,6 +121,18 @@ export default function ProfileScreen() {
     router.push("/profile/learning-goals");
   };
 
+  const handleHelpandSupport = () => {
+    router.push("/support/help");
+  };
+
+  const handlePrivacyPolicy = () => {
+    router.push("/support/contact");
+  };
+
+  const handleNotifications = () => {
+    router.push("/profile/notifications");
+  };
+
   const formatStudyLevel = (level?: string) => {
     return level?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Not specified';
   };
@@ -330,8 +342,7 @@ export default function ProfileScreen() {
               icon="notifications"
               title="Notifications"
               subtitle="Manage notification preferences"
-              onPress={() => Alert.alert('Notifications', 'Coming soon!')}
-              showDivider={false}
+              onPress={handleNotifications}
             />
           </View>
         </View>
@@ -345,7 +356,7 @@ export default function ProfileScreen() {
               icon="help-outline"
               title="Help & Support"
               subtitle="Get help and contact support"
-              onPress={() => Alert.alert('Help & Support', 'Coming soon!')}
+              onPress={handleHelpandSupport}
             />
             
             <SettingItem

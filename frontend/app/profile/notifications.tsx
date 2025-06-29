@@ -1,4 +1,4 @@
-// app/profile/notifications.tsx - Notifications Settings Page
+// app/profile/notifications.tsx - Professional Notifications Settings Page
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -33,6 +33,10 @@ export default function NotificationsScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // Master notification toggle
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+
   // Notification settings state
   const [notifications, setNotifications] = useState<NotificationSetting[]>([
     // Learning Notifications
@@ -46,34 +50,42 @@ export default function NotificationsScreen() {
     },
     {
       id: 'homework_deadlines',
-      title: 'Homework Deadlines',
-      description: 'Reminders for upcoming assignment due dates',
+      title: 'Assignment Deadlines',
+      description: 'Reminders for upcoming homework and project due dates',
       icon: 'assignment',
       enabled: true,
       category: 'learning'
     },
     {
       id: 'study_streaks',
-      title: 'Study Streaks',
-      description: 'Celebrate your learning milestones and streaks',
+      title: 'Study Streaks & Achievements',
+      description: 'Celebrate your learning milestones and daily streaks',
       icon: 'local-fire-department',
       enabled: true,
       category: 'learning'
     },
     {
       id: 'goal_progress',
-      title: 'Goal Progress',
-      description: 'Updates on your learning goal achievements',
+      title: 'Learning Goal Updates',
+      description: 'Progress updates on your personalized learning objectives',
       icon: 'my-location',
       enabled: false,
       category: 'learning'
     },
+    {
+      id: 'weekly_summary',
+      title: 'Weekly Learning Summary',
+      description: 'Your weekly progress report and upcoming schedule',
+      icon: 'analytics',
+      enabled: true,
+      category: 'learning'
+    },
 
-    // Social Notifications
+    // Social & Communication
     {
       id: 'new_messages',
-      title: 'New Messages',
-      description: 'Messages from your mentors and study groups',
+      title: 'Messages',
+      description: 'New messages from mentors and study group members',
       icon: 'message',
       enabled: true,
       category: 'social'
@@ -81,48 +93,54 @@ export default function NotificationsScreen() {
     {
       id: 'mentor_availability',
       title: 'Mentor Availability',
-      description: 'When your favorite mentors become available',
+      description: 'When your favorite mentors have new time slots available',
       icon: 'person-add',
       enabled: false,
       category: 'social'
     },
     {
       id: 'session_feedback',
-      title: 'Session Feedback',
-      description: 'Requests to rate and review completed sessions',
+      title: 'Feedback Requests',
+      description: 'Requests to rate and review completed learning sessions',
       icon: 'star',
       enabled: true,
       category: 'social'
     },
+    {
+      id: 'study_group_invites',
+      title: 'Study Group Invitations',
+      description: 'Invitations to join study groups and collaborative sessions',
+      icon: 'group',
+      enabled: false,
+      category: 'social'
+    },
 
-    // System Notifications
+    // System & Updates
     {
       id: 'app_updates',
-      title: 'App Updates',
-      description: 'New features and important app announcements',
+      title: 'App Updates & Features',
+      description: 'New features, improvements, and important announcements',
       icon: 'system-update',
       enabled: true,
       category: 'system'
     },
     {
       id: 'security_alerts',
-      title: 'Security Alerts',
-      description: 'Important security updates and login notifications',
+      title: 'Security & Account',
+      description: 'Login alerts, password changes, and security updates',
       icon: 'security',
       enabled: true,
       category: 'system'
     },
     {
-      id: 'marketing',
+      id: 'promotional',
       title: 'Tips & Recommendations',
-      description: 'Study tips, new mentor suggestions, and educational content',
+      description: 'Study tips, mentor suggestions, and educational content',
       icon: 'lightbulb',
       enabled: false,
       category: 'system'
     },
   ]);
-
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     // Entry animations
@@ -142,7 +160,24 @@ export default function NotificationsScreen() {
     ]).start();
   }, []);
 
+  const toggleMasterNotifications = (enabled: boolean) => {
+    setNotificationsEnabled(enabled);
+    
+    if (!enabled) {
+      // If turning off master toggle, disable all notifications
+      setNotifications(prev => prev.map(n => ({ ...n, enabled: false })));
+    } else {
+      // If turning on master toggle, enable essential notifications
+      setNotifications(prev => prev.map(n => ({
+        ...n,
+        enabled: ['session_reminders', 'new_messages', 'security_alerts', 'app_updates'].includes(n.id)
+      })));
+    }
+  };
+
   const toggleNotification = (id: string) => {
+    if (!notificationsEnabled) return; // Don't allow individual toggles if master is off
+    
     setNotifications(prev => 
       prev.map(notification => 
         notification.id === id 
@@ -155,16 +190,24 @@ export default function NotificationsScreen() {
   const handleSaveSettings = async () => {
     setIsLoading(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    Alert.alert(
-      "Settings Saved",
-      "Your notification preferences have been updated successfully!",
-      [{ text: "OK" }]
-    );
-    
-    setIsLoading(false);
+    try {
+      // Simulate API call to save notification preferences
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      
+      Alert.alert(
+        "Settings Saved",
+        "Your notification preferences have been updated successfully!",
+        [{ text: "OK" }]
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        "Failed to save notification settings. Please try again.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getCategoryColor = (category: string) => {
@@ -180,8 +223,17 @@ export default function NotificationsScreen() {
     switch (category) {
       case 'learning': return 'Learning & Progress';
       case 'social': return 'Social & Communication';
-      case 'system': return 'System & Security';
+      case 'system': return 'System & Updates';
       default: return 'Other';
+    }
+  };
+
+  const getCategoryDescription = (category: string) => {
+    switch (category) {
+      case 'learning': return 'Notifications about your study sessions, progress, and academic goals';
+      case 'social': return 'Messages, feedback requests, and social interactions with mentors';
+      case 'system': return 'App updates, security alerts, and account-related notifications';
+      default: return '';
     }
   };
 
@@ -189,12 +241,13 @@ export default function NotificationsScreen() {
     <Animated.View
       style={[
         styles.notificationItem,
+        !notificationsEnabled && styles.notificationItemDisabled,
         {
           opacity: fadeAnim,
           transform: [{
             translateY: slideAnim.interpolate({
               inputRange: [0, 30],
-              outputRange: [0, 30 + (index * 5)],
+              outputRange: [0, 30 + (index * 3)],
             })
           }]
         }
@@ -203,24 +256,46 @@ export default function NotificationsScreen() {
       <View style={styles.notificationLeft}>
         <View style={[
           styles.notificationIcon, 
-          { backgroundColor: getCategoryColor(notification.category) + '15' }
+          { 
+            backgroundColor: getCategoryColor(notification.category) + '15',
+            opacity: notificationsEnabled ? 1 : 0.5
+          }
         ]}>
           <MaterialIcons 
             name={notification.icon as any} 
             size={20} 
             color={getCategoryColor(notification.category)} 
+            style={{ opacity: notificationsEnabled ? 1 : 0.5 }}
           />
         </View>
         <View style={styles.notificationText}>
-          <Text style={styles.notificationTitle}>{notification.title}</Text>
-          <Text style={styles.notificationDescription}>{notification.description}</Text>
+          <Text style={[
+            styles.notificationTitle,
+            !notificationsEnabled && styles.disabledText
+          ]}>
+            {notification.title}
+          </Text>
+          <Text style={[
+            styles.notificationDescription,
+            !notificationsEnabled && styles.disabledText
+          ]}>
+            {notification.description}
+          </Text>
         </View>
       </View>
       <Switch
-        value={notification.enabled}
+        value={notification.enabled && notificationsEnabled}
         onValueChange={() => toggleNotification(notification.id)}
-        trackColor={{ false: "#E5E7EB", true: getCategoryColor(notification.category) + '40' }}
-        thumbColor={notification.enabled ? getCategoryColor(notification.category) : "#fff"}
+        disabled={!notificationsEnabled}
+        trackColor={{ 
+          false: "#E5E7EB", 
+          true: getCategoryColor(notification.category) + '40' 
+        }}
+        thumbColor={
+          notification.enabled && notificationsEnabled 
+            ? getCategoryColor(notification.category) 
+            : "#fff"
+        }
         ios_backgroundColor="#E5E7EB"
       />
     </Animated.View>
@@ -228,18 +303,33 @@ export default function NotificationsScreen() {
 
   const renderCategory = (category: 'learning' | 'social' | 'system') => {
     const categoryNotifications = notifications.filter(n => n.category === category);
-    const enabledCount = categoryNotifications.filter(n => n.enabled).length;
+    const enabledCount = categoryNotifications.filter(n => n.enabled && notificationsEnabled).length;
     
     return (
-      <View key={category} style={styles.categorySection}>
+      <Animated.View
+        key={category}
+        style={[
+          styles.categorySection,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+      >
         <View style={styles.categoryHeader}>
-          <Text style={styles.categoryTitle}>{getCategoryTitle(category)}</Text>
-          <Text style={styles.categoryCount}>
-            {enabledCount} of {categoryNotifications.length} enabled
-          </Text>
+          <View style={styles.categoryTitleContainer}>
+            <Text style={styles.categoryTitle}>{getCategoryTitle(category)}</Text>
+            <Text style={styles.categoryDescription}>{getCategoryDescription(category)}</Text>
+          </View>
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryCount}>{enabledCount}/{categoryNotifications.length}</Text>
+          </View>
         </View>
         
-        <View style={styles.categoryCard}>
+        <View style={[
+          styles.categoryCard,
+          !notificationsEnabled && styles.categoryCardDisabled
+        ]}>
           {categoryNotifications.map((notification, index) => (
             <NotificationItem 
               key={notification.id} 
@@ -248,8 +338,12 @@ export default function NotificationsScreen() {
             />
           ))}
         </View>
-      </View>
+      </Animated.View>
     );
+  };
+
+  const getEnabledNotificationsCount = () => {
+    return notifications.filter(n => n.enabled && notificationsEnabled).length;
   };
 
   return (
@@ -279,63 +373,83 @@ export default function NotificationsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Info Section */}
+        {/* Master Control Section */}
         <Animated.View
           style={[
-            styles.infoCard,
+            styles.masterControlCard,
             {
               opacity: fadeAnim,
               transform: [{ translateY: slideAnim }],
             },
           ]}
         >
-          <View style={styles.infoHeader}>
-            <View style={styles.infoIcon}>
-              <MaterialIcons name="notifications" size={24} color="#8b5a3c" />
+          <View style={styles.masterControlHeader}>
+            <View style={styles.masterControlIcon}>
+              <MaterialIcons 
+                name={notificationsEnabled ? "notifications" : "notifications-off"} 
+                size={24} 
+                color={notificationsEnabled ? "#8b5a3c" : "#8b7355"} 
+              />
             </View>
-            <View style={styles.infoText}>
-              <Text style={styles.infoTitle}>Stay Updated</Text>
-              <Text style={styles.infoSubtitle}>
-                Choose which notifications you'd like to receive to enhance your learning experience
+            <View style={styles.masterControlText}>
+              <Text style={styles.masterControlTitle}>
+                {notificationsEnabled ? "Notifications Enabled" : "Notifications Disabled"}
+              </Text>
+              <Text style={styles.masterControlSubtitle}>
+                {notificationsEnabled 
+                  ? `${getEnabledNotificationsCount()} of ${notifications.length} notifications are active`
+                  : "Turn on to receive learning updates and reminders"
+                }
               </Text>
             </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={toggleMasterNotifications}
+              trackColor={{ false: "#E5E7EB", true: "#8b5a3c40" }}
+              thumbColor={notificationsEnabled ? "#8b5a3c" : "#fff"}
+              ios_backgroundColor="#E5E7EB"
+              style={styles.masterSwitch}
+            />
           </View>
-        </Animated.View>
-
-        {/* Quick Actions */}
-        <Animated.View
-          style={[
-            styles.quickActions,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <TouchableOpacity 
-            style={styles.quickAction}
-            onPress={() => {
-              setNotifications(prev => prev.map(n => ({ ...n, enabled: true })));
-            }}
-          >
-            <MaterialIcons name="check-circle" size={16} color="#059669" />
-            <Text style={styles.quickActionText}>Enable All</Text>
-          </TouchableOpacity>
           
-          <TouchableOpacity 
-            style={styles.quickAction}
-            onPress={() => {
-              setNotifications(prev => prev.map(n => ({ ...n, enabled: false })));
-            }}
-          >
-            <MaterialIcons name="cancel" size={16} color="#dc2626" />
-            <Text style={styles.quickActionText}>Disable All</Text>
-          </TouchableOpacity>
+          {notificationsEnabled && (
+            <View style={styles.masterControlInfo}>
+              <MaterialIcons name="info-outline" size={14} color="#8b7355" />
+              <Text style={styles.masterControlInfoText}>
+                You can customize individual notification types below
+              </Text>
+            </View>
+          )}
         </Animated.View>
 
         {/* Notification Categories */}
-        {['learning', 'social', 'system'].map(category => 
-          renderCategory(category as 'learning' | 'social' | 'system')
+        {notificationsEnabled && (
+          <>
+            {['learning', 'social', 'system'].map(category => 
+              renderCategory(category as 'learning' | 'social' | 'system')
+            )}
+          </>
+        )}
+
+        {/* Disabled State Info */}
+        {!notificationsEnabled && (
+          <Animated.View
+            style={[
+              styles.disabledStateCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <MaterialIcons name="notifications-off" size={48} color="#a0916d" />
+            <Text style={styles.disabledStateTitle}>Notifications are turned off</Text>
+            <Text style={styles.disabledStateText}>
+              You won't receive any notifications about your learning progress, 
+              messages from mentors, or important updates. Turn on notifications 
+              above to stay connected with your learning journey.
+            </Text>
+          </Animated.View>
         )}
 
         {/* Save Button */}
@@ -363,23 +477,24 @@ export default function NotificationsScreen() {
               {isLoading ? (
                 <>
                   <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
-                  <Text style={styles.saveButtonText}>Saving...</Text>
+                  <Text style={styles.saveButtonText}>Saving Preferences...</Text>
                 </>
               ) : (
                 <>
                   <MaterialIcons name="save" size={20} color="#fff" />
-                  <Text style={styles.saveButtonText}>Save Preferences</Text>
+                  <Text style={styles.saveButtonText}>Save Notification Settings</Text>
                 </>
               )}
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Info Note */}
-        <View style={styles.noteCard}>
-          <MaterialIcons name="info-outline" size={16} color="#8b7355" />
-          <Text style={styles.noteText}>
-            You can change these settings anytime. Some notifications may require device permissions.
+        {/* Privacy Note */}
+        <View style={styles.privacyNote}>
+          <MaterialIcons name="privacy-tip" size={16} color="#8b7355" />
+          <Text style={styles.privacyNoteText}>
+            Your notification preferences are private and can be changed anytime. 
+            Some notifications may require device permissions to function properly.
           </Text>
         </View>
       </ScrollView>
@@ -427,19 +542,24 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     paddingBottom: 40,
   },
-  infoCard: {
+  masterControlCard: {
     backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
     borderWidth: 1,
     borderColor: "rgba(184, 134, 100, 0.1)",
+    shadowColor: "#8b7355",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  infoHeader: {
+  masterControlHeader: {
     flexDirection: "row",
     alignItems: "center",
   },
-  infoIcon: {
+  masterControlIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -448,40 +568,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 16,
   },
-  infoText: {
+  masterControlText: {
     flex: 1,
   },
-  infoTitle: {
+  masterControlTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#4a3728",
     marginBottom: 4,
   },
-  infoSubtitle: {
+  masterControlSubtitle: {
     fontSize: 14,
     color: "#8b7355",
-    lineHeight: 20,
+    lineHeight: 18,
   },
-  quickActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 24,
+  masterSwitch: {
+    transform: [{ scaleX: 1.1 }, { scaleY: 1.1 }],
   },
-  quickAction: {
+  masterControlInfo: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(184, 134, 100, 0.1)",
   },
-  quickActionText: {
-    fontSize: 14,
-    color: "#4a3728",
-    fontWeight: "500",
+  masterControlInfoText: {
+    fontSize: 12,
+    color: "#8b7355",
     marginLeft: 6,
+    fontStyle: "italic",
   },
   categorySection: {
     marginBottom: 24,
@@ -489,18 +605,36 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 12,
+  },
+  categoryTitleContainer: {
+    flex: 1,
   },
   categoryTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#4a3728",
+    marginBottom: 4,
+  },
+  categoryDescription: {
+    fontSize: 13,
+    color: "#8b7355",
+    lineHeight: 18,
+  },
+  categoryBadge: {
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "rgba(139, 90, 60, 0.2)",
+    marginLeft: 12,
   },
   categoryCount: {
     fontSize: 12,
-    color: "#8b7355",
-    fontWeight: "500",
+    color: "#8b5a3c",
+    fontWeight: "600",
   },
   categoryCard: {
     backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -508,6 +642,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(184, 134, 100, 0.1)",
+  },
+  categoryCardDisabled: {
+    opacity: 0.6,
   },
   notificationItem: {
     flexDirection: "row",
@@ -518,10 +655,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(184, 134, 100, 0.05)",
   },
+  notificationItemDisabled: {
+    opacity: 0.5,
+  },
   notificationLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    marginRight: 16,
   },
   notificationIcon: {
     width: 36,
@@ -544,6 +685,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#8b7355",
     lineHeight: 16,
+  },
+  disabledText: {
+    opacity: 0.6,
+  },
+  disabledStateCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 16,
+    padding: 32,
+    alignItems: "center",
+    marginVertical: 20,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
+  },
+  disabledStateTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#4a3728",
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  disabledStateText: {
+    fontSize: 14,
+    color: "#8b7355",
+    textAlign: "center",
+    lineHeight: 20,
   },
   saveSection: {
     marginTop: 8,
@@ -575,7 +742,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  noteCard: {
+  privacyNote: {
     flexDirection: "row",
     alignItems: "flex-start",
     backgroundColor: "rgba(139, 115, 85, 0.05)",
@@ -584,7 +751,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(139, 115, 85, 0.1)",
   },
-  noteText: {
+  privacyNoteText: {
     fontSize: 12,
     color: "#8b7355",
     marginLeft: 8,
