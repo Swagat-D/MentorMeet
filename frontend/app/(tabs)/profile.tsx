@@ -1,5 +1,5 @@
-// app/(tabs)/profile.tsx - Fully Responsive Enhanced Profile Screen
-import React, { useState, useEffect } from "react";
+// app/(tabs)/profile.tsx - Professional Profile Screen
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,72 +7,65 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Switch,
   RefreshControl,
   Dimensions,
-  Platform,
   Alert,
+  Animated,
+  Easing,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore } from "@/stores/authStore";
-import { subjects } from "@/constants/subjects";
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
-// Responsive breakpoints
-const isTablet = width >= 768;
-const isLargeScreen = width >= 1024;
-
-// Responsive utilities
-const getResponsiveValue = (small: number, medium: number, large: number) => {
-  if (isLargeScreen) return large;
-  if (isTablet) return medium;
-  return small;
+// Learning Goals mapping for display
+const learningGoalsMap: Record<string, { label: string; icon: string }> = {
+  'academic-excellence': { label: 'Academic Excellence', icon: 'school' },
+  'exam-preparation': { label: 'Exam Preparation', icon: 'quiz' },
+  'skill-development': { label: 'Skill Development', icon: 'build' },
+  'career-guidance': { label: 'Career Guidance', icon: 'work' },
+  'homework-help': { label: 'Homework Help', icon: 'assignment' },
+  'study-habits': { label: 'Study Habits', icon: 'schedule' },
+  'college-prep': { label: 'College Preparation', icon: 'business' },
+  'subject-mastery': { label: 'Subject Mastery', icon: 'auto-awesome' },
+  'confidence-building': { label: 'Confidence Building', icon: 'emoji-events' },
+  'time-management': { label: 'Time Management', icon: 'access-time' },
+  'research-skills': { label: 'Research Skills', icon: 'search' },
+  'presentation-skills': { label: 'Presentation Skills', icon: 'slideshow' },
 };
-
-const getHorizontalPadding = () => {
-  return getResponsiveValue(20, 32, 48);
-};
-
-const getFontSize = (base: number) => {
-  const scale = getResponsiveValue(1, 1.1, 1.2);
-  return Math.round(base * scale);
-};
-
-const getGridColumns = () => {
-  return getResponsiveValue(2, 3, 4);
-};
-
-// Mock achievements data
-const achievements = [
-  { id: 1, title: "First Session", description: "Completed your first learning session", icon: "🎯", earned: true, date: "2024-01-15" },
-  { id: 2, title: "Week Streak", description: "7 days of continuous learning", icon: "🔥", earned: true, date: "2024-01-20" },
-  { id: 3, title: "Math Master", description: "Completed 10 math sessions", icon: "📊", earned: true, date: "2024-01-25" },
-  { id: 4, title: "Early Bird", description: "Attended morning sessions", icon: "🌅", earned: false, date: null },
-  { id: 5, title: "Social Learner", description: "Connected with 5 mentors", icon: "👥", earned: true, date: "2024-02-01" },
-  { id: 6, title: "Perfectionist", description: "Maintained 5.0 rating", icon: "⭐", earned: false, date: null },
-];
 
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  
+  // Animation refs
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Listen for orientation changes
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenData(window);
-    });
-
-    return () => subscription?.remove();
+    // Entry animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+    ]).start();
   }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
+    // Add any refresh logic here
     await new Promise(resolve => setTimeout(resolve, 1000));
     setRefreshing(false);
   };
@@ -88,7 +81,7 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: () => {
             logout();
-            router.replace("/auth");
+            router.replace("/(auth)/login");
           }
         }
       ]
@@ -99,394 +92,295 @@ export default function ProfileScreen() {
     router.push("/profile/edit");
   };
 
-  const handleChangeAvatar = () => {
+  const handleChangePassword = () => {
+    if (user?.provider === 'google') {
+      Alert.alert("Google Account", "You're signed in with Google. Password changes should be done through your Google account.");
+      return;
+    }
+    
+    // Redirect to forgot password flow since we already have that infrastructure
     Alert.alert(
-      "Change Profile Picture",
-      "Choose an option",
+      "Change Password",
+      "To change your password, we'll send a verification code to your email address.",
       [
-        { text: "Camera", onPress: () => console.log("Camera") },
-        { text: "Gallery", onPress: () => console.log("Gallery") },
-        { text: "Cancel", style: "cancel" }
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Continue", 
+          onPress: () => {
+            router.push({
+              pathname: "/(auth)/forgot-password",
+              params: { fromProfile: "true" }
+            });
+          }
+        }
       ]
     );
   };
 
-  const StatCard = ({ icon: Icon, title, value, subtitle, color }: any) => (
-    <View style={[
-      styles.statCard,
-      { 
-        width: isTablet ? (screenData.width - getHorizontalPadding() * 2 - 16 * (getGridColumns() - 1)) / getGridColumns() : '48%',
-        marginRight: isTablet ? 16 : 0,
-      }
-    ]}>
-      <View style={[styles.statIcon, { backgroundColor: `${color}15` }]}>
-        <Icon size={getResponsiveValue(20, 24, 28)} color={color} strokeWidth={2} />
+  const handleEditGoals = () => {
+    router.push("/profile/learning-goals");
+  };
+
+  const formatStudyLevel = (level?: string) => {
+    return level?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Not specified';
+  };
+
+  const formatGender = (gender?: string) => {
+    return gender?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Not specified';
+  };
+
+  const ProfileDetailItem = ({ icon, label, value }: any) => (
+    <View style={styles.profileDetailItem}>
+      <View style={styles.profileDetailIcon}>
+        <MaterialIcons name={icon} size={20} color="#8b5a3c" />
       </View>
-      <Text style={[styles.statValue, { fontSize: getFontSize(20) }]}>{value}</Text>
-      <Text style={[styles.statTitle, { fontSize: getFontSize(14) }]}>{title}</Text>
-      {subtitle && (
-        <Text style={[styles.statSubtitle, { fontSize: getFontSize(12) }]}>{subtitle}</Text>
-      )}
+      <View style={styles.profileDetailContent}>
+        <Text style={styles.profileDetailLabel}>{label}</Text>
+        <Text style={styles.profileDetailValue}>{value}</Text>
+      </View>
     </View>
   );
 
-  const SettingItem = ({ 
-    icon: Icon, 
-    title, 
-    subtitle, 
-    onPress, 
-    showArrow = true,
-    rightComponent,
-    color = "#6B7280"
-  }: any) => (
-    <TouchableOpacity 
-      style={styles.settingItem} 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={styles.settingLeft}>
-        <View style={[styles.settingIcon, { backgroundColor: `${color}15` }]}>
-          <Icon size={getResponsiveValue(20, 22, 24)} color={color} strokeWidth={2} />
+  const SettingItem = ({ icon, title, subtitle, onPress, showDivider = true }: any) => (
+    <>
+      <TouchableOpacity 
+        style={styles.settingItem} 
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <View style={styles.settingLeft}>
+          <View style={styles.settingIcon}>
+            <MaterialIcons name={icon} size={20} color="#8b5a3c" />
+          </View>
+          <View style={styles.settingText}>
+            <Text style={styles.settingTitle}>{title}</Text>
+            {subtitle && (
+              <Text style={styles.settingSubtitle}>{subtitle}</Text>
+            )}
+          </View>
         </View>
-        <View style={styles.settingText}>
-          <Text style={[styles.settingTitle, { fontSize: getFontSize(16) }]}>{title}</Text>
-          {subtitle && (
-            <Text style={[styles.settingSubtitle, { fontSize: getFontSize(13) }]}>{subtitle}</Text>
-          )}
-        </View>
-      </View>
-      <View style={styles.settingRight}>
-        {rightComponent}
-        {showArrow && <MaterialIcons name="chevron-right" size={getResponsiveValue(16, 18, 20)} color="#9CA3AF" />}
-      </View>
-    </TouchableOpacity>
+        <MaterialIcons name="chevron-right" size={20} color="#a0916d" />
+      </TouchableOpacity>
+      {showDivider && <View style={styles.settingDivider} />}
+    </>
   );
 
-  const AchievementBadge = ({ achievement }: { achievement: any }) => (
-    <TouchableOpacity 
-      style={[
-        styles.achievementBadge,
-        !achievement.earned && styles.achievementBadgeDisabled,
-        { 
-          width: isTablet ? (screenData.width - getHorizontalPadding() * 2 - 12 * (getGridColumns() - 1)) / getGridColumns() : '48%',
-          marginRight: isTablet ? 12 : 0,
-        }
-      ]}
-      onPress={() => {
-        Alert.alert(
-          achievement.title,
-          achievement.description + (achievement.earned ? `\nEarned on: ${new Date(achievement.date).toLocaleDateString()}` : "\nKeep learning to unlock this achievement!")
-        );
-      }}
-    >
-      <Text style={styles.achievementIcon}>{achievement.icon}</Text>
-      <Text style={[
-        styles.achievementTitle,
-        { fontSize: getFontSize(12) },
-        !achievement.earned && styles.achievementTitleDisabled
-      ]}>
-        {achievement.title}
-      </Text>
-      {achievement.earned && (
-        <View style={styles.achievementEarned}>
-          <MaterialIcons name="emoji-events" size={getResponsiveValue(12, 14, 16)} color="#F59E0B" />        
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+  const GoalChip = ({ goalId }: { goalId: string }) => {
+    const goal = learningGoalsMap[goalId];
+    if (!goal) return null;
 
-  const earnedAchievements = achievements.filter(a => a.earned);
+    return (
+      <View style={styles.goalChip}>
+        <MaterialIcons name={goal.icon as any} size={14} color="#8b5a3c" />
+        <Text style={styles.goalChipText}>{goal.label}</Text>
+      </View>
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={["right", "left"]}>
+    <SafeAreaView style={styles.container}>
+      {/* Warm Background */}
+      <LinearGradient
+        colors={['#fefbf3', '#f8f6f0']}
+        style={styles.background}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+
       <ScrollView 
         style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        showsVerticalScrollIndicator={false}
       >
-        {/* Header Profile Section */}
-        <LinearGradient
-          colors={["#4F46E5", "#7C3AED"]}
-          style={[styles.headerSection, { paddingHorizontal: getHorizontalPadding() }]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        {/* Profile Header */}
+        <Animated.View
+          style={[
+            styles.profileHeader,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
         >
-          <View style={[
-            styles.headerContent,
-            isTablet && styles.headerContentTablet
-          ]}>
-            <View style={styles.profileSection}>
-              <TouchableOpacity 
-                style={styles.avatarContainer}
-                onPress={handleChangeAvatar}
-              >
+          <View style={styles.profileCard}>
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarContainer}>
                 <Image
                   source={{ 
-                    uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200" 
+                    uri: user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=8b5a3c&color=fff&size=200`
                   }}
-                  style={[
-                    styles.avatar,
-                    { 
-                      width: getResponsiveValue(80, 90, 100),
-                      height: getResponsiveValue(80, 90, 100),
-                      borderRadius: getResponsiveValue(40, 45, 50),
-                    }
-                  ]}
+                  style={styles.avatar}
                 />
-                <View style={styles.cameraIcon}>
-                  <MaterialIcons name="camera-alt" size={getResponsiveValue(16, 18, 20)} color="#4F46E5" />
+                <View style={styles.verifiedBadge}>
+                  <MaterialIcons name="verified" size={16} color="#059669" />
                 </View>
-              </TouchableOpacity>
+              </View>
               
               <View style={styles.profileInfo}>
-                <Text style={[styles.userName, { fontSize: getFontSize(24) }]}>
-                  {user?.name || "Student"}
-                </Text>
-                <Text style={[styles.userEmail, { fontSize: getFontSize(16) }]}>
-                  {user?.email || "student@example.com"}
-                </Text>
-                <Text style={[styles.userRole, { fontSize: getFontSize(14) }]}>
-                  {user?.role === 'mentee' ? 'Learning Journey' : 'Mentor'} • Member since Jan 2024
-                </Text>
+                <Text style={styles.userName}>{user?.name}</Text>
+                <Text style={styles.userEmail}>{user?.email}</Text>
+                
+                <View style={styles.accountBadge}>
+                  <MaterialIcons 
+                    name={user?.provider === 'google' ? 'account-circle' : 'alternate-email'} 
+                    size={14} 
+                    color="#8b7355" 
+                  />
+                  <Text style={styles.accountBadgeText}>
+                    {user?.provider === 'google' ? 'Google Account' : 'Email Account'}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={styles.editButton}
+            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+              <MaterialIcons name="edit" size={16} color="#8b5a3c" />
+              <Text style={styles.editButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* Profile Details */}
+        <Animated.View
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <Text style={styles.sectionTitle}>Profile Information</Text>
+          <View style={styles.profileDetailsCard}>
+            <ProfileDetailItem
+              icon="person"
+              label="Gender"
+              value={formatGender(user?.gender)}
+            />
+            <ProfileDetailItem
+              icon="cake"
+              label="Age Range"
+              value={user?.ageRange ? `${user.ageRange} years` : 'Not specified'}
+            />
+            <ProfileDetailItem
+              icon="school"
+              label="Study Level"
+              value={formatStudyLevel(user?.studyLevel)}
+            />
+            <ProfileDetailItem
+              icon="calendar-today"
+              label="Member Since"
+              value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long' 
+              }) : 'Recently'}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Learning Goals */}
+        {user?.goals && user.goals.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Learning Goals</Text>
+              <TouchableOpacity onPress={handleEditGoals}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.goalsContainer}>
+              {user.goals.map((goalId, index) => (
+                <GoalChip key={`${goalId}-${index}`} goalId={goalId} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Account Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          
+          <View style={styles.settingsCard}>
+            <SettingItem
+              icon="edit"
+              title="Edit Profile"
+              subtitle="Update your personal information"
               onPress={handleEditProfile}
-            >
-              <MaterialIcons name="edit" size={getResponsiveValue(16, 18, 20)} color="#fff" />
-              <Text style={[styles.editButtonText, { fontSize: getFontSize(14) }]}>
-                Edit Profile
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        {/* Stats Grid */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Learning Statistics</Text>
-          <View style={[
-            styles.statsGrid,
-            isTablet && styles.statsGridTablet
-          ]}>
-            <StatCard
-              icon={() => <MaterialIcons name="schedule" size={getResponsiveValue(20, 24, 28)} color="#10B981" />}
-              title="Hours Learned"
-              value={`${user?.stats?.totalHoursLearned || 42}h`}
-              subtitle="+5h this week"
-              color="#10B981"
             />
-            <StatCard
-              icon={() => <MaterialIcons name="event" size={getResponsiveValue(20, 24, 28)} color="#F59E0B" />}
-              title="Sessions"
-              value={user?.stats?.sessionsCompleted || 15}
-              subtitle="3 upcoming"
-              color="#F59E0B"
-            />
-            <StatCard
-              icon={() => <MaterialIcons name="group" size={getResponsiveValue(20, 24, 28)} color="#EF4444" />}
-              title="Mentors"
-              value={user?.stats?.mentorsConnected || 8}
-              subtitle="4 favorites"
-              color="#EF4444"
-            />
-            <StatCard
-              icon={() => <MaterialIcons name="schedule" size={getResponsiveValue(12, 14, 16)} color="#F59E0B" />}
-              title="Avg Rating"
-              value={user?.stats?.averageRating || 4.8}
-              subtitle="Based on 12 reviews"
-              color="#8B5CF6"
-            />
-          </View>
-        </View>
-
-        {/* Learning Progress */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Learning Progress</Text>
-            <TouchableOpacity onPress={() => router.push('/progress')}>
-              <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>View Details</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <MaterialIcons name="trending-up" size={getResponsiveValue(20, 22, 24)} color="#4F46E5" />
-              <Text style={[styles.progressTitle, { fontSize: getFontSize(16) }]}>
-                This Month's Goal
-              </Text>
-            </View>
-            <Text style={[styles.progressSubtitle, { fontSize: getFontSize(14) }]}>
-              Complete 8 sessions • 6 of 8 completed
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '75%' }]} />
-            </View>
-            <Text style={[styles.progressPercent, { fontSize: getFontSize(12) }]}>75% Complete</Text>
-          </View>
-        </View>
-
-        {/* Interests */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Your Interests</Text>
-            <TouchableOpacity onPress={() => router.push("/edit-interests")}>
-              <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>Edit</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.interestsContainer}>
-            {(user?.interests || subjects.slice(0, 6)).map((interest) => (
-              <View key={interest} style={styles.interestTag}>
-                <Text style={[styles.interestText, { fontSize: getFontSize(14) }]}>{interest}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Achievements */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>
-              Achievements ({earnedAchievements.length}/{achievements.length})
-            </Text>
-            <TouchableOpacity onPress={() => router.push('/achievements')}>
-              <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={[
-            styles.achievementsGrid,
-            isTablet && styles.achievementsGridTablet
-          ]}>
-            {achievements.slice(0, getResponsiveValue(4, 6, 8)).map((achievement) => (
-              <AchievementBadge key={achievement.id} achievement={achievement} />
-            ))}
-          </View>
-        </View>
-
-        {/* Settings Sections */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Preferences</Text>
-          
-          <SettingItem
-            icon={() => <Ionicons name="moon" size={getResponsiveValue(20, 22, 24)} color="#6366F1" />}
-            title="Dark Mode"
-            subtitle="Switch to dark theme"
-            color="#6366F1"
-            showArrow={false}
-            rightComponent={
-              <Switch
-                value={isDarkMode}
-                onValueChange={setIsDarkMode}
-                trackColor={{ false: "#E5E7EB", true: "#6366F1" }}
-                thumbColor={isDarkMode ? "#fff" : "#fff"}
+            
+            {user?.provider === 'email' && (
+              <SettingItem
+                icon="lock"
+                title="Change Password"
+                subtitle="Update your account password"
+                onPress={handleChangePassword}
               />
-            }
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="notifications" size={getResponsiveValue(20, 22, 24)} color="#F59E0B" />}
-            title="Notifications"
-            subtitle="Manage your notification preferences"
-            color="#F59E0B"
-            onPress={() => router.push("/settings/notifications")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="language" size={getResponsiveValue(20, 22, 24)} color="#10B981" />}
-            title="Language"
-            subtitle="English (US)"
-            color="#10B981"
-            onPress={() => router.push("/settings/language")}
-          />
+            )}
+            
+            <SettingItem
+              icon="my-location"
+              title="Learning Goals"
+              subtitle="Manage your learning objectives"
+              onPress={handleEditGoals}
+            />
+            
+            <SettingItem
+              icon="notifications"
+              title="Notifications"
+              subtitle="Manage notification preferences"
+              onPress={() => Alert.alert('Notifications', 'Coming soon!')}
+              showDivider={false}
+            />
+          </View>
         </View>
 
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Account & Security</Text>
+        {/* Support */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Support</Text>
           
-          <SettingItem
-            icon={() => <MaterialIcons name="credit-card" size={getResponsiveValue(20, 22, 24)} color="#3B82F6" />}
-            title="Payment Methods"
-            subtitle="Manage billing and payments"
-            color="#3B82F6"
-            onPress={() => router.push("/settings/payment")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="security" size={getResponsiveValue(20, 22, 24)} color="#EF4444" />}
-            title="Privacy & Security"
-            subtitle="Control your privacy settings"
-            color="#EF4444"
-            onPress={() => router.push("/settings/privacy")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="lock" size={getResponsiveValue(20, 22, 24)} color="#8B5CF6" />}
-            title="Change Password"
-            subtitle="Update your account password"
-            color="#8B5CF6"
-            onPress={() => router.push("/settings/password")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="smartphone" size={getResponsiveValue(20, 22, 24)} color="#06B6D4" />}
-            title="Two-Factor Authentication"
-            subtitle="Add an extra layer of security"
-            color="#06B6D4"
-            onPress={() => router.push("/settings/2fa")}
-          />
-        </View>
-
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Support</Text>
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="help-outline" size={getResponsiveValue(20, 22, 24)} color="#10B981" />}
-            title="Help & Support"
-            subtitle="Get help and contact support"
-            color="#10B981"
-            onPress={() => router.push("/settings/help")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="download" size={getResponsiveValue(20, 22, 24)} color="#6B7280" />}
-            title="Data Export"
-            subtitle="Download your learning data"
-            color="#6B7280"
-            onPress={() => router.push("/settings/export")}
-          />
-          
-          <SettingItem
-            icon={() => <MaterialIcons name="share" size={getResponsiveValue(20, 22, 24)} color="#F59E0B" />}
-            title="Invite Friends"
-            subtitle="Share MentorMatch with friends"
-            color="#F59E0B"
-            onPress={() => router.push("/invite")}
-          />
+          <View style={styles.settingsCard}>
+            <SettingItem
+              icon="help-outline"
+              title="Help & Support"
+              subtitle="Get help and contact support"
+              onPress={() => Alert.alert('Help & Support', 'Coming soon!')}
+            />
+            
+            <SettingItem
+              icon="privacy-tip"
+              title="Privacy Policy"
+              subtitle="Read our privacy policy"
+              onPress={() => Alert.alert('Privacy Policy', 'Coming soon!')}
+            />
+            
+            <SettingItem
+              icon="description"
+              title="Terms of Service"
+              subtitle="Read our terms of service"
+              onPress={() => Alert.alert('Terms of Service', 'Coming soon!')}
+              showDivider={false}
+            />
+          </View>
         </View>
 
         {/* Logout Button */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
+        <View style={styles.section}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <MaterialIcons name="logout" size={getResponsiveValue(20, 22, 24)} color="#EF4444" strokeWidth={2} />
-            <Text style={[styles.logoutText, { fontSize: getFontSize(16) }]}>Sign Out</Text>
+            <MaterialIcons name="logout" size={20} color="#dc2626" />
+            <Text style={styles.logoutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
         {/* App Info */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <View style={styles.appInfo}>
-            <Text style={[styles.appName, { fontSize: getFontSize(14) }]}>MentorMatch</Text>
-            <Text style={[styles.appVersion, { fontSize: getFontSize(12) }]}>Version 1.0.0</Text>
-          </View>
+        <View style={styles.appInfoSection}>
+          <Text style={styles.appName}>MentorMatch</Text>
+          <Text style={styles.appVersion}>Version 1.0.0</Text>
         </View>
 
-        {/* Bottom Padding */}
-        <View style={styles.bottomPadding} />
+        {/* Bottom spacing for tab bar */}
+        <View style={styles.bottomSpacing} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -495,240 +389,197 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+  },
+  background: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
   },
   scrollView: {
     flex: 1,
   },
-  headerSection: {
-    paddingTop: getResponsiveValue(20, 24, 32),
-    paddingBottom: getResponsiveValue(24, 28, 32),
+  profileHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 10,
   },
-  headerContent: {
-    alignItems: "center",
+  profileCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: "#8b7355",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
-  headerContentTablet: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  avatarSection: {
     alignItems: "center",
-  },
-  profileSection: {
-    alignItems: "center",
-    marginBottom: getResponsiveValue(20, 0, 0),
+    marginBottom: 20,
   },
   avatarContainer: {
     position: "relative",
-    marginBottom: getResponsiveValue(16, 20, 24),
+    marginBottom: 16,
   },
   avatar: {
-    borderWidth: 4,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: "rgba(139, 90, 60, 0.2)",
   },
-  cameraIcon: {
+  verifiedBadge: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
+    bottom: -2,
+    right: -2,
     backgroundColor: "#fff",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(8, 10, 12),
+    borderRadius: 12,
+    padding: 4,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 2,
   },
   profileInfo: {
-    alignItems: isTablet ? "flex-start" : "center",
+    alignItems: "center",
   },
   userName: {
+    fontSize: 22,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#4a3728",
     marginBottom: 4,
-    textAlign: isTablet ? "left" : "center",
   },
   userEmail: {
-    color: "rgba(255, 255, 255, 0.9)",
-    marginBottom: 4,
-    textAlign: isTablet ? "left" : "center",
+    fontSize: 15,
+    color: "#8b7355",
+    marginBottom: 8,
   },
-  userRole: {
-    color: "rgba(255, 255, 255, 0.8)",
-    textAlign: isTablet ? "left" : "center",
+  accountBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(139, 115, 85, 0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  accountBadgeText: {
+    fontSize: 12,
+    color: "#8b7355",
+    marginLeft: 4,
+    fontWeight: "500",
   },
   editButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderRadius: getResponsiveValue(12, 14, 16),
-    paddingHorizontal: getResponsiveValue(16, 18, 20),
-    paddingVertical: getResponsiveValue(10, 12, 14),
+    justifyContent: "center",
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    borderColor: "rgba(139, 90, 60, 0.2)",
   },
   editButtonText: {
-    color: "#fff",
+    color: "#8b5a3c",
     fontWeight: "600",
-    marginLeft: 8,
+    marginLeft: 6,
+    fontSize: 15,
   },
   section: {
-    paddingVertical: getResponsiveValue(20, 24, 28),
+    paddingHorizontal: 24,
+    paddingVertical: 12,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: getResponsiveValue(16, 18, 20),
+    marginBottom: 16,
   },
   sectionTitle: {
+    fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
+    color: "#4a3728",
+    marginBottom: 16,
   },
-  sectionLink: {
-    color: "#4F46E5",
+  editLink: {
+    fontSize: 14,
+    color: "#8b5a3c",
     fontWeight: "600",
   },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  statsGridTablet: {
-    justifyContent: "flex-start",
-  },
-  statCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(16, 18, 20),
-    marginBottom: getResponsiveValue(16, 18, 20),
+  profileDetailsCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
-    alignItems: "center",
+    borderColor: "rgba(184, 134, 100, 0.1)",
   },
-  statIcon: {
-    width: getResponsiveValue(40, 44, 48),
-    height: getResponsiveValue(40, 44, 48),
-    borderRadius: getResponsiveValue(20, 22, 24),
+  profileDetailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  profileDetailIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: getResponsiveValue(12, 14, 16),
+    marginRight: 12,
   },
-  statValue: {
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 4,
+  profileDetailContent: {
+    flex: 1,
   },
-  statTitle: {
-    fontWeight: "600",
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  statSubtitle: {
-    color: "#9CA3AF",
-    textAlign: "center",
-    marginTop: 2,
-  },
-  progressCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(20, 22, 24),
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-  },
-  progressHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: getResponsiveValue(8, 10, 12),
-  },
-  progressTitle: {
-    fontWeight: "600",
-    color: "#1F2937",
-    marginLeft: 8,
-  },
-  progressSubtitle: {
-    color: "#6B7280",
-    marginBottom: getResponsiveValue(12, 14, 16),
-  },
-  progressBar: {
-    height: getResponsiveValue(8, 10, 12),
-    backgroundColor: "#E5E7EB",
-    borderRadius: getResponsiveValue(4, 5, 6),
-    marginBottom: getResponsiveValue(8, 10, 12),
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#4F46E5",
-    borderRadius: getResponsiveValue(4, 5, 6),
-  },
-  progressPercent: {
-    color: "#4F46E5",
-    fontWeight: "600",
-  },
-  interestsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  interestTag: {
-    backgroundColor: "#EEF2FF",
-    borderRadius: getResponsiveValue(20, 22, 24),
-    paddingHorizontal: getResponsiveValue(16, 18, 20),
-    paddingVertical: getResponsiveValue(8, 10, 12),
-    marginRight: getResponsiveValue(12, 14, 16),
-    marginBottom: getResponsiveValue(8, 10, 12),
-    borderWidth: 1,
-    borderColor: "#E0E7FF",
-  },
-  interestText: {
-    color: "#4F46E5",
+  profileDetailLabel: {
+    fontSize: 13,
+    color: "#8b7355",
     fontWeight: "500",
+    marginBottom: 2,
   },
-  achievementsGrid: {
+  profileDetailValue: {
+    fontSize: 15,
+    color: "#4a3728",
+    fontWeight: "600",
+  },
+  goalsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
+    gap: 8,
   },
-  achievementsGridTablet: {
-    justifyContent: "flex-start",
-  },
-  achievementBadge: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: getResponsiveValue(12, 14, 16),
-    padding: getResponsiveValue(16, 18, 20),
-    marginBottom: getResponsiveValue(12, 14, 16),
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
+  goalChip: {
+    flexDirection: "row",
     alignItems: "center",
-    position: "relative",
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(139, 90, 60, 0.2)",
   },
-  achievementBadgeDisabled: {
-    opacity: 0.5,
+  goalChipText: {
+    fontSize: 12,
+    color: "#8b5a3c",
+    fontWeight: "500",
+    marginLeft: 4,
   },
-  achievementIcon: {
-    fontSize: getResponsiveValue(24, 28, 32),
-    marginBottom: getResponsiveValue(8, 10, 12),
-  },
-  achievementTitle: {
-    fontWeight: "600",
-    color: "#1F2937",
-    textAlign: "center",
-  },
-  achievementTitleDisabled: {
-    color: "#9CA3AF",
-  },
-  achievementEarned: {
-    position: "absolute",
-    top: getResponsiveValue(4, 6, 8),
-    right: getResponsiveValue(4, 6, 8),
-    backgroundColor: "#FEF3C7",
-    borderRadius: getResponsiveValue(8, 10, 12),
-    padding: getResponsiveValue(2, 4, 6),
+  settingsCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
+    overflow: "hidden",
   },
   settingItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: getResponsiveValue(16, 18, 20),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   settingLeft: {
     flexDirection: "row",
@@ -736,58 +587,66 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingIcon: {
-    width: getResponsiveValue(40, 44, 48),
-    height: getResponsiveValue(40, 44, 48),
-    borderRadius: getResponsiveValue(12, 14, 16),
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: getResponsiveValue(12, 14, 16),
+    marginRight: 12,
   },
   settingText: {
     flex: 1,
   },
   settingTitle: {
+    fontSize: 15,
     fontWeight: "600",
-    color: "#1F2937",
+    color: "#4a3728",
     marginBottom: 2,
   },
   settingSubtitle: {
-    color: "#6B7280",
+    fontSize: 13,
+    color: "#8b7355",
   },
-  settingRight: {
-    flexDirection: "row",
-    alignItems: "center",
+  settingDivider: {
+    height: 1,
+    backgroundColor: "rgba(184, 134, 100, 0.1)",
+    marginLeft: 64,
   },
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FEF2F2",
-    borderRadius: getResponsiveValue(12, 14, 16),
-    paddingVertical: getResponsiveValue(16, 18, 20),
+    backgroundColor: "rgba(220, 38, 38, 0.1)",
+    borderRadius: 12,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "rgba(220, 38, 38, 0.2)",
   },
   logoutText: {
-    color: "#EF4444",
+    color: "#dc2626",
     fontWeight: "600",
     marginLeft: 8,
+    fontSize: 15,
   },
-  appInfo: {
+  appInfoSection: {
     alignItems: "center",
-    paddingVertical: getResponsiveValue(20, 24, 28),
+    paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    borderTopColor: "rgba(184, 134, 100, 0.1)",
+    marginHorizontal: 24,
   },
   appName: {
-    fontWeight: "600",
-    color: "#1F2937",
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#4a3728",
     marginBottom: 4,
   },
   appVersion: {
-    color: "#9CA3AF",
+    fontSize: 12,
+    color: "#a0916d",
   },
-  bottomPadding: {
-    height: getResponsiveValue(32, 40, 48),
+  bottomSpacing: {
+    height: 100,
   },
 });
