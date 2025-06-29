@@ -63,7 +63,7 @@ interface AuthState {
 }
 
 // Token management
-const TokenManager = {
+export const TokenManager = {
   async setTokens(accessToken: string, refreshToken?: string): Promise<void> {
     try {
       await AsyncStorage.setItem('access_token', accessToken);

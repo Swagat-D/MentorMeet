@@ -126,7 +126,11 @@ export default function ProfileScreen() {
   };
 
   const handlePrivacyPolicy = () => {
-    router.push("/support/contact");
+    router.push("/support/privacy");
+  };
+
+  const handleTermsCondition = () => {
+    router.push("/support/terms");
   };
 
   const handleNotifications = () => {
@@ -363,14 +367,14 @@ export default function ProfileScreen() {
               icon="privacy-tip"
               title="Privacy Policy"
               subtitle="Read our privacy policy"
-              onPress={() => Alert.alert('Privacy Policy', 'Coming soon!')}
+              onPress={handlePrivacyPolicy}
             />
             
             <SettingItem
               icon="description"
               title="Terms of Service"
               subtitle="Read our terms of service"
-              onPress={() => Alert.alert('Terms of Service', 'Coming soon!')}
+              onPress={handleTermsCondition}
               showDivider={false}
             />
           </View>

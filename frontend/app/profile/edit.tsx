@@ -1,4 +1,4 @@
-// app/profile/edit.tsx - Enhanced Edit Profile Screen with All User Fields
+// app/profile/edit.tsx - Professional Edit Profile Screen Redesign
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -23,84 +24,23 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
-// Options from your user model
-const genderOptions = [
-  { id: 'male', label: 'Male' },
-  { id: 'female', label: 'Female' },
-  { id: 'other', label: 'Other' },
-  { id: 'prefer-not-to-say', label: 'Prefer not to say' },
-];
-
-const ageRanges = [
-  { id: '13-17', label: '13-17 years' },
-  { id: '18-22', label: '18-22 years' },
-  { id: '23-27', label: '23-27 years' },
-  { id: '28+', label: '28+ years' },
-];
-
-const studyLevels = [
-  { id: 'high-school', label: 'High School', description: 'Grade 9-12' },
-  { id: 'undergraduate', label: 'Undergraduate', description: 'Bachelor\'s Degree' },
-  { id: 'graduate', label: 'Graduate', description: 'Master\'s/PhD' },
-  { id: 'professional', label: 'Professional', description: 'Working Professional' },
-];
-
-// Common timezones
-const timezones = [
-  { id: 'UTC-12:00', label: '(UTC-12:00) International Date Line West' },
-  { id: 'UTC-11:00', label: '(UTC-11:00) Coordinated Universal Time-11' },
-  { id: 'UTC-10:00', label: '(UTC-10:00) Hawaii' },
-  { id: 'UTC-09:00', label: '(UTC-09:00) Alaska' },
-  { id: 'UTC-08:00', label: '(UTC-08:00) Pacific Time (US & Canada)' },
-  { id: 'UTC-07:00', label: '(UTC-07:00) Mountain Time (US & Canada)' },
-  { id: 'UTC-06:00', label: '(UTC-06:00) Central Time (US & Canada)' },
-  { id: 'UTC-05:00', label: '(UTC-05:00) Eastern Time (US & Canada)' },
-  { id: 'UTC-04:00', label: '(UTC-04:00) Atlantic Time (Canada)' },
-  { id: 'UTC-03:00', label: '(UTC-03:00) Brasilia, Argentina' },
-  { id: 'UTC-02:00', label: '(UTC-02:00) Mid-Atlantic' },
-  { id: 'UTC-01:00', label: '(UTC-01:00) Cape Verde Islands' },
-  { id: 'UTC+00:00', label: '(UTC+00:00) London, Dublin, Edinburgh' },
-  { id: 'UTC+01:00', label: '(UTC+01:00) Berlin, Madrid, Paris' },
-  { id: 'UTC+02:00', label: '(UTC+02:00) Cairo, Helsinki, Athens' },
-  { id: 'UTC+03:00', label: '(UTC+03:00) Moscow, Kuwait, Riyadh' },
-  { id: 'UTC+04:00', label: '(UTC+04:00) Abu Dhabi, Muscat' },
-  { id: 'UTC+05:00', label: '(UTC+05:00) Islamabad, Karachi' },
-  { id: 'UTC+05:30', label: '(UTC+05:30) Mumbai, New Delhi, Kolkata' },
-  { id: 'UTC+06:00', label: '(UTC+06:00) Dhaka, Colombo' },
-  { id: 'UTC+07:00', label: '(UTC+07:00) Bangkok, Hanoi, Jakarta' },
-  { id: 'UTC+08:00', label: '(UTC+08:00) Beijing, Perth, Singapore' },
-  { id: 'UTC+09:00', label: '(UTC+09:00) Tokyo, Seoul, Osaka' },
-  { id: 'UTC+10:00', label: '(UTC+10:00) Eastern Australia, Guam' },
-  { id: 'UTC+11:00', label: '(UTC+11:00) Magadan, Solomon Islands' },
-  { id: 'UTC+12:00', label: '(UTC+12:00) Auckland, Wellington' },
-];
-
 export default function EditProfileScreen() {
   const { user, updateProfile } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
-  const [showTimezoneModal, setShowTimezoneModal] = useState(false);
   const [showPhoneVerification, setShowPhoneVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [showChangeAvatar, setShowChangeAvatar] = useState(false);
   
-  // Form state - Basic Info
+  // Form state - Only basic editable fields
   const [name, setName] = useState(user?.name || '');
-  const [selectedGender, setSelectedGender] = useState(user?.gender || '');
-  const [selectedAge, setSelectedAge] = useState(user?.ageRange || '');
-  const [selectedStudyLevel, setSelectedStudyLevel] = useState(user?.studyLevel || '');
-  
-  // Form state - Contact Info
   const [phone, setPhone] = useState(user?.phone || '');
   const [location, setLocation] = useState(user?.location || '');
-  const [selectedTimezone, setSelectedTimezone] = useState(user?.timezone || 'UTC+05:30');
-  
-  // Form state - Additional Info
   const [bio, setBio] = useState(user?.bio || '');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
   
   const [errors, setErrors] = useState<{
     name?: string;
-    gender?: string;
-    age?: string;
-    studyLevel?: string;
     phone?: string;
     location?: string;
     bio?: string;
@@ -194,6 +134,7 @@ export default function EditProfileScreen() {
       await new Promise(resolve => setTimeout(resolve, 1000));
       setShowPhoneVerification(false);
       setVerificationCode('');
+      setIsPhoneVerified(true);
       Alert.alert(
         "Phone Verified",
         "Your phone number has been successfully verified!",
@@ -214,17 +155,14 @@ export default function EditProfileScreen() {
     try {
       await updateProfile({
         name: name.trim(),
-        gender: selectedGender,
-        ageRange: selectedAge,
-        studyLevel: selectedStudyLevel,
         phone: phone.trim() || undefined,
         location: location.trim() || undefined,
-        timezone: selectedTimezone,
         bio: bio.trim() || undefined,
+        avatar: avatar || undefined,
       });
 
       Alert.alert(
-        "Success",
+        "Profile Updated",
         "Your profile has been updated successfully!",
         [
           {
@@ -240,86 +178,53 @@ export default function EditProfileScreen() {
     }
   };
 
-  const OptionSelector = ({ 
-    title, 
-    options, 
-    selectedValue, 
-    onSelect, 
-    error,
-    showDescription = false,
-    required = false
-  }: any) => (
-    <View style={styles.selectorContainer}>
-      <Text style={styles.selectorTitle}>
-        {title} {required && <Text style={styles.required}>*</Text>}
-      </Text>
-      <View style={styles.optionsGrid}>
-        {options.map((option: any) => (
-          <TouchableOpacity
-            key={option.id}
-            style={[
-              styles.optionCard,
-              selectedValue === option.id && styles.optionCardSelected,
-              error && styles.optionCardError,
-            ]}
-            onPress={() => {
-              onSelect(option.id);
-              if (error) {
-                setErrors(prev => ({ ...prev, [title.toLowerCase().replace(' ', '')]: undefined }));
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={[
-              styles.optionLabel,
-              selectedValue === option.id && styles.optionLabelSelected,
-            ]}>
-              {option.label}
-            </Text>
-            {showDescription && option.description && (
-              <Text style={[
-                styles.optionDescription,
-                selectedValue === option.id && styles.optionDescriptionSelected,
-              ]}>
-                {option.description}
-              </Text>
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
-      {error && (
-        <View style={styles.errorContainer}>
-          <MaterialIcons name="error-outline" size={14} color="#dc2626" />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-    </View>
-  );
+  const handleEditPersonalInfo = () => {
+    router.push("/profile/personal-info");
+  };
 
-  const TextInputField = ({ 
+  const handleChangeAvatar = () => {
+    setShowChangeAvatar(true);
+  };
+
+  const handleSelectAvatar = (avatarUrl: string) => {
+    setAvatar(avatarUrl);
+    setShowChangeAvatar(false);
+  };
+
+  const avatarOptions = [
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=8b5a3c&color=fff&size=200`,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=d97706&color=fff&size=200`,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=059669&color=fff&size=200`,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=7c3aed&color=fff&size=200`,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=dc2626&color=fff&size=200`,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0891b2&color=fff&size=200`,
+  ];
+
+  const InputField = ({ 
     label, 
     value, 
     onChangeText, 
     placeholder, 
     icon, 
     error, 
-    required = false, 
     multiline = false,
     maxLength,
     keyboardType = 'default',
-    rightIcon,
-    onRightIconPress
+    rightAction,
+    rightActionText,
+    onRightAction,
+    verified = false
   }: any) => (
-    <View style={styles.inputSection}>
-      <Text style={styles.inputLabel}>
-        {label} {required && <Text style={styles.required}>*</Text>}
-      </Text>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
       <View style={[
         styles.inputContainer,
         multiline && styles.inputContainerMultiline,
         error && styles.inputContainerError
       ]}>
-        <MaterialIcons name={icon} size={20} color={error ? "#dc2626" : "#8b7355"} />
+        <View style={styles.inputIconContainer}>
+          <MaterialIcons name={icon} size={20} color={error ? "#dc2626" : "#8b7355"} />
+        </View>
         <TextInput
           style={[styles.textInput, multiline && styles.textInputMultiline]}
           value={value}
@@ -337,15 +242,20 @@ export default function EditProfileScreen() {
           maxLength={maxLength}
           textAlignVertical={multiline ? 'top' : 'center'}
         />
-        {rightIcon && (
-          <TouchableOpacity style={styles.rightIconButton} onPress={onRightIconPress}>
-            <MaterialIcons name={rightIcon} size={20} color="#8b5a3c" />
+        {verified && (
+          <View style={styles.verifiedBadge}>
+            <MaterialIcons name="verified" size={16} color="#059669" />
+          </View>
+        )}
+        {rightAction && (
+          <TouchableOpacity style={styles.inputRightAction} onPress={onRightAction}>
+            <Text style={styles.inputRightActionText}>{rightActionText}</Text>
           </TouchableOpacity>
         )}
       </View>
       {maxLength && (
         <Text style={styles.characterCount}>
-          {value.length}/{maxLength} characters
+          {value.length}/{maxLength}
         </Text>
       )}
       {error && (
@@ -357,66 +267,25 @@ export default function EditProfileScreen() {
     </View>
   );
 
-  const TimezoneModal = () => (
-    <Modal
-      visible={showTimezoneModal}
-      animationType="slide"
-      presentationStyle="pageSheet"
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => setShowTimezoneModal(false)}>
-            <Text style={styles.modalCancel}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>Select Timezone</Text>
-          <TouchableOpacity onPress={() => setShowTimezoneModal(false)}>
-            <Text style={styles.modalDone}>Done</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={styles.modalContent}>
-          {timezones.map((timezone) => (
-            <TouchableOpacity
-              key={timezone.id}
-              style={[
-                styles.timezoneOption,
-                selectedTimezone === timezone.id && styles.timezoneOptionSelected
-              ]}
-              onPress={() => {
-                setSelectedTimezone(timezone.id);
-                setShowTimezoneModal(false);
-              }}
-            >
-              <Text style={[
-                styles.timezoneLabel,
-                selectedTimezone === timezone.id && styles.timezoneLabelSelected
-              ]}>
-                {timezone.label}
-              </Text>
-              {selectedTimezone === timezone.id && (
-                <MaterialIcons name="check" size={20} color="#8b5a3c" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-
   const PhoneVerificationModal = () => (
     <Modal
       visible={showPhoneVerification}
       animationType="fade"
       transparent={true}
     >
-      <View style={styles.verificationOverlay}>
-        <View style={styles.verificationModal}>
-          <Text style={styles.verificationTitle}>Verify Phone Number</Text>
-          <Text style={styles.verificationSubtitle}>
+      <View style={styles.modalOverlay}>
+        <Animated.View style={[styles.verificationModal, { transform: [{ scale: fadeAnim }] }]}>
+          <View style={styles.modalHeader}>
+            <MaterialIcons name="sms" size={24} color="#8b5a3c" />
+            <Text style={styles.modalTitle}>Verify Phone Number</Text>
+          </View>
+          
+          <Text style={styles.modalSubtitle}>
             Enter the 6-digit code sent to {phone}
           </Text>
           
           <TextInput
-            style={styles.verificationInput}
+            style={styles.otpInput}
             value={verificationCode}
             onChangeText={setVerificationCode}
             placeholder="000000"
@@ -425,37 +294,76 @@ export default function EditProfileScreen() {
             textAlign="center"
           />
           
-          <View style={styles.verificationButtons}>
+          <View style={styles.modalActions}>
             <TouchableOpacity 
-              style={styles.verificationCancelButton}
+              style={styles.modalCancelButton}
               onPress={() => {
                 setShowPhoneVerification(false);
                 setVerificationCode('');
               }}
             >
-              <Text style={styles.verificationCancelText}>Cancel</Text>
+              <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={styles.verificationConfirmButton}
+              style={styles.modalConfirmButton}
               onPress={handleVerifyPhone}
             >
-              <Text style={styles.verificationConfirmText}>Verify</Text>
+              <LinearGradient
+                colors={['#8b5a3c', '#d97706']}
+                style={styles.modalConfirmGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.modalConfirmText}>Verify</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 
-  const getSelectedTimezoneLabel = () => {
-    const timezone = timezones.find(tz => tz.id === selectedTimezone);
-    return timezone ? timezone.label : 'Select timezone';
-  };
+  const AvatarModal = () => (
+    <Modal
+      visible={showChangeAvatar}
+      animationType="slide"
+      presentationStyle="pageSheet"
+    >
+      <SafeAreaView style={styles.avatarModalContainer}>
+        <View style={styles.avatarModalHeader}>
+          <Text style={styles.avatarModalTitle}>Choose Avatar</Text>
+          <TouchableOpacity onPress={() => setShowChangeAvatar(false)}>
+            <MaterialIcons name="close" size={24} color="#4a3728" />
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView contentContainerStyle={styles.avatarGrid}>
+          {avatarOptions.map((avatarUrl, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.avatarOption,
+                avatar === avatarUrl && styles.avatarOptionSelected
+              ]}
+              onPress={() => handleSelectAvatar(avatarUrl)}
+            >
+              <Image source={{ uri: avatarUrl }} style={styles.avatarOptionImage} />
+              {avatar === avatarUrl && (
+                <View style={styles.avatarSelectedBadge}>
+                  <MaterialIcons name="check" size={16} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Warm Background */}
+      {/* Background */}
       <LinearGradient
         colors={['#fefbf3', '#f8f6f0']}
         style={styles.background}
@@ -465,14 +373,15 @@ export default function EditProfileScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={24} color="#4a3728" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity style={styles.headerButton} onPress={handleSave} disabled={isLoading}>
+          <Text style={[styles.headerSave, isLoading && styles.headerSaveDisabled]}>
+            {isLoading ? "Saving..." : "Save"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -486,58 +395,58 @@ export default function EditProfileScreen() {
         >
           <Animated.View
             style={[
-              styles.formContainer,
+              styles.content,
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
               },
             ]}
           >
-            {/* Basic Information Section */}
-            <View style={styles.sectionContainer}>
+            {/* Profile Picture Section */}
+            <View style={styles.avatarSection}>
+              <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeAvatar}>
+                <Image
+                  source={{ 
+                    uri: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=8b5a3c&color=fff&size=200`
+                  }}
+                  style={styles.avatar}
+                />
+                <View style={styles.avatarEditBadge}>
+                  <MaterialIcons name="camera-alt" size={16} color="#fff" />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.avatarChangeText}>Tap to change photo</Text>
+            </View>
+
+            {/* Basic Information */}
+            <View style={styles.section}>
               <Text style={styles.sectionTitle}>Basic Information</Text>
               
-              <TextInputField
+              <InputField
                 label="Full Name"
                 value={name}
                 onChangeText={setName}
                 placeholder="Enter your full name"
                 icon="person"
                 error={errors.name}
-                required={true}
               />
 
-              <OptionSelector
-                title="Gender"
-                options={genderOptions}
-                selectedValue={selectedGender}
-                onSelect={setSelectedGender}
-                error={errors.gender}
-              />
-
-              <OptionSelector
-                title="Age Range"
-                options={ageRanges}
-                selectedValue={selectedAge}
-                onSelect={setSelectedAge}
-                error={errors.age}
-              />
-
-              <OptionSelector
-                title="Study Level"
-                options={studyLevels}
-                selectedValue={selectedStudyLevel}
-                onSelect={setSelectedStudyLevel}
-                error={errors.studyLevel}
-                showDescription={true}
+              <InputField
+                label="Email"
+                value={user?.email || ''}
+                onChangeText={() => {}}
+                placeholder="Email address"
+                icon="email"
+                editable={false}
+                verified={user?.isEmailVerified}
               />
             </View>
 
-            {/* Contact Information Section */}
-            <View style={styles.sectionContainer}>
+            {/* Contact Information */}
+            <View style={styles.section}>
               <Text style={styles.sectionTitle}>Contact Information</Text>
               
-              <TextInputField
+              <InputField
                 label="Phone Number"
                 value={phone}
                 onChangeText={setPhone}
@@ -545,11 +454,13 @@ export default function EditProfileScreen() {
                 icon="phone"
                 error={errors.phone}
                 keyboardType="phone-pad"
-                rightIcon="verified"
-                onRightIconPress={handleSendPhoneVerification}
+                rightAction={phone && !isPhoneVerified}
+                rightActionText="Verify"
+                onRightAction={handleSendPhoneVerification}
+                verified={isPhoneVerified}
               />
 
-              <TextInputField
+              <InputField
                 label="Location"
                 value={location}
                 onChangeText={setLocation}
@@ -558,32 +469,17 @@ export default function EditProfileScreen() {
                 error={errors.location}
                 maxLength={100}
               />
-
-              {/* Timezone Selector */}
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>Timezone</Text>
-                <TouchableOpacity 
-                  style={styles.timezoneSelector}
-                  onPress={() => setShowTimezoneModal(true)}
-                >
-                  <MaterialIcons name="schedule" size={20} color="#8b7355" />
-                  <Text style={styles.timezoneSelectorText}>
-                    {getSelectedTimezoneLabel()}
-                  </Text>
-                  <MaterialIcons name="arrow-drop-down" size={24} color="#8b7355" />
-                </TouchableOpacity>
-              </View>
             </View>
 
-            {/* Additional Information Section */}
-            <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Additional Information</Text>
+            {/* About Me */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About Me</Text>
               
-              <TextInputField
+              <InputField
                 label="Bio"
                 value={bio}
                 onChangeText={setBio}
-                placeholder="Tell us a bit about yourself, your interests, and learning goals..."
+                placeholder="Tell us about yourself, your interests, and learning goals..."
                 icon="description"
                 error={errors.bio}
                 multiline={true}
@@ -591,48 +487,32 @@ export default function EditProfileScreen() {
               />
             </View>
 
-            {/* Save Button */}
-            <TouchableOpacity
-              style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
-              onPress={handleSave}
-              disabled={isLoading}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={isLoading ? ['#a0916d', '#a0916d'] : ['#8b5a3c', '#d97706']}
-                style={styles.saveButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isLoading ? (
-                  <>
-                    <MaterialIcons name="hourglass-empty" size={20} color="#fff" />
-                    <Text style={styles.saveButtonText}>Saving Changes...</Text>
-                  </>
-                ) : (
-                  <>
-                    <MaterialIcons name="save" size={20} color="#fff" />
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Cancel Button */}
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-              disabled={isLoading}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+            {/* Personal Information Card */}
+            <View style={styles.personalInfoCard}>
+              <View style={styles.personalInfoHeader}>
+                <View style={styles.personalInfoIcon}>
+                  <MaterialIcons name="person-outline" size={24} color="#8b5a3c" />
+                </View>
+                <View style={styles.personalInfoText}>
+                  <Text style={styles.personalInfoTitle}>Personal Information</Text>
+                  <Text style={styles.personalInfoSubtitle}>
+                    Age, gender, study level, and learning preferences
+                  </Text>
+                </View>
+              </View>
+              
+              <TouchableOpacity style={styles.personalInfoButton} onPress={handleEditPersonalInfo}>
+                <Text style={styles.personalInfoButtonText}>Edit Info</Text>
+                <MaterialIcons name="chevron-right" size={20} color="#8b5a3c" />
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Modals */}
-      <TimezoneModal />
       <PhoneVerificationModal />
+      <AvatarModal />
     </SafeAreaView>
   );
 }
@@ -652,22 +532,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(184, 134, 100, 0.1)",
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
-  backButton: {
-    padding: 4,
+  headerButton: {
+    width: 60,
+    alignItems: "flex-start",
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#4a3728",
   },
-  headerSpacer: {
-    width: 32,
+  headerSave: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#8b5a3c",
+  },
+  headerSaveDisabled: {
+    color: "#a0916d",
   },
   keyboardView: {
     flex: 1,
@@ -676,22 +562,51 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingBottom: 30,
   },
-  formContainer: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 20,
-    padding: 24,
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  avatarSection: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  avatarContainer: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: "rgba(255, 255, 255, 0.9)",
     shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.1)",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  sectionContainer: {
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#8b5a3c",
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+  avatarChangeText: {
+    fontSize: 14,
+    color: "#8b7355",
+    fontWeight: "500",
+  },
+  section: {
     marginBottom: 32,
   },
   sectionTitle: {
@@ -699,11 +614,8 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#4a3728",
     marginBottom: 20,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(184, 134, 100, 0.2)",
   },
-  inputSection: {
+  inputGroup: {
     marginBottom: 20,
   },
   inputLabel: {
@@ -712,19 +624,20 @@ const styles = StyleSheet.create({
     color: "#4a3728",
     marginBottom: 8,
   },
-  required: {
-    color: "#dc2626",
-  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "rgba(184, 134, 100, 0.2)",
+    backgroundColor: "#fff",
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.2)",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    minHeight: 50,
+    paddingVertical: 14,
+    shadowColor: "#8b7355",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   inputContainerMultiline: {
     alignItems: "flex-start",
@@ -732,92 +645,41 @@ const styles = StyleSheet.create({
   },
   inputContainerError: {
     borderColor: "#dc2626",
-    backgroundColor: "rgba(220, 38, 38, 0.05)",
+    backgroundColor: "rgba(220, 38, 38, 0.02)",
+  },
+  inputIconContainer: {
+    marginRight: 12,
   },
   textInput: {
     flex: 1,
-    marginLeft: 12,
     fontSize: 16,
     color: "#4a3728",
+    paddingVertical: 0,
   },
   textInputMultiline: {
-    textAlignVertical: 'top',
     minHeight: 80,
+    textAlignVertical: 'top',
   },
-  rightIconButton: {
-    padding: 4,
+  verifiedBadge: {
     marginLeft: 8,
+  },
+  inputRightAction: {
+    backgroundColor: "#8b5a3c",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  inputRightActionText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   characterCount: {
     fontSize: 12,
     color: "#8b7355",
     textAlign: "right",
     marginTop: 4,
-  },
-  selectorContainer: {
-    marginBottom: 20,
-  },
-  selectorTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#4a3728",
-    marginBottom: 12,
-  },
-  optionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  optionCard: {
-    width: "48%",
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    alignItems: "center",
-  },
-  optionCardSelected: {
-    backgroundColor: "#8b5a3c",
-    borderColor: "#8b5a3c",
-  },
-  optionCardError: {
-    borderColor: "#dc2626",
-  },
-  optionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4a3728",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  optionLabelSelected: {
-    color: "#fff",
-  },
-  optionDescription: {
-    fontSize: 12,
-    color: "#8b7355",
-    textAlign: "center",
-  },
-  optionDescriptionSelected: {
-    color: "rgba(255, 255, 255, 0.8)",
-  },
-  timezoneSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-  },
-  timezoneSelectorText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: "#4a3728",
   },
   errorContainer: {
     flexDirection: "row",
@@ -829,48 +691,147 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
   },
-  saveButton: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 12,
-    shadowColor: "#8b5a3c",
+  personalInfoCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.1)",
+    shadowColor: "#8b7355",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 4,
   },
-  saveButtonDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  saveButtonGradient: {
+  personalInfoHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
+    marginBottom: 16,
   },
-  saveButtonText: {
-    color: "#fff",
+  personalInfoIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(139, 90, 60, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  personalInfoText: {
+    flex: 1,
+  },
+  personalInfoTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#4a3728",
+    marginBottom: 4,
+  },
+  personalInfoSubtitle: {
+    fontSize: 14,
+    color: "#8b7355",
+    lineHeight: 18,
+  },
+  personalInfoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(139, 90, 60, 0.05)",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(139, 90, 60, 0.1)",
+  },
+  personalInfoButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    marginLeft: 8,
+    color: "#8b5a3c",
   },
-  cancelButton: {
+  accountSection: {
+    marginBottom: 32,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
-  cancelButtonText: {
+  verificationModal: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 340,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#4a3728",
+    marginLeft: 12,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#8b7355",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  otpInput: {
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.3)",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 24,
+    letterSpacing: 4,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(184, 134, 100, 0.3)",
+    alignItems: "center",
+  },
+  modalCancelText: {
     color: "#8b7355",
     fontSize: 16,
     fontWeight: "500",
   },
-  // Modal Styles
-  modalContainer: {
+  modalConfirmButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  modalConfirmGradient: {
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  modalConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Avatar Modal
+  avatarModalContainer: {
     flex: 1,
     backgroundColor: "#fefbf3",
   },
-  modalHeader: {
+  avatarModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -879,114 +840,42 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(184, 134, 100, 0.2)",
   },
-  modalCancel: {
-    fontSize: 16,
-    color: "#8b7355",
-  },
-  modalTitle: {
+  avatarModalTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#4a3728",
   },
-  modalDone: {
-    fontSize: 16,
-    color: "#8b5a3c",
-    fontWeight: "600",
-  },
-  modalContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  timezoneOption: {
+  avatarGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 20,
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(184, 134, 100, 0.1)",
   },
-  timezoneOptionSelected: {
-    backgroundColor: "rgba(139, 90, 60, 0.1)",
-  },
-  timezoneLabel: {
-    fontSize: 14,
-    color: "#4a3728",
-    flex: 1,
-  },
-  timezoneLabelSelected: {
-    fontWeight: "600",
-    color: "#8b5a3c",
-  },
-  // Phone Verification Modal
-  verificationOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  verificationModal: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
-    width: "100%",
-    maxWidth: 320,
-  },
-  verificationTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#4a3728",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  verificationSubtitle: {
-    fontSize: 14,
-    color: "#8b7355",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  verificationInput: {
-    borderWidth: 2,
-    borderColor: "rgba(184, 134, 100, 0.2)",
+  avatarOption: {
+    width: (width - 60) / 3,
+    aspectRatio: 1,
+    marginBottom: 16,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 24,
-    letterSpacing: 4,
+    overflow: "hidden",
+    position: "relative",
   },
-  verificationButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  avatarOptionSelected: {
+    borderWidth: 3,
+    borderColor: "#8b5a3c",
   },
-  verificationCancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    marginRight: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.3)",
-    alignItems: "center",
+  avatarOptionImage: {
+    width: "100%",
+    height: "100%",
   },
-  verificationCancelText: {
-    color: "#8b7355",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  verificationConfirmButton: {
-    flex: 1,
-    paddingVertical: 12,
-    marginLeft: 8,
-    borderRadius: 8,
+  avatarSelectedBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
     backgroundColor: "#8b5a3c",
+    borderRadius: 12,
+    width: 24,
+    height: 24,
     alignItems: "center",
-  },
-  verificationConfirmText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    justifyContent: "center",
   },
 });
