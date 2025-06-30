@@ -1,9 +1,8 @@
-// frontend/stores/authStore.ts - Updated Auth Store with API Integration
+// stores/authStore.ts - Enhanced with Better Google Authentication
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiService, API_ENDPOINTS } from '../services/api';
-import { googleAuthService } from '../services/googleAuth';
 import { Alert } from 'react-native';
 
 // Types
@@ -39,6 +38,20 @@ export interface RegisterData {
   role: 'mentee' | 'mentor';
 }
 
+export interface GoogleAuthResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    user: User;
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+    };
+  };
+  isNewUser?: boolean;
+  requiresOnboarding?: boolean;
+}
+
 interface AuthState {
   // State
   user: User | null;
@@ -58,7 +71,7 @@ interface AuthState {
   completeOnboarding: (interests?: string[], goals?: string[]) => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   clearAuth: () => void;
-  authenticateWithGoogleToken: (googleToken: string) => Promise<any>;
+  authenticateWithGoogleToken: (googleToken: string) => Promise<GoogleAuthResponse>;
   unlinkGoogleAccount: (password: string) => Promise<any>;
 }
 
@@ -112,7 +125,6 @@ export const useAuthStore = create<AuthState>()(
           
           if (response.success) {
             console.log('✅ Registration successful');
-            // Don't set user as authenticated yet, need email verification
             set({ isLoading: false });
           } else {
             throw new Error(response.message || 'Registration failed');
@@ -138,13 +150,11 @@ export const useAuthStore = create<AuthState>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             
-            // Save tokens
             await TokenManager.setTokens(
               tokens.accessToken,
               tokens.refreshToken
             );
 
-            // Update state
             set({
               user,
               isAuthenticated: true,
@@ -163,100 +173,139 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-googleSignIn: async () => {
-  try {
-    set({ isLoading: true });
-    
-    // Import Google auth at the component level since hooks can't be used in stores
-    // We'll handle this differently - see the updated component approach below
-    
-  } catch (error: any) {
-    console.error('Google sign-in error:', error);
-    set({
-      isLoading: false,
-    });
-  }
-},
-
-// ADD this method for handling Google token from frontend:
-// ADD this method for handling Google token from frontend:
-authenticateWithGoogleToken: async (googleToken: string) => {
-  try {
-    set({ isLoading: true });
-    
-    const response = await fetch(`${API_ENDPOINTS.AUTHENTICATION_WITH_GOOGLETOKEN}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ token: googleToken }),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Google sign-in failed');
-    }
-    
-    // Store tokens and user data
-    await AsyncStorage.setItem('accessToken', data.data.tokens.accessToken);
-    await AsyncStorage.setItem('refreshToken', data.data.tokens.refreshToken);
-    
-    set({
-      user: data.data.user,
-      isAuthenticated: true,
-      isLoading: false,
-    });
-    
-    return data;
-    
-  } catch (error: any) {
-    console.error('Google authentication error:', error);
-    set({
-      isLoading: false,
-    });
-    throw error;
-  }
-},
-// ADD this method for unlinking Google account:
-unlinkGoogleAccount: async (password: string) => {
-  try {
-    const token = await AsyncStorage.getItem('accessToken');
-    
-    const response = await fetch(`${API_ENDPOINTS.UNLINK_GOOGLEACCOUNT}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ password }),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to unlink Google account');
-    }
-    
-    // Update user to reflect email provider
-    const currentUser = get().user;
-    if (currentUser) {
-      set({
-        user: {
-          ...currentUser,
-          provider: 'email',
-          canChangePassword: true,
+      // Enhanced Google Authentication with better error handling
+      authenticateWithGoogleToken: async (googleToken: string): Promise<GoogleAuthResponse> => {
+        try {
+          set({ isLoading: true });
+          
+          console.log('🔄 Sending Google token to backend...');
+          
+          const response = await fetch(API_ENDPOINTS.AUTHENTICATION_WITH_GOOGLETOKEN, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token: googleToken }),
+          });
+          
+          const data = await response.json();
+          
+          console.log('📋 Backend response status:', response.status);
+          console.log('📋 Backend response data:', data);
+          
+          if (!response.ok) {
+            // Handle different error scenarios
+            if (response.status === 400) {
+              if (data.message?.includes('Invalid Google token')) {
+                throw new Error('Invalid Google authentication. Please try again.');
+              } else if (data.message?.includes('Email not provided')) {
+                throw new Error('Google account must have an email address.');
+              } else {
+                throw new Error(data.message || 'Authentication failed');
+              }
+            } else if (response.status === 500) {
+              throw new Error('Server error. Please try again later.');
+            } else {
+              throw new Error(data.message || 'Google sign-in failed');
+            }
+          }
+          
+          if (data.success && data.data) {
+            // Store tokens
+            await TokenManager.setTokens(
+              data.data.tokens.accessToken,
+              data.data.tokens.refreshToken
+            );
+            
+            // Update state
+            set({
+              user: data.data.user,
+              isAuthenticated: true,
+              isOnboarded: data.data.user.isOnboarded || false,
+              isLoading: false,
+            });
+            
+            console.log('✅ Google authentication successful');
+            console.log('👤 User info:', {
+              id: data.data.user.id,
+              email: data.data.user.email,
+              name: data.data.user.name,
+              isNewUser: data.isNewUser,
+              isOnboarded: data.data.user.isOnboarded,
+            });
+            
+            return {
+              success: true,
+              message: data.message,
+              data: data.data,
+              isNewUser: data.isNewUser,
+              requiresOnboarding: !data.data.user.isOnboarded,
+            };
+          } else {
+            throw new Error(data.message || 'Google authentication failed');
+          }
+          
+        } catch (error: any) {
+          console.error('💥 Google authentication error:', error);
+          set({ isLoading: false });
+          
+          // Provide user-friendly error messages
+          let userMessage = 'Google sign-in failed. Please try again.';
+          
+          if (error.message) {
+            if (error.message.includes('Network request failed')) {
+              userMessage = 'Network error. Please check your internet connection.';
+            } else if (error.message.includes('Invalid Google')) {
+              userMessage = 'Google authentication failed. Please try signing in again.';
+            } else if (error.message.includes('Server error')) {
+              userMessage = 'Server is temporarily unavailable. Please try again later.';
+            } else {
+              userMessage = error.message;
+            }
+          }
+          
+          throw new Error(userMessage);
         }
-      });
-    }
-    
-    return data;
-    
-  } catch (error: any) {
-    console.error('Unlink Google error:', error);
-    throw new Error(error.message || 'Failed to unlink Google account');
-  }
-},
+      },
+
+      // Unlink Google account
+      unlinkGoogleAccount: async (password: string) => {
+        try {
+          const token = await TokenManager.getAccessToken();
+          
+          const response = await fetch(API_ENDPOINTS.UNLINK_GOOGLEACCOUNT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ password }),
+          });
+          
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.message || 'Failed to unlink Google account');
+          }
+          
+          const currentUser = get().user;
+          if (currentUser) {
+            set({
+              user: {
+                ...currentUser,
+                provider: 'email',
+                canChangePassword: true,
+              }
+            });
+          }
+          
+          return data;
+          
+        } catch (error: any) {
+          console.error('Unlink Google error:', error);
+          throw new Error(error.message || 'Failed to unlink Google account');
+        }
+      },
 
       // Verify email action
       verifyEmail: async (email: string, otp: string) => {
@@ -272,13 +321,11 @@ unlinkGoogleAccount: async (password: string) => {
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             
-            // Save tokens
             await TokenManager.setTokens(
               tokens.accessToken,
               tokens.refreshToken
             );
 
-            // Update state
             set({
               user,
               isAuthenticated: true,
@@ -346,33 +393,32 @@ unlinkGoogleAccount: async (password: string) => {
       },
 
       // Reset password action
-      
-resetPassword: async (email: string, otp: string, newPassword: string) => {
-  try {
-    const response = await fetch(`${API_ENDPOINTS.RESET_PASSWORD}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+      resetPassword: async (email: string, otp: string, newPassword: string) => {
+        try {
+          const response = await fetch(API_ENDPOINTS.RESET_PASSWORD, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+              otp,
+              newPassword,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.message || 'Password reset failed');
+          }
+
+          return data;
+        } catch (error: any) {
+          console.error('Reset password error:', error);
+          throw new Error(error.message || 'Password reset failed');
+        }
       },
-      body: JSON.stringify({
-        email,
-        otp,
-        newPassword,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Password reset failed');
-    }
-
-    return data;
-  } catch (error: any) {
-    console.error('Reset password error:', error);
-    throw new Error(error.message || 'Password reset failed');
-  }
-},
 
       // Update profile action
       updateProfile: async (data: Partial<User>) => {
@@ -385,7 +431,6 @@ resetPassword: async (email: string, otp: string, newPassword: string) => {
           if (response.success && response.data) {
             const { user: updatedUser } = response.data;
             
-            // Update state
             set(state => ({
               user: { ...state.user, ...updatedUser },
               isLoading: false,
@@ -477,15 +522,12 @@ resetPassword: async (email: string, otp: string, newPassword: string) => {
         try {
           console.log('🚪 Logging out');
           
-          // Call logout endpoint (optional)
           try {
             await ApiService.post(API_ENDPOINTS.LOGOUT);
           } catch (error) {
-            // Ignore logout endpoint errors
             console.warn('Logout endpoint failed, continuing with local logout');
           }
 
-          // Clear tokens and state
           await TokenManager.clearTokens();
           set({
             user: null,
@@ -514,7 +556,7 @@ resetPassword: async (email: string, otp: string, newPassword: string) => {
     }),
     {
       name: 'auth-storage',
-              storage: {
+      storage: {
         getItem: async (name: string) => {
           try {
             const value = await AsyncStorage.getItem(name);

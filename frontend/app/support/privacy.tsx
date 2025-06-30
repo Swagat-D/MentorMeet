@@ -209,7 +209,7 @@ export default function PrivacyPolicyScreen() {
               <View style={styles.contactInfo}>
                 <View style={styles.contactItem}>
                   <MaterialIcons name="email" size={16} color="#8b5a3c" />
-                  <Text style={styles.contactText}>privacy@mentormatch.com</Text>
+                  <Text style={styles.contactText}>contact@mentormatch.com</Text>
                 </View>
                 <View style={styles.contactItem}>
                   <MaterialIcons name="language" size={16} color="#8b5a3c" />

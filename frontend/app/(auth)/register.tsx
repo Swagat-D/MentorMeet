@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore } from "../../stores/authStore";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 const { width } = Dimensions.get('window');
 
@@ -159,11 +160,6 @@ export default function RegisterScreen() {
     setIsLoading(false);
   }
 };
-
-  const handleGoogleSignUp = () => {
-    // Navigate to Google OAuth
-    console.log("Google Sign Up");
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -429,25 +425,17 @@ export default function RegisterScreen() {
             </View>
 
             {/* Google Sign Up */}
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={handleGoogleSignUp}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['#ffffff', '#fefbf3']}
-                style={styles.googleButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.googleIconContainer}>
-                  <View style={styles.googleG}>
-                    <Text style={styles.googleGText}>G</Text>
-                  </View>
-                </View>
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <GoogleSignInButton
+  mode="signup"
+  style={{ marginBottom: 20 }}
+  onSuccess={(isNewUser) => {
+    // Navigation is handled inside the component now
+  }}
+  onError={(error) => {
+    setErrors({ general: error });
+  }}
+  disabled={isLoading}
+/>
 
             {/* Sign In Link */}
             <View style={styles.signInContainer}>

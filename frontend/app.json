@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "mentormeet",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,14 +15,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.mentormeet-india-wide-student-mentor-app"
+      "bundleIdentifier": "com.swagat1212.mentormeet"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.mentormeet-india-wide-student-mentor-app"
+      "package": "com.swagat1212.mentormeet"
     },
     "web": {
       "favicon": "./assets/images/favicon.png",

@@ -1,558 +1,586 @@
-// app/(tabs)/index.tsx - Updated Dashboard with Professional Warm Theme
-import React, { useState, useEffect } from "react";
+// app/(tabs)/index.tsx - Revolutionary Creative Home Screen with Warm Theme
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Image,
   ScrollView,
   RefreshControl,
   Dimensions,
-  Platform,
+  Animated,
+  Easing,
+  ImageBackground,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from 'expo-blur';
 import { useAuthStore } from "@/stores/authStore";
 import { mentors, sessions } from "@/mocks/mentors";
 import { subjects } from "@/constants/subjects";
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
-
-import MentorCard from "@/components/cards/MentorCard";
-import { MentorCardSkeleton } from "@/components/ui/SkeletonLoader";
+import { MaterialIcons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
-
-// Responsive breakpoints
 const isTablet = width >= 768;
-const isLargeScreen = width >= 1024;
-
-// Responsive utilities
-const getResponsiveValue = (small: number, medium: number, large: number) => {
-  if (isLargeScreen) return large;
-  if (isTablet) return medium;
-  return small;
-};
-
-const getGridColumns = () => {
-  return getResponsiveValue(2, 3, 4);
-};
-
-const getHorizontalPadding = () => {
-  return getResponsiveValue(20, 32, 48);
-};
-
-const getFontSize = (base: number) => {
-  const scale = getResponsiveValue(1, 1.1, 1.2);
-  return Math.round(base * scale);
-};
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [filteredMentors, setFilteredMentors] = useState(mentors);
-  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Animation refs
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideUpAnim = useRef(new Animated.Value(50)).current;
+  const slideDownAnim = useRef(new Animated.Value(-30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const cardStagger = useRef(Array(8).fill(0).map(() => new Animated.Value(0))).current;
 
-  // Listen for orientation changes
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenData(window);
-    });
+    // Update time
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    
+    // Main entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
+      Animated.timing(slideUpAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.back(1.2)),
+      }),
+      Animated.timing(slideDownAnim, {
+        toValue: 0,
+        duration: 700,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.back(1.1)),
+      }),
+    ]).start();
 
-    return () => subscription?.remove();
+    // Staggered card animations
+    const staggeredAnimations = cardStagger.map((anim, index) =>
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 600,
+        delay: index * 100,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      })
+    );
+    
+    Animated.stagger(80, staggeredAnimations).start();
+
+    // Continuous animations
+    Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 30000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 3000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ])
+    ).start();
+
+    return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (selectedCategory === "All") {
-      setFilteredMentors(mentors);
-    } else {
-      setFilteredMentors(
-        mentors.filter((mentor) => mentor.subjects.includes(selectedCategory))
-      );
-    }
-  }, [selectedCategory]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 1500));
     setRefreshing(false);
   };
 
+  const getGreeting = () => {
+    const hour = currentTime.getHours();
+    if (hour < 5) return { text: 'Working late', icon: '🌙', time: 'night owl' };
+    if (hour < 12) return { text: 'Good morning', icon: '🌅', time: 'early bird' };
+    if (hour < 17) return { text: 'Good afternoon', icon: '☀️', time: 'go-getter' };
+    if (hour < 21) return { text: 'Good evening', icon: '🌇', time: 'achiever' };
+    return { text: 'Good night', icon: '🌙', time: 'night learner' };
+  };
+
+  const greeting = getGreeting();
+  const firstName = user?.name?.split(' ')[0] || 'Student';
+  
   const upcomingSessions = sessions.filter(
     session => new Date(session.date) > new Date()
-  ).slice(0, getResponsiveValue(2, 3, 4));
+  ).slice(0, 2);
 
-  const recommendedMentors = mentors.filter(mentor => 
-    mentor.subjects.some(subject => user?.interests?.includes(subject))
-  ).slice(0, getResponsiveValue(3, 4, 6));
+  const featuredMentors = mentors.slice(0, 4);
+  const trendingSubjects = subjects.slice(0, 6);
 
-  const QuickStatsCard = ({ icon: Icon, title, value, subtitle, color, gradient, onPress }: any) => (
-    <TouchableOpacity 
+  // Hero stats data
+  const heroStats = [
+    { value: user?.stats?.totalHoursLearned || 42, label: 'Hours', icon: 'schedule', color: '#8b5a3c' },
+    { value: user?.stats?.studyStreak || 7, label: 'Streak', icon: 'local-fire-department', color: '#d97706' },
+    { value: user?.stats?.sessionsCompleted || 24, label: 'Sessions', icon: 'emoji-events', color: '#f59e0b' },
+  ];
+
+  const rotateInterpolate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const CreativeStatCard = ({ stat, index }: any) => (
+    <Animated.View
       style={[
-        styles.statCard,
-        { 
-          width: isTablet ? (screenData.width - getHorizontalPadding() * 2 - 48) / 4 : undefined,
-          minWidth: isTablet ? 120 : undefined,
+        styles.heroStatCard,
+        {
+          opacity: cardStagger[index],
+          transform: [{
+            translateY: cardStagger[index].interpolate({
+              inputRange: [0, 1],
+              outputRange: [30, 0],
+            })
+          }]
         }
-      ]} 
-      onPress={onPress} 
-      activeOpacity={0.8}
+      ]}
     >
       <LinearGradient
-        colors={gradient}
-        style={styles.statCardGradient}
+        colors={['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.15)']}
+        style={styles.heroStatGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View style={[styles.statIconContainer, { backgroundColor: `${color}15` }]}>
-          <Icon size={getResponsiveValue(20, 24, 28)} color={color} strokeWidth={2} />
+        <View style={[styles.heroStatIcon, { backgroundColor: `${stat.color}20` }]}>
+          <MaterialIcons name={stat.icon} size={20} color={stat.color} />
         </View>
-        <Text style={[styles.statValue, { fontSize: getFontSize(16) }]}>{value}</Text>
-        <Text style={[styles.statTitle, { fontSize: getFontSize(11) }]}>{title}</Text>
-        {subtitle && (
-          <Text style={[styles.statSubtitle, { fontSize: getFontSize(10) }]}>{subtitle}</Text>
-        )}
+        <Text style={styles.heroStatValue}>{stat.value}</Text>
+        <Text style={styles.heroStatLabel}>{stat.label}</Text>
       </LinearGradient>
-    </TouchableOpacity>
+    </Animated.View>
   );
 
-  const CategoryItem = ({ item }: { item: string }) => (
-    <TouchableOpacity
+  const QuickActionCard = ({ icon, title, description, gradient, onPress, index }: any) => (
+    <Animated.View
       style={[
-        styles.categoryItem,
-        selectedCategory === item && styles.selectedCategoryItem,
-      ]}
-      onPress={() => setSelectedCategory(item)}
-      activeOpacity={0.8}
-    >
-      <Text
-        style={[
-          styles.categoryText,
-          selectedCategory === item && styles.selectedCategoryText,
-          { fontSize: getFontSize(14) }
-        ]}
-      >
-        {item}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const FeaturedMentorCard = ({ mentor }: { mentor: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.featuredCard,
-        { 
-          width: getResponsiveValue(180, 200, 220),
-          marginRight: getResponsiveValue(16, 20, 24),
+        styles.quickActionCard,
+        {
+          opacity: cardStagger[index + 3],
+          transform: [{
+            scale: cardStagger[index + 3].interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.9, 1],
+            })
+          }]
         }
       ]}
-      onPress={() => router.push(`/mentor/${mentor.id}`)}
-      activeOpacity={0.9}
     >
-      <Image source={{ uri: mentor.avatar }} style={styles.featuredAvatar} />
-      <View style={styles.featuredContent}>
-        <Text style={[styles.featuredName, { fontSize: getFontSize(16) }]} numberOfLines={1}>
-          {mentor.name}
-        </Text>
-        <Text style={[styles.featuredTitle, { fontSize: getFontSize(12) }]} numberOfLines={2}>
-          {mentor.title}
-        </Text>
-        <View style={styles.featuredRating}>
-          <MaterialIcons name="star" size={getResponsiveValue(12, 14, 16)} color="#d97706" fill="#d97706" />
-          <Text style={[styles.ratingText, { fontSize: getFontSize(12) }]}>{mentor.rating}</Text>
-          <Text style={[styles.reviewCount, { fontSize: getFontSize(11) }]}>({mentor.reviews.length})</Text>
-        </View>
-        <Text style={[styles.featuredPrice, { fontSize: getFontSize(14) }]}>
-          From ${Math.min(...mentor.sessionTypes.map((s: any) => s.price))}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const SessionCard = ({ session }: { session: any }) => (
-    <TouchableOpacity 
-      style={styles.sessionCard}
-      onPress={() => router.push(`/session/${session.id}`)}
-      activeOpacity={0.8}
-    >
-      <View style={styles.sessionLeft}>
-        <Image source={{ uri: session.mentor.avatar }} style={styles.sessionAvatar} />
-        <View style={styles.sessionInfo}>
-          <Text style={[styles.sessionMentor, { fontSize: getFontSize(16) }]}>
-            {session.mentor.name}
-          </Text>
-          <Text style={[styles.sessionSubject, { fontSize: getFontSize(14) }]}>
-            {session.subject}
-          </Text>
-          <View style={styles.sessionMeta}>
-            <MaterialIcons name="event" size={getResponsiveValue(10, 12, 14)} color="#8b7355" />
-            <Text style={[styles.sessionDate, { fontSize: getFontSize(12) }]}>
-              {new Date(session.date).toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
-            </Text>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient
+          colors={gradient}
+          style={styles.quickActionGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.quickActionHeader}>
+            <View style={styles.quickActionIconContainer}>
+              <MaterialIcons name={icon} size={24} color="#fff" />
+            </View>
+            <MaterialIcons name="arrow-forward" size={18} color="rgba(255,255,255,0.8)" />
           </View>
-        </View>
-      </View>
-      <View style={styles.sessionRight}>
-        <View style={styles.joinButton}>
-          <MaterialIcons name="play-arrow" size={getResponsiveValue(12, 14, 16)} color="#5d4e37" />
-        </View>
-      </View>
-    </TouchableOpacity>
+          
+          <Text style={styles.quickActionTitle}>{title}</Text>
+          <Text style={styles.quickActionDescription}>{description}</Text>
+          
+          <View style={styles.quickActionFooter}>
+            <View style={styles.quickActionDots}>
+              <View style={styles.quickActionDot} />
+              <View style={styles.quickActionDot} />
+              <View style={styles.quickActionDot} />
+            </View>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
-  const ActionCard = ({ icon: Icon, title, subtitle, backgroundColor, iconColor, onPress }: any) => (
-    <TouchableOpacity 
+  const MentorSpotlightCard = ({ mentor, index }: any) => (
+    <Animated.View
       style={[
-        styles.actionCard,
-        { 
-          width: getResponsiveValue(
-            (screenData.width - getHorizontalPadding() * 2 - 16) / 2,
-            (screenData.width - getHorizontalPadding() * 2 - 32) / 3,
-            (screenData.width - getHorizontalPadding() * 2 - 48) / 4
-          ),
+        styles.mentorSpotlightCard,
+        {
+          opacity: cardStagger[index % 8],
+          transform: [{
+            translateX: cardStagger[index % 8].interpolate({
+              inputRange: [0, 1],
+              outputRange: [50, 0],
+            })
+          }]
         }
       ]}
-      onPress={onPress}
-      activeOpacity={0.8}
     >
-      <View style={[styles.actionIcon, { backgroundColor }]}>
-        <Icon size={getResponsiveValue(20, 24, 28)} color={iconColor} />
-      </View>
-      <Text style={[styles.actionTitle, { fontSize: getFontSize(14) }]}>{title}</Text>
-      <Text style={[styles.actionSubtitle, { fontSize: getFontSize(11) }]}>{subtitle}</Text>
-    </TouchableOpacity>
+      <TouchableOpacity onPress={() => router.push(`/mentor/${mentor.id}`)} activeOpacity={0.9}>
+        <ImageBackground
+          source={{ uri: mentor.avatar }}
+          style={styles.mentorSpotlightImage}
+          imageStyle={styles.mentorSpotlightImageStyle}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.mentorSpotlightOverlay}
+          >
+            <View style={styles.mentorSpotlightBadges}>
+              <View style={styles.mentorRatingBadge}>
+                <MaterialIcons name="star" size={12} color="#FFD700" />
+                <Text style={styles.mentorRatingText}>{mentor.rating}</Text>
+              </View>
+              {mentor.isOnline && (
+                <View style={styles.mentorOnlineBadge}>
+                  <View style={styles.onlinePulse} />
+                  <Text style={styles.mentorOnlineText}>Live</Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.mentorSpotlightInfo}>
+              <Text style={styles.mentorSpotlightName}>{mentor.name}</Text>
+              <Text style={styles.mentorSpotlightTitle} numberOfLines={2}>{mentor.title}</Text>
+              
+              <View style={styles.mentorSpotlightMeta}>
+                <Text style={styles.mentorSpotlightPrice}>
+                  ${Math.min(...mentor.sessionTypes.map((s: any) => s.price))}/hr
+                </Text>
+                <View style={styles.mentorSpotlightStudents}>
+                  <MaterialIcons name="people" size={12} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.mentorStudentsText}>{mentor.stats.totalStudents}</Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+        </ImageBackground>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
+  const SessionPreviewCard = ({ session, index }: any) => (
+    <Animated.View
+      style={[
+        styles.sessionPreviewCard,
+        {
+          opacity: cardStagger[index % 8],
+          transform: [{
+            translateY: cardStagger[index % 8].interpolate({
+              inputRange: [0, 1],
+              outputRange: [40, 0],
+            })
+          }]
+        }
+      ]}
+    >
+      <TouchableOpacity onPress={() => router.push(`/session/${session.id}`)} activeOpacity={0.9}>
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.95)', 'rgba(248, 246, 240, 0.9)']}
+          style={styles.sessionPreviewGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.sessionPreviewHeader}>
+            <Image source={{ uri: session.mentor.avatar }} style={styles.sessionMentorAvatar} />
+            <View style={styles.sessionPreviewInfo}>
+              <Text style={styles.sessionMentorName}>{session.mentor.name}</Text>
+              <Text style={styles.sessionSubjectName}>{session.subject}</Text>
+            </View>
+            <View style={styles.sessionJoinButton}>
+              <MaterialIcons name="videocam" size={16} color="#8b5a3c" />
+            </View>
+          </View>
+          
+          <View style={styles.sessionPreviewDetails}>
+            <View style={styles.sessionTimeContainer}>
+              <MaterialIcons name="schedule" size={14} color="#8b7355" />
+              <Text style={styles.sessionTimeText}>
+                {new Date(session.date).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Text>
+            </View>
+            
+            <View style={styles.sessionProgressBar}>
+              <View style={styles.sessionProgressFill} />
+            </View>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 
-  const getGreetingEmoji = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return '🌅';
-    if (hour < 17) return '☀️';
-    return '🌙';
-  };
+  const SubjectPillCard = ({ subject, index }: any) => (
+    <Animated.View
+      style={[
+        styles.subjectPill,
+        {
+          opacity: cardStagger[index % 8],
+          transform: [{
+            scale: cardStagger[index % 8].interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.8, 1],
+            })
+          }]
+        }
+      ]}
+    >
+      <TouchableOpacity 
+        onPress={() => router.push('/(tabs)/search')} 
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={['rgba(139, 90, 60, 0.15)', 'rgba(217, 119, 6, 0.1)']}
+          style={styles.subjectPillGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Text style={styles.subjectPillText}>{subject}</Text>
+          <MaterialIcons name="trending-up" size={14} color="#8b5a3c" />
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={["right", "left"]}>
-      <ScrollView 
+      {/* Dynamic Background with Patterns */}
+      <LinearGradient
+        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
+        style={styles.background}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      
+      {/* Floating Decorative Elements */}
+      <Animated.View style={[styles.floatingShape1, { transform: [{ rotate: rotateInterpolate }] }]} />
+      <Animated.View style={[styles.floatingShape2, { transform: [{ scale: pulseAnim }] }]} />
+      <Animated.View style={[styles.floatingShape3, { transform: [{ rotate: rotateInterpolate }] }]} />
+
+      <ScrollView
         style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        showsVerticalScrollIndicator={false}
       >
-        {/* Welcome Section with Creative Warm Theme */}
-        <View style={[styles.welcomeSection, { paddingHorizontal: getHorizontalPadding() }]}>
-          {/* Background with subtle pattern */}
+        {/* Hero Section */}
+        <Animated.View
+          style={[
+            styles.heroSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideDownAnim }, { scale: scaleAnim }],
+            },
+          ]}
+        >
           <LinearGradient
-            colors={["#fefbf3", "#f8f6f0", "#f1f0ec"]}
-            style={styles.welcomeBackground}
+            colors={['rgba(139, 90, 60, 0.95)', 'rgba(217, 119, 6, 0.9)', 'rgba(245, 158, 11, 0.85)']}
+            style={styles.heroGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-          />
-          
-          {/* Creative overlay */}
-          <LinearGradient
-            colors={["rgba(139, 90, 60, 0.1)", "rgba(217, 119, 6, 0.08)", "rgba(245, 158, 11, 0.06)"]}
-            style={styles.welcomeOverlay}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          
-          {/* Decorative elements */}
-          <View style={styles.decorativeElements}>
-            <View style={styles.decorativeCircle1} />
-            <View style={styles.decorativeCircle2} />
-            <View style={styles.decorativeCircle3} />
-          </View>
-
-          <View style={styles.welcomeContent}>
-            <View style={styles.welcomeText}>
-              <Text style={[styles.welcomeGreeting, { fontSize: getFontSize(24) }]}>
-                {getGreeting()}! {getGreetingEmoji()}
-              </Text>
-              <Text style={[styles.welcomeMessage, { fontSize: getFontSize(16) }]}>
-                Ready to continue your learning journey?
-              </Text>
+          >
+            {/* Hero Header */}
+            <View style={styles.heroHeader}>
+              <View style={styles.heroGreeting}>
+                <Text style={styles.heroGreetingEmoji}>{greeting.icon}</Text>
+                <View>
+                  <Text style={styles.heroGreetingText}>{greeting.text}</Text>
+                  <Text style={styles.heroUserName}>{firstName}</Text>
+                  <Text style={styles.heroTimeText}>You're a {greeting.time}!</Text>
+                </View>
+              </View>
+              
+              <TouchableOpacity style={styles.heroProfileContainer} onPress={() => router.push('/(tabs)/profile')}>
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <Image
+                    source={{
+                      uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200"
+                    }}
+                    style={styles.heroProfileImage}
+                  />
+                  <View style={styles.heroProfileBadge}>
+                    <MaterialIcons name="auto-awesome" size={12} color="#f59e0b" />
+                  </View>
+                </Animated.View>
+              </TouchableOpacity>
             </View>
-            <View style={styles.avatarWrapper}>
-              <Image
-                source={{
-                  uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200"
-                }}
-                style={[
-                  styles.welcomeAvatar,
-                  { 
-                    width: getResponsiveValue(50, 60, 70),
-                    height: getResponsiveValue(50, 60, 70),
-                    borderRadius: getResponsiveValue(25, 30, 35),
-                  }
-                ]}
-              />
-              <View style={styles.avatarGlow} />
-            </View>
-          </View>
 
-          {/* Enhanced Stats with Student-Relevant Metrics */}
-          <View style={[
-            styles.statsContainer,
-            isTablet && styles.statsContainerTablet
-          ]}>
-            <QuickStatsCard
-              icon={() => <MaterialIcons name="schedule" size={getResponsiveValue(20, 24, 28)} color="#8b5a3c" />}
-              title="Hours Learned"
-              value={`${user?.stats?.totalHoursLearned || 42}h`}
-              subtitle="This month"
-              color="#8b5a3c"
-              gradient={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
-              onPress={() => router.push('/progress')}
+            {/* Hero Stats */}
+            <View style={styles.heroStatsContainer}>
+              {heroStats.map((stat, index) => (
+                <CreativeStatCard key={index} stat={stat} index={index} />
+              ))}
+            </View>
+
+            {/* Hero CTA */}
+            <Animated.View
+              style={[
+                styles.heroCTA,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideUpAnim }],
+                },
+              ]}
+            >
+              <Text style={styles.heroCTAText}>Ready to level up today?</Text>
+              <TouchableOpacity 
+                style={styles.heroCTAButton}
+                onPress={() => router.push('/(tabs)/search')}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.heroCTAButtonText}>Find Your Mentor</Text>
+                <MaterialIcons name="rocket-launch" size={18} color="#8b5a3c" />
+              </TouchableOpacity>
+            </Animated.View>
+          </LinearGradient>
+        </Animated.View>
+
+        {/* Quick Actions Section */}
+        <View style={styles.quickActionsSection}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+            <QuickActionCard
+              icon="search"
+              title="Discover"
+              description="Find perfect mentors"
+              gradient={['rgba(139, 90, 60, 0.9)', 'rgba(93, 78, 55, 0.8)']}
+              onPress={() => router.push('/(tabs)/search')}
+              index={0}
             />
-            <QuickStatsCard
-              icon={() => <MaterialIcons name="local-fire-department" size={getResponsiveValue(20, 24, 28)} color="#d97706" />}
-              title="Study Streak"
-              value={`${user?.stats?.studyStreak || 7}`}
-              subtitle="Days in a row"
-              color="#d97706"
-              gradient={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
-              onPress={() => router.push('/achievements')}
+            <QuickActionCard
+              icon="event"
+              title="Schedule"
+              description="Book your session"
+              gradient={['rgba(217, 119, 6, 0.9)', 'rgba(245, 158, 11, 0.8)']}
+              onPress={() => router.push('/booking')}
+              index={1}
             />
-            <QuickStatsCard
-              icon={() => <MaterialIcons name="group" size={getResponsiveValue(20, 24, 28)} color="#f59e0b" />}
-              title="Mentors"
-              value={user?.stats?.mentorsConnected || 5}
-              subtitle="Connected"
-              color="#f59e0b"
-              gradient={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
-              onPress={() => router.push('/favorites')}
-            />
-            <QuickStatsCard
-              icon={() => <MaterialIcons name="star" size={getResponsiveValue(20, 24, 28)} color="#059669" />}
+            <QuickActionCard
+              icon="trending-up"
               title="Progress"
-              value={`${user?.stats?.completionRate || 85}%`}
-              subtitle="Goal completion"
-              color="#059669"
-              gradient={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+              description="Track your growth"
+              gradient={['rgba(245, 158, 11, 0.9)', 'rgba(251, 191, 36, 0.8)']}
               onPress={() => router.push('/progress')}
+              index={2}
+            />
+            <QuickActionCard
+              icon="bookmark"
+              title="Saved"
+              description="Your favorites"
+              gradient={['rgba(5, 150, 105, 0.9)', 'rgba(16, 185, 129, 0.8)']}
+              onPress={() => router.push('/favorites')}
+              index={3}
             />
           </View>
         </View>
 
         {/* Upcoming Sessions */}
         {upcomingSessions.length > 0 && (
-          <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
+          <View style={styles.sessionsSection}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>
-                Upcoming Sessions
-              </Text>
+              <Text style={styles.sectionTitle}>Upcoming Sessions</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/sessions')}>
-                <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>View All</Text>
+                <Text style={styles.sectionLink}>View All</Text>
               </TouchableOpacity>
             </View>
             
-            {upcomingSessions.map((session, index) => (
-              <SessionCard key={session.id} session={session} />
-            ))}
+            <View style={styles.sessionsList}>
+              {upcomingSessions.map((session, index) => (
+                <SessionPreviewCard key={session.id} session={session} index={index} />
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Learning Insights Section */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Your Learning Journey</Text>
-          
-          <View style={styles.insightsGrid}>
-            <View style={styles.insightCard}>
-              <View style={styles.insightHeader}>
-                <MaterialIcons name="trending-up" size={20} color="#8b5a3c" />
-                <Text style={styles.insightTitle}>This Week's Progress</Text>
-              </View>
-              <Text style={styles.insightValue}>
-                {user?.stats?.weeklyGoalProgress || 75}% of goal completed
-              </Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${user?.stats?.weeklyGoalProgress || 75}%` }]} />
-              </View>
-              <Text style={styles.insightSubtext}>Keep it up! 3 more hours to reach your weekly goal</Text>
-            </View>
-
-            <View style={styles.insightCard}>
-              <View style={styles.insightHeader}>
-                <MaterialIcons name="psychology" size={20} color="#d97706" />
-                <Text style={styles.insightTitle}>Learning Streak</Text>
-              </View>
-              <Text style={styles.insightValue}>
-                {user?.stats?.studyStreak || 7} days in a row
-              </Text>
-              <Text style={styles.insightSubtext}>
-                Amazing! You're building great study habits 🔥
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.nextSessionCard}>
-            <LinearGradient
-              colors={["rgba(139, 90, 60, 0.08)", "rgba(217, 119, 6, 0.05)"]}
-              style={styles.nextSessionGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.nextSessionContent}>
-                <View style={styles.nextSessionIcon}>
-                  <MaterialIcons name="schedule" size={24} color="#8b5a3c" />
-                </View>
-                <View style={styles.nextSessionInfo}>
-                  <Text style={styles.nextSessionTitle}>Ready for your next session?</Text>
-                  <Text style={styles.nextSessionSubtitle}>
-                    Book with your favorite mentors or discover new ones
-                  </Text>
-                </View>
-                <TouchableOpacity 
-                  style={styles.nextSessionButton}
-                  onPress={() => router.push('/(tabs)/search')}
-                >
-                  <MaterialIcons name="arrow-forward" size={18} color="#8b5a3c" />
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-          </View>
-        </View>
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Quick Actions</Text>
-          <View style={[
-            styles.actionsGrid,
-            { justifyContent: isTablet ? 'flex-start' : 'space-between' }
-          ]}>
-            <ActionCard
-              icon={() => <MaterialIcons name="group" size={getResponsiveValue(20, 22, 24)} color="#5d4e37" />}
-              title="Find Mentors"
-              subtitle="Discover experts"
-              backgroundColor="rgba(93, 78, 55, 0.1)"
-              iconColor="#5d4e37"
-              onPress={() => router.push('/(tabs)/search')}
-            />
-            <ActionCard
-              icon={() => <MaterialIcons name="event" size={getResponsiveValue(20, 22, 24)} color="#8b5a3c" />}
-              title="Book Session"
-              subtitle="Schedule learning"
-              backgroundColor="rgba(139, 90, 60, 0.1)"
-              iconColor="#8b5a3c"
-              onPress={() => router.push('/booking')}
-            />
-            <ActionCard
-              icon={() => <MaterialIcons name="trending-up" size={getResponsiveValue(20, 22, 24)} color="#d97706" />}
-              title="My Progress"
-              subtitle="Track learning"
-              backgroundColor="rgba(217, 119, 6, 0.1)"
-              iconColor="#d97706"
-              onPress={() => router.push('/progress')}
-            />
-            <ActionCard
-              icon={() => <MaterialIcons name="psychology" size={getResponsiveValue(20, 22, 24)} color="#f59e0b" />}
-              title="Interests"
-              subtitle="Manage topics"
-              backgroundColor="rgba(245, 158, 11, 0.1)"
-              iconColor="#f59e0b"
-              onPress={() => router.push('/edit-interests')}
-            />
-          </View>
-        </View>
-
-        {/* Recommended Mentors */}
-        {recommendedMentors.length > 0 && (
-          <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>
-                Recommended for You
-              </Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
-                <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>See More</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.horizontalList, { paddingRight: getHorizontalPadding() }]}
-            >
-              {isLoading
-                ? [1, 2, 3].map((item) => (
-                    <View key={item} style={[
-                      styles.featuredCard,
-                      { width: getResponsiveValue(180, 200, 220) }
-                    ]}>
-                      <View style={[styles.featuredAvatar, { backgroundColor: '#f1f0ec' }]} />
-                      <View style={styles.featuredContent}>
-                        <View style={[styles.skeletonText, { width: '80%', height: 16 }]} />
-                        <View style={[styles.skeletonText, { width: '100%', height: 14, marginTop: 4 }]} />
-                        <View style={[styles.skeletonText, { width: '60%', height: 12, marginTop: 8 }]} />
-                      </View>
-                    </View>
-                  ))
-                : recommendedMentors.map((mentor) => (
-                    <FeaturedMentorCard key={mentor.id} mentor={mentor} />
-                  ))
-              }
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Browse by Subject */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
-          <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>Browse by Subject</Text>
-          <FlatList
-            data={["All", ...subjects.slice(0, getResponsiveValue(8, 12, 16))]}
-            renderItem={CategoryItem}
-            keyExtractor={(item) => item}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.categoriesList, { paddingRight: getHorizontalPadding() }]}
-          />
-        </View>
-
-        {/* Recent Mentors */}
-        <View style={[styles.section, { paddingHorizontal: getHorizontalPadding() }]}>
+        {/* Mentor Spotlight */}
+        <View style={styles.mentorSpotlightSection}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { fontSize: getFontSize(20) }]}>
-              {selectedCategory === "All" ? "Popular Mentors" : `${selectedCategory} Mentors`}
-            </Text>
+            <Text style={styles.sectionTitle}>Featured Mentors</Text>
             <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
-              <Text style={[styles.sectionLink, { fontSize: getFontSize(14) }]}>View All</Text>
+              <Text style={styles.sectionLink}>Explore</Text>
             </TouchableOpacity>
           </View>
           
-          <View style={styles.mentorsList}>
-            {isLoading
-              ? [1, 2, 3].map((item) => <MentorCardSkeleton key={item} />)
-              : filteredMentors.slice(0, getResponsiveValue(3, 4, 6)).map((mentor) => (
-                  <MentorCard key={mentor.id} mentor={mentor} />
-                ))
-            }
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.mentorSpotlightScroll}
+          >
+            {featuredMentors.map((mentor, index) => (
+              <MentorSpotlightCard key={mentor.id} mentor={mentor} index={index} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Trending Subjects */}
+        <View style={styles.trendingSection}>
+          <Text style={styles.sectionTitle}>Trending Topics</Text>
+          <View style={styles.trendingGrid}>
+            {trendingSubjects.map((subject, index) => (
+              <SubjectPillCard key={subject} subject={subject} index={index} />
+            ))}
           </View>
         </View>
 
-        {/* Bottom Padding */}
+        {/* Motivation Quote */}
+        <Animated.View
+          style={[
+            styles.motivationSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(139, 90, 60, 0.1)', 'rgba(217, 119, 6, 0.05)']}
+            style={styles.motivationCard}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <MaterialIcons name="format-quote" size={32} color="rgba(139, 90, 60, 0.6)" />
+            <Text style={styles.motivationText}>
+              "Education is the most powerful weapon which you can use to change the world."
+            </Text>
+            <Text style={styles.motivationAuthor}>- Nelson Mandela</Text>
+            
+            <View style={styles.motivationDecor}>
+              <View style={styles.motivationDot} />
+              <View style={styles.motivationLine} />
+              <View style={styles.motivationDot} />
+            </View>
+          </LinearGradient>
+        </Animated.View>
+
         <View style={styles.bottomPadding} />
       </ScrollView>
     </SafeAreaView>
@@ -562,450 +590,504 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fefbf3",
+  },
+  background: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  floatingShape1: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(139, 90, 60, 0.05)',
+    top: height * 0.1,
+    right: -40,
+  },
+  floatingShape2: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(217, 119, 6, 0.08)',
+    top: height * 0.5,
+    left: -30,
+  },
+  floatingShape3: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    bottom: height * 0.2,
+    right: width * 0.1,
   },
   scrollView: {
     flex: 1,
   },
-  welcomeSection: {
-    paddingTop: getResponsiveValue(20, 24, 32),
-    paddingBottom: getResponsiveValue(24, 28, 32),
-    marginBottom: 8,
-    position: 'relative',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  heroSection: {
+    margin: 20,
+    borderRadius: 24,
     overflow: 'hidden',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
   },
-  welcomeBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  heroGradient: {
+    padding: 24,
+    minHeight: 240,
   },
-  welcomeOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  heroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
   },
-  decorativeElements: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  decorativeCircle1: {
-    position: 'absolute',
-    top: -20,
-    right: -30,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(139, 90, 60, 0.08)',
-  },
-  decorativeCircle2: {
-    position: 'absolute',
-    bottom: -15,
-    left: -25,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(217, 119, 6, 0.06)',
-  },
-  decorativeCircle3: {
-    position: 'absolute',
-    top: 40,
-    left: 20,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-  },
-  welcomeContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: getResponsiveValue(24, 28, 32),
-    zIndex: 1,
-  },
-  welcomeText: {
+  heroGreeting: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+  },
+  heroGreetingEmoji: {
+    fontSize: 40,
     marginRight: 16,
   },
-  welcomeGreeting: {
-    fontWeight: "bold",
-    color: "#4a3728",
-    marginBottom: 4,
+  heroGreetingText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '500',
   },
-  welcomeMessage: {
-    color: "#8b7355",
+  heroUserName: {
+    fontSize: 24,
+    color: '#fff',
+    fontWeight: 'bold',
+    marginTop: 2,
   },
-  avatarWrapper: {
+  heroTimeText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  heroProfileContainer: {
     position: 'relative',
   },
-  welcomeAvatar: {
+  heroProfileImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 3,
-    borderColor: "rgba(139, 90, 60, 0.3)",
-    zIndex: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
-  avatarGlow: {
+  heroProfileBadge: {
     position: 'absolute',
-    top: -5,
-    left: -5,
-    right: -5,
-    bottom: -5,
-    borderRadius: getResponsiveValue(30, 35, 40),
-    backgroundColor: 'rgba(139, 90, 60, 0.1)',
-    zIndex: 1,
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 4,
   },
-  statsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    flexWrap: isTablet ? 'wrap' : 'nowrap',
-    zIndex: 1,
+  heroStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
   },
-  statsContainerTablet: {
-    justifyContent: 'flex-start',
+  heroStatCard: {
+    flex: 1,
+    marginHorizontal: 4,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  statCard: {
-    borderRadius: getResponsiveValue(16, 18, 20),
-    flex: isTablet ? 0 : 1,
-    marginHorizontal: isTablet ? 6 : 4,
-    marginBottom: isTablet ? 12 : 0,
+  heroStatGradient: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  heroStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  heroStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  heroStatLabel: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+  },
+  heroCTA: {
+    alignItems: 'center',
+  },
+  heroCTAText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  heroCTAButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  heroCTAButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8b5a3c',
+    marginRight: 8,
+  },
+  quickActionsSection: {
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#4a3728',
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionLink: {
+    fontSize: 14,
+    color: '#8b5a3c',
+    fontWeight: '600',
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  quickActionCard: {
+    width: (width - 60) / 2,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  quickActionGradient: {
+    padding: 20,
+    minHeight: 120,
+  },
+  quickActionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  quickActionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  quickActionDescription: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 12,
+  },
+  quickActionFooter: {
+    alignItems: 'flex-start',
+  },
+  quickActionDots: {
+    flexDirection: 'row',
+  },
+  quickActionDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    marginRight: 4,
+  },
+  sessionsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sessionsList: {
+    gap: 12,
+  },
+  sessionPreviewCard: {
+    borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#8b7355',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(139, 90, 60, 0.15)",
+    elevation: 5,
   },
-  statCardGradient: {
-    alignItems: "center",
-    padding: getResponsiveValue(16, 18, 20),
-  },
-  statIconContainer: {
-    width: getResponsiveValue(36, 40, 44),
-    height: getResponsiveValue(36, 40, 44),
-    borderRadius: getResponsiveValue(18, 20, 22),
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: getResponsiveValue(8, 10, 12),
-  },
-  statValue: {
-    fontWeight: "bold",
-    color: "#4a3728",
-    marginBottom: 2,
-  },
-  statTitle: {
-    color: "#8b7355",
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  statSubtitle: {
-    color: "#a0916d",
-    textAlign: "center",
-    marginTop: 2,
-    fontWeight: "400",
-  },
-  section: {
-    paddingVertical: getResponsiveValue(16, 20, 24),
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: getResponsiveValue(16, 18, 20),
-  },
-  sectionTitle: {
-    fontWeight: "bold",
-    color: "#4a3728",
-  },
-  sectionLink: {
-    color: "#8b5a3c",
-    fontWeight: "600",
-  },
-  sessionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(16, 18, 20),
-    marginBottom: getResponsiveValue(12, 14, 16),
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sessionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  sessionAvatar: {
-    width: getResponsiveValue(48, 52, 56),
-    height: getResponsiveValue(48, 52, 56),
-    borderRadius: getResponsiveValue(24, 26, 28),
-    marginRight: getResponsiveValue(12, 14, 16),
-  },
-  sessionInfo: {
-    flex: 1,
-  },
-  sessionMentor: {
-    fontWeight: "600",
-    color: "#4a3728",
-    marginBottom: 2,
-  },
-  sessionSubject: {
-    color: "#8b5a3c",
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-  sessionMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sessionDate: {
-    color: "#8b7355",
-    marginLeft: 4,
-  },
-  sessionRight: {
-    alignItems: "center",
-  },
-  joinButton: {
-    width: getResponsiveValue(36, 40, 44),
-    height: getResponsiveValue(36, 40, 44),
-    borderRadius: getResponsiveValue(18, 20, 22),
-    backgroundColor: "rgba(93, 78, 55, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  actionCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(20, 22, 24),
-    alignItems: "center",
-    marginBottom: getResponsiveValue(16, 18, 20),
-    marginRight: isTablet ? getResponsiveValue(16, 20, 24) : 0,
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  actionIcon: {
-    width: getResponsiveValue(44, 48, 52),
-    height: getResponsiveValue(44, 48, 52),
-    borderRadius: getResponsiveValue(22, 24, 26),
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: getResponsiveValue(12, 14, 16),
-  },
-  actionTitle: {
-    fontWeight: "600",
-    color: "#4a3728",
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  actionSubtitle: {
-    color: "#8b7355",
-    textAlign: "center",
-  },
-  horizontalList: {
-    paddingLeft: 0,
-  },
-  featuredCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: getResponsiveValue(16, 18, 20),
-    padding: getResponsiveValue(16, 18, 20),
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  featuredAvatar: {
-    width: "100%",
-    height: getResponsiveValue(100, 110, 120),
-    borderRadius: getResponsiveValue(12, 14, 16),
-    marginBottom: getResponsiveValue(12, 14, 16),
-  },
-  featuredContent: {
-    alignItems: "flex-start",
-  },
-  featuredName: {
-    fontWeight: "bold",
-    color: "#4a3728",
-    marginBottom: 4,
-  },
-  featuredTitle: {
-    color: "#8b7355",
-    marginBottom: getResponsiveValue(8, 10, 12),
-    lineHeight: getResponsiveValue(16, 18, 20),
-  },
-  featuredRating: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: getResponsiveValue(8, 10, 12),
-  },
-  ratingText: {
-    color: "#4a3728",
-    marginLeft: 4,
-    fontWeight: "600",
-  },
-  reviewCount: {
-    color: "#a0916d",
-    marginLeft: 2,
-  },
-  featuredPrice: {
-    fontWeight: "bold",
-    color: "#8b5a3c",
-  },
-  categoriesList: {
-    paddingLeft: 0,
-  },
-  categoryItem: {
-    paddingHorizontal: getResponsiveValue(16, 18, 20),
-    paddingVertical: getResponsiveValue(8, 10, 12),
-    borderRadius: getResponsiveValue(16, 18, 20),
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    marginRight: getResponsiveValue(12, 14, 16),
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-  },
-  selectedCategoryItem: {
-    backgroundColor: "#8b5a3c",
-    borderColor: "#8b5a3c",
-  },
-  categoryText: {
-    fontWeight: "600",
-    color: "#8b7355",
-  },
-  selectedCategoryText: {
-    color: "#fff",
-  },
-  mentorsList: {
-    marginTop: 8,
-  },
-  skeletonText: {
-    backgroundColor: "#f1f0ec",
-    borderRadius: 4,
-  },
-  bottomPadding: {
-    height: getResponsiveValue(100, 120, 140),
-  },
-  insightsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  insightCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: 16,
+  sessionPreviewGradient: {
     padding: 16,
-    width: '48%',
-    borderWidth: 1,
-    borderColor: "rgba(184, 134, 100, 0.2)",
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  insightHeader: {
+  sessionPreviewHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-  insightTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4a3728',
-    marginLeft: 8,
+  sessionMentorAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
   },
-  insightValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4a3728',
-    marginBottom: 8,
-  },
-  insightSubtext: {
-    fontSize: 12,
-    color: '#8b7355',
-    lineHeight: 16,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(139, 90, 60, 0.2)',
-    borderRadius: 3,
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#8b5a3c',
-    borderRadius: 3,
-  },
-  nextSessionCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  nextSessionGradient: {
-    padding: 16,
-  },
-  nextSessionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  nextSessionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(139, 90, 60, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  nextSessionInfo: {
+  sessionPreviewInfo: {
     flex: 1,
   },
-  nextSessionTitle: {
+  sessionMentorName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#4a3728',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  nextSessionSubtitle: {
+  sessionSubjectName: {
     fontSize: 14,
-    color: '#8b7355',
-    lineHeight: 18,
+    color: '#8b5a3c',
+    fontWeight: '500',
   },
-  nextSessionButton: {
+  sessionJoinButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: 'rgba(139, 90, 60, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sessionPreviewDetails: {
+    gap: 8,
+  },
+  sessionTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sessionTimeText: {
+    fontSize: 12,
+    color: '#8b7355',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  sessionProgressBar: {
+    height: 4,
+    backgroundColor: 'rgba(139, 90, 60, 0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  sessionProgressFill: {
+    width: '30%',
+    height: '100%',
+    backgroundColor: '#8b5a3c',
+    borderRadius: 2,
+  },
+  mentorSpotlightSection: {
+    marginBottom: 24,
+  },
+  mentorSpotlightScroll: {
+    paddingHorizontal: 20,
+  },
+  mentorSpotlightCard: {
+    width: 200,
+    height: 280,
+    marginRight: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  mentorSpotlightImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'space-between',
+  },
+  mentorSpotlightImageStyle: {
+    borderRadius: 20,
+  },
+  mentorSpotlightOverlay: {
+    flex: 1,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  mentorSpotlightBadges: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  mentorRatingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mentorRatingText: {
+    fontSize: 12,
+    color: '#fff',
+    marginLeft: 4,
+    fontWeight: '600',
+  },
+  mentorOnlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  onlinePulse: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+    marginRight: 4,
+  },
+  mentorOnlineText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  mentorSpotlightInfo: {
+    alignItems: 'flex-start',
+  },
+  mentorSpotlightName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  mentorSpotlightTitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  mentorSpotlightMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  mentorSpotlightPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  mentorSpotlightStudents: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mentorStudentsText: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  trendingSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  trendingGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  subjectPill: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  subjectPillGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  subjectPillText: {
+    fontSize: 13,
+    color: '#8b5a3c',
+    fontWeight: '600',
+  },
+  motivationSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  motivationCard: {
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 90, 60, 0.1)',
+    shadowColor: '#8b7355',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  motivationText: {
+    fontSize: 16,
+    color: '#4a3728',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 24,
+    marginVertical: 16,
+    fontWeight: '500',
+  },
+  motivationAuthor: {
+    fontSize: 14,
+    color: '#8b7355',
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  motivationDecor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  motivationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(139, 90, 60, 0.4)',
+  },
+  motivationLine: {
+    width: 40,
+    height: 1,
+    backgroundColor: 'rgba(139, 90, 60, 0.3)',
+  },
+  bottomPadding: {
+    height: 120,
   },
 });

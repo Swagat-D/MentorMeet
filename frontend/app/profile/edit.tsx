@@ -1,5 +1,5 @@
-// app/profile/edit.tsx - Professional Edit Profile Screen Redesign
-import React, { useState, useRef, useEffect } from "react";
+// app/profile/edit.tsx - Fixed Edit Profile Screen with Better UX
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -32,12 +32,14 @@ export default function EditProfileScreen() {
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [showChangeAvatar, setShowChangeAvatar] = useState(false);
   
-  // Form state - Only basic editable fields
-  const [name, setName] = useState(user?.name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
-  const [location, setLocation] = useState(user?.location || '');
-  const [bio, setBio] = useState(user?.bio || '');
-  const [avatar, setAvatar] = useState(user?.avatar || '');
+  // Form state - Initialize with user data
+  const [formData, setFormData] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    location: user?.location || '',
+    bio: user?.bio || '',
+    avatar: user?.avatar || '',
+  });
   
   const [errors, setErrors] = useState<{
     name?: string;
@@ -68,33 +70,62 @@ export default function EditProfileScreen() {
     ]).start();
   }, []);
 
+  // Update form data when user data changes
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        phone: user.phone || '',
+        location: user.location || '',
+        bio: user.bio || '',
+        avatar: user.avatar || '',
+      });
+    }
+  }, [user]);
+
+  // Optimized input handler to prevent keyboard issues
+  const updateFormData = useCallback((field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear error for this field if it exists
+    if (errors[field as keyof typeof errors]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: undefined
+      }));
+    }
+  }, [errors]);
+
   const validateForm = () => {
     const newErrors: typeof errors = {};
     let isValid = true;
 
     // Name validation
-    if (!name.trim()) {
+    if (!formData.name.trim()) {
       newErrors.name = "Name is required";
       isValid = false;
-    } else if (name.trim().length < 2) {
+    } else if (formData.name.trim().length < 2) {
       newErrors.name = "Name must be at least 2 characters";
       isValid = false;
     }
 
     // Phone validation (optional but if provided, must be valid)
-    if (phone && !/^\+?[\d\s\-\(\)]+$/.test(phone)) {
+    if (formData.phone && !/^\+?[\d\s\-\(\)]+$/.test(formData.phone)) {
       newErrors.phone = "Please enter a valid phone number";
       isValid = false;
     }
 
     // Bio validation (optional but if provided, check length)
-    if (bio && bio.length > 500) {
+    if (formData.bio && formData.bio.length > 500) {
       newErrors.bio = "Bio cannot exceed 500 characters";
       isValid = false;
     }
 
     // Location validation (optional but if provided, check length)
-    if (location && location.length > 100) {
+    if (formData.location && formData.location.length > 100) {
       newErrors.location = "Location cannot exceed 100 characters";
       isValid = false;
     }
@@ -104,7 +135,7 @@ export default function EditProfileScreen() {
   };
 
   const handleSendPhoneVerification = async () => {
-    if (!phone) {
+    if (!formData.phone) {
       Alert.alert("Error", "Please enter a phone number first");
       return;
     }
@@ -115,7 +146,7 @@ export default function EditProfileScreen() {
       setShowPhoneVerification(true);
       Alert.alert(
         "Verification Code Sent",
-        `A 6-digit verification code has been sent to ${phone}`,
+        `A 6-digit verification code has been sent to ${formData.phone}`,
         [{ text: "OK" }]
       );
     } catch (error) {
@@ -153,13 +184,17 @@ export default function EditProfileScreen() {
     setIsLoading(true);
 
     try {
-      await updateProfile({
-        name: name.trim(),
-        phone: phone.trim() || undefined,
-        location: location.trim() || undefined,
-        bio: bio.trim() || undefined,
-        avatar: avatar || undefined,
-      });
+      // Only send non-empty values
+      const updateData: any = {
+        name: formData.name.trim(),
+      };
+
+      if (formData.phone.trim()) updateData.phone = formData.phone.trim();
+      if (formData.location.trim()) updateData.location = formData.location.trim();
+      if (formData.bio.trim()) updateData.bio = formData.bio.trim();
+      if (formData.avatar) updateData.avatar = formData.avatar;
+
+      await updateProfile(updateData);
 
       Alert.alert(
         "Profile Updated",
@@ -187,7 +222,7 @@ export default function EditProfileScreen() {
   };
 
   const handleSelectAvatar = (avatarUrl: string) => {
-    setAvatar(avatarUrl);
+    updateFormData('avatar', avatarUrl);
     setShowChangeAvatar(false);
   };
 
@@ -213,14 +248,16 @@ export default function EditProfileScreen() {
     rightAction,
     rightActionText,
     onRightAction,
-    verified = false
+    verified = false,
+    editable = true
   }: any) => (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
       <View style={[
         styles.inputContainer,
         multiline && styles.inputContainerMultiline,
-        error && styles.inputContainerError
+        error && styles.inputContainerError,
+        !editable && styles.inputContainerDisabled
       ]}>
         <View style={styles.inputIconContainer}>
           <MaterialIcons name={icon} size={20} color={error ? "#dc2626" : "#8b7355"} />
@@ -228,12 +265,7 @@ export default function EditProfileScreen() {
         <TextInput
           style={[styles.textInput, multiline && styles.textInputMultiline]}
           value={value}
-          onChangeText={(text) => {
-            onChangeText(text);
-            if (error) {
-              setErrors(prev => ({ ...prev, [label.toLowerCase().replace(' ', '')]: undefined }));
-            }
-          }}
+          onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="#a0916d"
           keyboardType={keyboardType}
@@ -241,6 +273,9 @@ export default function EditProfileScreen() {
           numberOfLines={multiline ? 4 : 1}
           maxLength={maxLength}
           textAlignVertical={multiline ? 'top' : 'center'}
+          editable={editable}
+          autoCorrect={false}
+          autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
         />
         {verified && (
           <View style={styles.verifiedBadge}>
@@ -281,7 +316,7 @@ export default function EditProfileScreen() {
           </View>
           
           <Text style={styles.modalSubtitle}>
-            Enter the 6-digit code sent to {phone}
+            Enter the 6-digit code sent to {formData.phone}
           </Text>
           
           <TextInput
@@ -344,12 +379,12 @@ export default function EditProfileScreen() {
               key={index}
               style={[
                 styles.avatarOption,
-                avatar === avatarUrl && styles.avatarOptionSelected
+                formData.avatar === avatarUrl && styles.avatarOptionSelected
               ]}
               onPress={() => handleSelectAvatar(avatarUrl)}
             >
               <Image source={{ uri: avatarUrl }} style={styles.avatarOptionImage} />
-              {avatar === avatarUrl && (
+              {formData.avatar === avatarUrl && (
                 <View style={styles.avatarSelectedBadge}>
                   <MaterialIcons name="check" size={16} color="#fff" />
                 </View>
@@ -392,6 +427,7 @@ export default function EditProfileScreen() {
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
           <Animated.View
             style={[
@@ -407,7 +443,7 @@ export default function EditProfileScreen() {
               <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeAvatar}>
                 <Image
                   source={{ 
-                    uri: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=8b5a3c&color=fff&size=200`
+                    uri: formData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=8b5a3c&color=fff&size=200`
                   }}
                   style={styles.avatar}
                 />
@@ -424,8 +460,8 @@ export default function EditProfileScreen() {
               
               <InputField
                 label="Full Name"
-                value={name}
-                onChangeText={setName}
+                value={formData.name}
+                onChangeText={(text: string) => updateFormData('name', text)}
                 placeholder="Enter your full name"
                 icon="person"
                 error={errors.name}
@@ -448,13 +484,13 @@ export default function EditProfileScreen() {
               
               <InputField
                 label="Phone Number"
-                value={phone}
-                onChangeText={setPhone}
+                value={formData.phone}
+                onChangeText={(text: string) => updateFormData('phone', text)}
                 placeholder="+1 (555) 123-4567"
                 icon="phone"
                 error={errors.phone}
                 keyboardType="phone-pad"
-                rightAction={phone && !isPhoneVerified}
+                rightAction={formData.phone && !isPhoneVerified}
                 rightActionText="Verify"
                 onRightAction={handleSendPhoneVerification}
                 verified={isPhoneVerified}
@@ -462,8 +498,8 @@ export default function EditProfileScreen() {
 
               <InputField
                 label="Location"
-                value={location}
-                onChangeText={setLocation}
+                value={formData.location}
+                onChangeText={(text: string) => updateFormData('location', text)}
                 placeholder="City, Country"
                 icon="location-on"
                 error={errors.location}
@@ -477,8 +513,8 @@ export default function EditProfileScreen() {
               
               <InputField
                 label="Bio"
-                value={bio}
-                onChangeText={setBio}
+                value={formData.bio}
+                onChangeText={(text: string) => updateFormData('bio', text)}
                 placeholder="Tell us about yourself, your interests, and learning goals..."
                 icon="description"
                 error={errors.bio}
@@ -647,6 +683,10 @@ const styles = StyleSheet.create({
     borderColor: "#dc2626",
     backgroundColor: "rgba(220, 38, 38, 0.02)",
   },
+  inputContainerDisabled: {
+    backgroundColor: "#f9f9f9",
+    opacity: 0.6,
+  },
   inputIconContainer: {
     marginRight: 12,
   },
@@ -747,9 +787,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#8b5a3c",
-  },
-  accountSection: {
-    marginBottom: 32,
   },
   // Modal Styles
   modalOverlay: {

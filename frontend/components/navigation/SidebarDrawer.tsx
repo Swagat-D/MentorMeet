@@ -89,7 +89,7 @@ export default function SidebarDrawer({ isOpen, onClose }: SidebarProps) {
     {
       icon: () => <MaterialIcons name="help-outline" size={20} color="#8b5a3c" />,
       title: "Help & Support",
-      route: "/settings/help",
+      route: "/support/help",
     },
   ];
 

@@ -324,18 +324,15 @@ export default function LoginScreen() {
             <View style={styles.socialContainer}>
               {/* Enhanced Google Login Button */}
               <GoogleSignInButton
+                mode="signin"
                 style={{ marginBottom: 16 }}
                 onSuccess={(isNewUser) => {
-                if (isNewUser) {
-                  router.replace("/(onboarding)/welcome");
-                } else {
-                  router.replace("/(tabs)");
-                }
+                  // Navigation is handled inside the component now
                 }}
-                  onError={(error) => {
+                onError={(error) => {
                   setErrors({ general: error });
                 }}
-                  disabled={isLoading}
+                disabled={isLoading}
               />
 
               {/* Biometric Login */}
