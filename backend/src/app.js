@@ -1,4 +1,3 @@
-// backend/app.js - Main Express Application
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

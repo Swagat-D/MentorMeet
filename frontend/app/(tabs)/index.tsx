@@ -1,4 +1,4 @@
-// app/(tabs)/index.tsx - Revolutionary Creative Home Screen with Warm Theme
+// app/(tabs)/index.tsx - Sophisticated Professional Home Screen
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -11,495 +11,395 @@ import {
   Dimensions,
   Animated,
   Easing,
-  ImageBackground,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from 'expo-blur';
 import { useAuthStore } from "@/stores/authStore";
-import { mentors, sessions } from "@/mocks/mentors";
-import { subjects } from "@/constants/subjects";
 import { MaterialIcons } from '@expo/vector-icons';
+import MentorService, { MentorProfile } from "@/services/mentorService";
+import StudentService from "@/services/studentService";
 
-const { width, height } = Dimensions.get('window');
-const isTablet = width >= 768;
+const { width } = Dimensions.get('window');
+
+// Enhanced interfaces for real database integration
+interface StudentProgress {
+  totalSessions: number;
+  completedSessions: number;
+  upcomingSessions: number;
+  totalLearningHours: number;
+  currentStreak: number;
+  longestStreak: number;
+  averageSessionRating: number;
+  completionRate: number;
+  favoriteSubjects: Array<{
+    subject: string;
+    sessionsCount: number;
+    averageRating: number;
+  }>;
+  recentAchievements: Array<{
+    title: string;
+    description: string;
+    earnedAt: string;
+    icon: string;
+  }>;
+  weeklyGoal: {
+    target: number;
+    completed: number;
+    percentage: number;
+  };
+}
+
+interface UpcomingSession {
+  _id: string;
+  mentorName: string;
+  mentorAvatar: string;
+  subject: string;
+  scheduledTime: string;
+  duration: number;
+  sessionType: 'video' | 'audio' | 'chat';
+  status: 'scheduled' | 'confirmed' | 'pending';
+}
+
+interface LearningInsight {
+  type: 'improvement' | 'milestone' | 'recommendation' | 'streak';
+  title: string;
+  description: string;
+  action?: string;
+  actionRoute?: string;
+  icon: string;
+  color: string;
+}
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
+  
+  // State management
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Real data from database
+  const [studentProgress, setStudentProgress] = useState<StudentProgress>({
+    totalSessions: 0,
+    completedSessions: 0,
+    upcomingSessions: 0,
+    totalLearningHours: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    averageSessionRating: 0,
+    completionRate: 0,
+    favoriteSubjects: [],
+    recentAchievements: [],
+    weeklyGoal: { target: 0, completed: 0, percentage: 0 },
+  });
+  
+  const [featuredMentors, setFeaturedMentors] = useState<MentorProfile[]>([]);
+  const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>([]);
+  const [learningInsights, setLearningInsights] = useState<LearningInsight[]>([]);
+  const [trendingSubjects, setTrendingSubjects] = useState<string[]>([]);
   
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideUpAnim = useRef(new Animated.Value(50)).current;
-  const slideDownAnim = useRef(new Animated.Value(-30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const cardStagger = useRef(Array(8).fill(0).map(() => new Animated.Value(0))).current;
+  const slideUpAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
-    // Update time
+    initializeData();
+    
+    // Update time every minute
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     
-    // Main entrance animation
+    // Start animations
+    startAnimations();
+    
+    return () => clearInterval(timer);
+  }, []);
+
+  const initializeData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchStudentProgress(),
+        fetchFeaturedMentors(),
+        fetchUpcomingSessions(),
+        fetchLearningInsights(),
+        fetchTrendingSubjects(),
+      ]);
+    } catch (error) {
+      console.error('Error initializing home data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStudentProgress = async () => {
+    try {
+      const progress = await StudentService.getStudentProgress(user?.id);
+      setStudentProgress(progress);
+    } catch (error) {
+      console.error('Error fetching student progress:', error);
+    }
+  };
+
+  const fetchFeaturedMentors = async () => {
+    try {
+      const mentors = await MentorService.getFeaturedMentors(4);
+      setFeaturedMentors(mentors);
+    } catch (error) {
+      console.error('Error fetching featured mentors:', error);
+    }
+  };
+
+  const fetchUpcomingSessions = async () => {
+    try {
+      const sessions = await StudentService.getUpcomingSessions(user?.id, 3);
+      setUpcomingSessions(sessions);
+    } catch (error) {
+      console.error('Error fetching upcoming sessions:', error);
+    }
+  };
+
+  const fetchLearningInsights = async () => {
+    try {
+      const insights = await StudentService.getLearningInsights(user?.id);
+      setLearningInsights(insights);
+    } catch (error) {
+      console.error('Error fetching learning insights:', error);
+    }
+  };
+
+  const fetchTrendingSubjects = async () => {
+    try {
+      const subjects = await MentorService.getTrendingExpertise(6);
+      setTrendingSubjects(subjects);
+    } catch (error) {
+      console.error('Error fetching trending subjects:', error);
+    }
+  };
+
+  const startAnimations = () => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 600,
         useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
+        easing: Easing.out(Easing.ease),
       }),
       Animated.timing(slideUpAnim, {
         toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.back(1.2)),
-      }),
-      Animated.timing(slideDownAnim, {
-        toValue: 0,
-        duration: 700,
+        duration: 500,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
-        duration: 900,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.back(1.1)),
-      }),
-    ]).start();
-
-    // Staggered card animations
-    const staggeredAnimations = cardStagger.map((anim, index) =>
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 600,
-        delay: index * 100,
+        duration: 500,
         useNativeDriver: true,
         easing: Easing.out(Easing.ease),
-      })
-    );
-    
-    Animated.stagger(80, staggeredAnimations).start();
-
-    // Continuous animations
-    Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 30000,
-        useNativeDriver: true,
-        easing: Easing.linear,
-      })
-    ).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 3000,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ])
-    ).start();
-
-    return () => clearInterval(timer);
-  }, []);
+      }),
+    ]).start();
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await initializeData();
     setRefreshing(false);
   };
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
-    if (hour < 5) return { text: 'Working late', icon: '🌙', time: 'night owl' };
-    if (hour < 12) return { text: 'Good morning', icon: '🌅', time: 'early bird' };
-    if (hour < 17) return { text: 'Good afternoon', icon: '☀️', time: 'go-getter' };
-    if (hour < 21) return { text: 'Good evening', icon: '🌇', time: 'achiever' };
-    return { text: 'Good night', icon: '🌙', time: 'night learner' };
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    if (hour < 21) return 'Good Evening';
+    return 'Good Night';
   };
 
-  const greeting = getGreeting();
-  const firstName = user?.name?.split(' ')[0] || 'Student';
-  
-  const upcomingSessions = sessions.filter(
-    session => new Date(session.date) > new Date()
-  ).slice(0, 2);
+  const getTimeBasedMessage = () => {
+    const hour = currentTime.getHours();
+    if (hour < 9) return "Early bird catches the worm!";
+    if (hour < 12) return "Perfect time for learning!";
+    if (hour < 17) return "Keep the momentum going!";
+    if (hour < 21) return "Evening progress session?";
+    return "Night owl mode activated!";
+  };
 
-  const featuredMentors = mentors.slice(0, 4);
-  const trendingSubjects = subjects.slice(0, 6);
-
-  // Hero stats data
-  const heroStats = [
-    { value: user?.stats?.totalHoursLearned || 42, label: 'Hours', icon: 'schedule', color: '#8b5a3c' },
-    { value: user?.stats?.studyStreak || 7, label: 'Streak', icon: 'local-fire-department', color: '#d97706' },
-    { value: user?.stats?.sessionsCompleted || 24, label: 'Sessions', icon: 'emoji-events', color: '#f59e0b' },
-  ];
-
-  const rotateInterpolate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  const CreativeStatCard = ({ stat, index }: any) => (
-    <Animated.View
-      style={[
-        styles.heroStatCard,
-        {
-          opacity: cardStagger[index],
-          transform: [{
-            translateY: cardStagger[index].interpolate({
-              inputRange: [0, 1],
-              outputRange: [30, 0],
-            })
-          }]
-        }
-      ]}
-    >
-      <LinearGradient
-        colors={['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.15)']}
-        style={styles.heroStatGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <View style={[styles.heroStatIcon, { backgroundColor: `${stat.color}20` }]}>
-          <MaterialIcons name={stat.icon} size={20} color={stat.color} />
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B4513" />
+          <Text style={styles.loadingText}>Loading your dashboard...</Text>
         </View>
-        <Text style={styles.heroStatValue}>{stat.value}</Text>
-        <Text style={styles.heroStatLabel}>{stat.label}</Text>
-      </LinearGradient>
-    </Animated.View>
-  );
-
-  const QuickActionCard = ({ icon, title, description, gradient, onPress, index }: any) => (
-    <Animated.View
-      style={[
-        styles.quickActionCard,
-        {
-          opacity: cardStagger[index + 3],
-          transform: [{
-            scale: cardStagger[index + 3].interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.9, 1],
-            })
-          }]
-        }
-      ]}
-    >
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
-        <LinearGradient
-          colors={gradient}
-          style={styles.quickActionGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.quickActionHeader}>
-            <View style={styles.quickActionIconContainer}>
-              <MaterialIcons name={icon} size={24} color="#fff" />
-            </View>
-            <MaterialIcons name="arrow-forward" size={18} color="rgba(255,255,255,0.8)" />
-          </View>
-          
-          <Text style={styles.quickActionTitle}>{title}</Text>
-          <Text style={styles.quickActionDescription}>{description}</Text>
-          
-          <View style={styles.quickActionFooter}>
-            <View style={styles.quickActionDots}>
-              <View style={styles.quickActionDot} />
-              <View style={styles.quickActionDot} />
-              <View style={styles.quickActionDot} />
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const MentorSpotlightCard = ({ mentor, index }: any) => (
-    <Animated.View
-      style={[
-        styles.mentorSpotlightCard,
-        {
-          opacity: cardStagger[index % 8],
-          transform: [{
-            translateX: cardStagger[index % 8].interpolate({
-              inputRange: [0, 1],
-              outputRange: [50, 0],
-            })
-          }]
-        }
-      ]}
-    >
-      <TouchableOpacity onPress={() => router.push(`/mentor/${mentor.id}`)} activeOpacity={0.9}>
-        <ImageBackground
-          source={{ uri: mentor.avatar }}
-          style={styles.mentorSpotlightImage}
-          imageStyle={styles.mentorSpotlightImageStyle}
-        >
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
-            style={styles.mentorSpotlightOverlay}
-          >
-            <View style={styles.mentorSpotlightBadges}>
-              <View style={styles.mentorRatingBadge}>
-                <MaterialIcons name="star" size={12} color="#FFD700" />
-                <Text style={styles.mentorRatingText}>{mentor.rating}</Text>
-              </View>
-              {mentor.isOnline && (
-                <View style={styles.mentorOnlineBadge}>
-                  <View style={styles.onlinePulse} />
-                  <Text style={styles.mentorOnlineText}>Live</Text>
-                </View>
-              )}
-            </View>
-            
-            <View style={styles.mentorSpotlightInfo}>
-              <Text style={styles.mentorSpotlightName}>{mentor.name}</Text>
-              <Text style={styles.mentorSpotlightTitle} numberOfLines={2}>{mentor.title}</Text>
-              
-              <View style={styles.mentorSpotlightMeta}>
-                <Text style={styles.mentorSpotlightPrice}>
-                  ${Math.min(...mentor.sessionTypes.map((s: any) => s.price))}/hr
-                </Text>
-                <View style={styles.mentorSpotlightStudents}>
-                  <MaterialIcons name="people" size={12} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.mentorStudentsText}>{mentor.stats.totalStudents}</Text>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
-        </ImageBackground>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const SessionPreviewCard = ({ session, index }: any) => (
-    <Animated.View
-      style={[
-        styles.sessionPreviewCard,
-        {
-          opacity: cardStagger[index % 8],
-          transform: [{
-            translateY: cardStagger[index % 8].interpolate({
-              inputRange: [0, 1],
-              outputRange: [40, 0],
-            })
-          }]
-        }
-      ]}
-    >
-      <TouchableOpacity onPress={() => router.push(`/session/${session.id}`)} activeOpacity={0.9}>
-        <LinearGradient
-          colors={['rgba(255, 255, 255, 0.95)', 'rgba(248, 246, 240, 0.9)']}
-          style={styles.sessionPreviewGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.sessionPreviewHeader}>
-            <Image source={{ uri: session.mentor.avatar }} style={styles.sessionMentorAvatar} />
-            <View style={styles.sessionPreviewInfo}>
-              <Text style={styles.sessionMentorName}>{session.mentor.name}</Text>
-              <Text style={styles.sessionSubjectName}>{session.subject}</Text>
-            </View>
-            <View style={styles.sessionJoinButton}>
-              <MaterialIcons name="videocam" size={16} color="#8b5a3c" />
-            </View>
-          </View>
-          
-          <View style={styles.sessionPreviewDetails}>
-            <View style={styles.sessionTimeContainer}>
-              <MaterialIcons name="schedule" size={14} color="#8b7355" />
-              <Text style={styles.sessionTimeText}>
-                {new Date(session.date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </Text>
-            </View>
-            
-            <View style={styles.sessionProgressBar}>
-              <View style={styles.sessionProgressFill} />
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const SubjectPillCard = ({ subject, index }: any) => (
-    <Animated.View
-      style={[
-        styles.subjectPill,
-        {
-          opacity: cardStagger[index % 8],
-          transform: [{
-            scale: cardStagger[index % 8].interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.8, 1],
-            })
-          }]
-        }
-      ]}
-    >
-      <TouchableOpacity 
-        onPress={() => router.push('/(tabs)/search')} 
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={['rgba(139, 90, 60, 0.15)', 'rgba(217, 119, 6, 0.1)']}
-          style={styles.subjectPillGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.subjectPillText}>{subject}</Text>
-          <MaterialIcons name="trending-up" size={14} color="#8b5a3c" />
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={["right", "left"]}>
-      {/* Dynamic Background with Patterns */}
-      <LinearGradient
-        colors={['#fefbf3', '#f8f6f0', '#f1f0ec']}
-        style={styles.background}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      
-      {/* Floating Decorative Elements */}
-      <Animated.View style={[styles.floatingShape1, { transform: [{ rotate: rotateInterpolate }] }]} />
-      <Animated.View style={[styles.floatingShape2, { transform: [{ scale: pulseAnim }] }]} />
-      <Animated.View style={[styles.floatingShape3, { transform: [{ rotate: rotateInterpolate }] }]} />
-
+    <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#8B4513']}
+            tintColor="#8B4513"
+          />
         }
       >
-        {/* Hero Section */}
+        {/* Professional Header */}
         <Animated.View
           style={[
-            styles.heroSection,
+            styles.headerSection,
             {
               opacity: fadeAnim,
-              transform: [{ translateY: slideDownAnim }, { scale: scaleAnim }],
+              transform: [{ translateY: slideUpAnim }],
             },
           ]}
         >
-          <LinearGradient
-            colors={['rgba(139, 90, 60, 0.95)', 'rgba(217, 119, 6, 0.9)', 'rgba(245, 158, 11, 0.85)']}
-            style={styles.heroGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            {/* Hero Header */}
-            <View style={styles.heroHeader}>
-              <View style={styles.heroGreeting}>
-                <Text style={styles.heroGreetingEmoji}>{greeting.icon}</Text>
-                <View>
-                  <Text style={styles.heroGreetingText}>{greeting.text}</Text>
-                  <Text style={styles.heroUserName}>{firstName}</Text>
-                  <Text style={styles.heroTimeText}>You're a {greeting.time}!</Text>
-                </View>
-              </View>
-              
-              <TouchableOpacity style={styles.heroProfileContainer} onPress={() => router.push('/(tabs)/profile')}>
-                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                  <Image
-                    source={{
-                      uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200"
-                    }}
-                    style={styles.heroProfileImage}
-                  />
-                  <View style={styles.heroProfileBadge}>
-                    <MaterialIcons name="auto-awesome" size={12} color="#f59e0b" />
-                  </View>
-                </Animated.View>
-              </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <View style={styles.greetingSection}>
+              <Text style={styles.greetingText}>{getGreeting()}</Text>
+              <Text style={styles.userName}>{user?.name || 'Student'}</Text>
+              <Text style={styles.motivationText}>{getTimeBasedMessage()}</Text>
             </View>
-
-            {/* Hero Stats */}
-            <View style={styles.heroStatsContainer}>
-              {heroStats.map((stat, index) => (
-                <CreativeStatCard key={index} stat={stat} index={index} />
-              ))}
-            </View>
-
-            {/* Hero CTA */}
-            <Animated.View
-              style={[
-                styles.heroCTA,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideUpAnim }],
-                },
-              ]}
+            
+            <TouchableOpacity 
+              style={styles.profileSection}
+              onPress={() => router.push('/(tabs)/profile')}
             >
-              <Text style={styles.heroCTAText}>Ready to level up today?</Text>
-              <TouchableOpacity 
-                style={styles.heroCTAButton}
-                onPress={() => router.push('/(tabs)/search')}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.heroCTAButtonText}>Find Your Mentor</Text>
-                <MaterialIcons name="rocket-launch" size={18} color="#8b5a3c" />
-              </TouchableOpacity>
-            </Animated.View>
-          </LinearGradient>
+              <Image
+                source={{
+                  uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=face"
+                }}
+                style={styles.profileAvatar}
+              />
+              <View style={styles.streakBadge}>
+                <MaterialIcons name="local-fire-department" size={14} color="#FF6B35" />
+                <Text style={styles.streakText}>{studentProgress.currentStreak}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
-        {/* Quick Actions Section */}
-        <View style={styles.quickActionsSection}>
+        {/* Dynamic Progress Overview */}
+        <Animated.View
+          style={[
+            styles.progressSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <Text style={styles.sectionTitle}>Your Learning Journey</Text>
+          
+          <View style={styles.progressGrid}>
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <MaterialIcons name="schedule" size={24} color="#8B4513" />
+                <Text style={styles.progressValue}>{studentProgress.totalLearningHours}h</Text>
+              </View>
+              <Text style={styles.progressLabel}>Total Learning</Text>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { width: `${Math.min((studentProgress.totalLearningHours / 100) * 100, 100)}%` }
+                  ]} 
+                />
+              </View>
+            </View>
+
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <MaterialIcons name="school" size={24} color="#D4AF37" />
+                <Text style={styles.progressValue}>{studentProgress.completedSessions}</Text>
+              </View>
+              <Text style={styles.progressLabel}>Sessions Done</Text>
+              <Text style={styles.progressSubtext}>
+                {studentProgress.completionRate}% completion rate
+              </Text>
+            </View>
+
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <MaterialIcons name="trending-up" size={24} color="#10B981" />
+                <Text style={styles.progressValue}>{studentProgress.currentStreak}</Text>
+              </View>
+              <Text style={styles.progressLabel}>Day Streak</Text>
+              <Text style={styles.progressSubtext}>
+                Best: {studentProgress.longestStreak} days
+              </Text>
+            </View>
+
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <MaterialIcons name="star" size={24} color="#F59E0B" />
+                <Text style={styles.progressValue}>{studentProgress.averageSessionRating.toFixed(1)}</Text>
+              </View>
+              <Text style={styles.progressLabel}>Avg Rating</Text>
+              <View style={styles.starsContainer}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <MaterialIcons
+                    key={star}
+                    name="star"
+                    size={12}
+                    color={star <= Math.round(studentProgress.averageSessionRating) ? "#F59E0B" : "#E5E7EB"}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Quick Actions - Refined */}
+        <View style={styles.actionsSection}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActionsGrid}>
-            <QuickActionCard
-              icon="search"
-              title="Discover"
-              description="Find perfect mentors"
-              gradient={['rgba(139, 90, 60, 0.9)', 'rgba(93, 78, 55, 0.8)']}
+          
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity 
+              style={styles.actionCard}
               onPress={() => router.push('/(tabs)/search')}
-              index={0}
-            />
-            <QuickActionCard
-              icon="event"
-              title="Schedule"
-              description="Book your session"
-              gradient={['rgba(217, 119, 6, 0.9)', 'rgba(245, 158, 11, 0.8)']}
+            >
+              <View style={styles.actionIcon}>
+                <MaterialIcons name="search" size={24} color="#8B4513" />
+              </View>
+              <Text style={styles.actionTitle}>Find Mentors</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.actionCard}
               onPress={() => router.push('/booking')}
-              index={1}
-            />
-            <QuickActionCard
-              icon="trending-up"
-              title="Progress"
-              description="Track your growth"
-              gradient={['rgba(245, 158, 11, 0.9)', 'rgba(251, 191, 36, 0.8)']}
+            >
+              <View style={styles.actionIcon}>
+                <MaterialIcons name="event" size={24} color="#8B4513" />
+              </View>
+              <Text style={styles.actionTitle}>Book Session</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.actionCard}
+              onPress={() => router.push('/(tabs)/sessions')}
+            >
+              <View style={styles.actionIcon}>
+                <MaterialIcons name="video-call" size={24} color="#8B4513" />
+              </View>
+              <Text style={styles.actionTitle}>My Sessions</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.actionCard}
               onPress={() => router.push('/progress')}
-              index={2}
-            />
-            <QuickActionCard
-              icon="bookmark"
-              title="Saved"
-              description="Your favorites"
-              gradient={['rgba(5, 150, 105, 0.9)', 'rgba(16, 185, 129, 0.8)']}
-              onPress={() => router.push('/favorites')}
-              index={3}
-            />
+            >
+              <View style={styles.actionIcon}>
+                <MaterialIcons name="analytics" size={24} color="#8B4513" />
+              </View>
+              <Text style={styles.actionTitle}>Progress</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -513,73 +413,137 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.sessionsList}>
-              {upcomingSessions.map((session, index) => (
-                <SessionPreviewCard key={session.id} session={session} index={index} />
+            {upcomingSessions.map((session, index) => (
+              <View key={session._id} style={styles.sessionCard}>
+                <Image source={{ uri: session.mentorAvatar }} style={styles.sessionMentorAvatar} />
+                
+                <View style={styles.sessionInfo}>
+                  <Text style={styles.sessionMentorName}>{session.mentorName}</Text>
+                  <Text style={styles.sessionSubject}>{session.subject}</Text>
+                  <Text style={styles.sessionTime}>
+                    {new Date(session.scheduledTime).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Text>
+                </View>
+                
+                <View style={styles.sessionActions}>
+                  <View style={[styles.sessionStatus, { backgroundColor: getStatusColor(session.status) }]}>
+                    <Text style={styles.sessionStatusText}>{session.status}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.joinButton}>
+                    <MaterialIcons name="videocam" size={20} color="#8B4513" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Learning Insights */}
+        {learningInsights.length > 0 && (
+          <View style={styles.insightsSection}>
+            <Text style={styles.sectionTitle}>Learning Insights</Text>
+            
+            {learningInsights.map((insight, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={styles.insightCard}
+                onPress={() => insight.actionRoute && router.push(insight.actionRoute)}
+              >
+                <View style={[styles.insightIcon, { backgroundColor: `${insight.color}15` }]}>
+                  <MaterialIcons name={insight.icon as any} size={24} color={insight.color} />
+                </View>
+                
+                <View style={styles.insightContent}>
+                  <Text style={styles.insightTitle}>{insight.title}</Text>
+                  <Text style={styles.insightDescription}>{insight.description}</Text>
+                  {insight.action && (
+                    <Text style={styles.insightAction}>{insight.action}</Text>
+                  )}
+                </View>
+                
+                {insight.actionRoute && (
+                  <MaterialIcons name="arrow-forward-ios" size={16} color="#8B7355" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Featured Mentors */}
+        {featuredMentors.length > 0 && (
+          <View style={styles.mentorsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Featured Mentors</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
+                <Text style={styles.sectionLink}>View All</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.mentorsScroll}
+            >
+              {featuredMentors.map((mentor, index) => (
+                <TouchableOpacity 
+                  key={mentor._id} 
+                  style={styles.mentorCard}
+                  onPress={() => router.push(`/mentor/${mentor._id}`)}
+                >
+                  <Image source={{ uri: mentor.profileImage }} style={styles.mentorAvatar} />
+                  
+                  <Text style={styles.mentorName}>{mentor.displayName}</Text>
+                  <Text style={styles.mentorExpertise}>
+                    {mentor.expertise.slice(0, 2).join(', ')}
+                  </Text>
+                  
+                  <View style={styles.mentorMeta}>
+                    <View style={styles.mentorRating}>
+                      <MaterialIcons name="star" size={14} color="#F59E0B" />
+                      <Text style={styles.mentorRatingText}>{mentor.rating?.toFixed(1) || '5.0'}</Text>
+                    </View>
+                    
+                    {mentor.pricing?.hourlyRate && (
+                      <Text style={styles.mentorPrice}>${mentor.pricing.hourlyRate}/hr</Text>
+                    )}
+                  </View>
+                  
+                  {mentor.isOnline && (
+                    <View style={styles.onlineIndicator}>
+                      <View style={styles.onlineDot} />
+                      <Text style={styles.onlineText}>Online</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Trending Subjects */}
+        {trendingSubjects.length > 0 && (
+          <View style={styles.subjectsSection}>
+            <Text style={styles.sectionTitle}>Trending Subjects</Text>
+            
+            <View style={styles.subjectsGrid}>
+              {trendingSubjects.map((subject, index) => (
+                <TouchableOpacity 
+                  key={subject} 
+                  style={styles.subjectChip}
+                  onPress={() => router.push(`/(tabs)/search?subject=${encodeURIComponent(subject)}`)}
+                >
+                  <Text style={styles.subjectText}>{subject}</Text>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
         )}
-
-        {/* Mentor Spotlight */}
-        <View style={styles.mentorSpotlightSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Mentors</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
-              <Text style={styles.sectionLink}>Explore</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.mentorSpotlightScroll}
-          >
-            {featuredMentors.map((mentor, index) => (
-              <MentorSpotlightCard key={mentor.id} mentor={mentor} index={index} />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Trending Subjects */}
-        <View style={styles.trendingSection}>
-          <Text style={styles.sectionTitle}>Trending Topics</Text>
-          <View style={styles.trendingGrid}>
-            {trendingSubjects.map((subject, index) => (
-              <SubjectPillCard key={subject} subject={subject} index={index} />
-            ))}
-          </View>
-        </View>
-
-        {/* Motivation Quote */}
-        <Animated.View
-          style={[
-            styles.motivationSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['rgba(139, 90, 60, 0.1)', 'rgba(217, 119, 6, 0.05)']}
-            style={styles.motivationCard}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <MaterialIcons name="format-quote" size={32} color="rgba(139, 90, 60, 0.6)" />
-            <Text style={styles.motivationText}>
-              "Education is the most powerful weapon which you can use to change the world."
-            </Text>
-            <Text style={styles.motivationAuthor}>- Nelson Mandela</Text>
-            
-            <View style={styles.motivationDecor}>
-              <View style={styles.motivationDot} />
-              <View style={styles.motivationLine} />
-              <View style={styles.motivationDot} />
-            </View>
-          </LinearGradient>
-        </Animated.View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -587,176 +551,200 @@ export default function HomeScreen() {
   );
 }
 
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'confirmed': return '#10B981';
+    case 'scheduled': return '#F59E0B';
+    case 'pending': return '#EF4444';
+    default: return '#6B7280';
+  }
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8F3EE',
   },
-  background: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  floatingShape1: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(139, 90, 60, 0.05)',
-    top: height * 0.1,
-    right: -40,
-  },
-  floatingShape2: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(217, 119, 6, 0.08)',
-    top: height * 0.5,
-    left: -30,
-  },
-  floatingShape3: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(245, 158, 11, 0.06)',
-    bottom: height * 0.2,
-    right: width * 0.1,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#8B7355',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
   },
-  heroSection: {
-    margin: 20,
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 15,
+
+  // Header Section
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
-  heroGradient: {
-    padding: 24,
-    minHeight: 240,
-  },
-  heroHeader: {
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 24,
   },
-  heroGreeting: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  greetingSection: {
     flex: 1,
   },
-  heroGreetingEmoji: {
-    fontSize: 40,
-    marginRight: 16,
-  },
-  heroGreetingText: {
+  greetingText: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#8B7355',
     fontWeight: '500',
   },
-  heroUserName: {
-    fontSize: 24,
-    color: '#fff',
+  userName: {
+    fontSize: 28,
     fontWeight: 'bold',
-    marginTop: 2,
+    color: '#2A2A2A',
+    marginTop: 4,
+    marginBottom: 4,
   },
-  heroTimeText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+  motivationText: {
+    fontSize: 14,
+    color: '#8B7355',
     fontStyle: 'italic',
-    marginTop: 2,
   },
-  heroProfileContainer: {
+  profileSection: {
+    alignItems: 'center',
     position: 'relative',
   },
-  heroProfileImage: {
+  profileAvatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+    borderColor: '#D1C4B8',
   },
-  heroProfileBadge: {
+  streakBadge: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: '#fff',
+    bottom: -4,
+    right: -4,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 4,
-  },
-  heroStatsContainer: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+  },
+  streakText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+    marginLeft: 2,
+  },
+
+  // Progress Section
+  progressSection: {
+    paddingHorizontal: 20,
     marginBottom: 24,
   },
-  heroStatCard: {
-    flex: 1,
-    marginHorizontal: 4,
-    borderRadius: 16,
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+    marginBottom: 16,
+  },
+  progressGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  progressCard: {
+    width: (width - 60) / 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+  },
+  progressLabel: {
+    fontSize: 14,
+    color: '#8B7355',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  progressSubtext: {
+    fontSize: 12,
+    color: '#8B7355',
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#E8DDD1',
+    borderRadius: 2,
     overflow: 'hidden',
   },
-  heroStatGradient: {
-    padding: 12,
-    alignItems: 'center',
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#8B4513',
+    borderRadius: 2,
   },
-  heroStatIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+
+  // Actions Section
+  actionsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+  },
+  actionCard: {
+    width: (width - 80) / 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+    marginBottom: 8,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F8F3EE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
-  heroStatValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  heroStatLabel: {
-    fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-  heroCTA: {
-    alignItems: 'center',
-  },
-  heroCTAText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: 12,
+  actionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2A2A2A',
     textAlign: 'center',
   },
-  heroCTAButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+
+  // Sessions Section
+  sessionsSection: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  heroCTAButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8b5a3c',
-    marginRight: 8,
-  },
-  quickActionsSection: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#4a3728',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -766,328 +754,218 @@ const styles = StyleSheet.create({
   },
   sectionLink: {
     fontSize: 14,
-    color: '#8b5a3c',
+    color: '#8B4513',
     fontWeight: '600',
   },
-  quickActionsGrid: {
+  sessionCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  quickActionCard: {
-    width: (width - 60) / 2,
-    marginBottom: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  quickActionGradient: {
-    padding: 20,
-    minHeight: 120,
-  },
-  quickActionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  quickActionIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  quickActionDescription: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 12,
-  },
-  quickActionFooter: {
-    alignItems: 'flex-start',
-  },
-  quickActionDots: {
-    flexDirection: 'row',
-  },
-  quickActionDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    marginRight: 4,
-  },
-  sessionsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  sessionsList: {
-    gap: 12,
-  },
-  sessionPreviewCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  sessionPreviewGradient: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
-  },
-  sessionPreviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+    alignItems: 'center',
   },
   sessionMentorAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     marginRight: 12,
   },
-  sessionPreviewInfo: {
+  sessionInfo: {
     flex: 1,
   },
   sessionMentorName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#4a3728',
+    color: '#2A2A2A',
     marginBottom: 2,
   },
-  sessionSubjectName: {
+  sessionSubject: {
     fontSize: 14,
-    color: '#8b5a3c',
+    color: '#8B4513',
     fontWeight: '500',
+    marginBottom: 2,
   },
-  sessionJoinButton: {
+  sessionTime: {
+    fontSize: 12,
+    color: '#8B7355',
+  },
+  sessionActions: {
+    alignItems: 'flex-end',
+  },
+  sessionStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  sessionStatusText: {
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  joinButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(139, 90, 60, 0.1)',
+    backgroundColor: '#F8F3EE',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
-  sessionPreviewDetails: {
-    gap: 8,
-  },
-  sessionTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sessionTimeText: {
-    fontSize: 12,
-    color: '#8b7355',
-    marginLeft: 6,
-    fontWeight: '500',
-  },
-  sessionProgressBar: {
-    height: 4,
-    backgroundColor: 'rgba(139, 90, 60, 0.2)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  sessionProgressFill: {
-    width: '30%',
-    height: '100%',
-    backgroundColor: '#8b5a3c',
-    borderRadius: 2,
-  },
-  mentorSpotlightSection: {
+
+  // Insights Section
+  insightsSection: {
+    paddingHorizontal: 20,
     marginBottom: 24,
   },
-  mentorSpotlightScroll: {
+  insightCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+    alignItems: 'center',
+  },
+  insightIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  insightContent: {
+    flex: 1,
+  },
+  insightTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+    marginBottom: 4,
+  },
+  insightDescription: {
+    fontSize: 14,
+    color: '#8B7355',
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  insightAction: {
+    fontSize: 12,
+    color: '#8B4513',
+    fontWeight: '600',
+  },
+
+  // Mentors Section
+  mentorsSection: {
+    marginBottom: 24,
+  },
+  mentorsScroll: {
     paddingHorizontal: 20,
   },
-  mentorSpotlightCard: {
-    width: 200,
-    height: 280,
-    marginRight: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  mentorSpotlightImage: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'space-between',
-  },
-  mentorSpotlightImageStyle: {
-    borderRadius: 20,
-  },
-  mentorSpotlightOverlay: {
-    flex: 1,
+  mentorCard: {
+    width: 140,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
-    justifyContent: 'space-between',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
+    alignItems: 'center',
   },
-  mentorSpotlightBadges: {
+  mentorAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginBottom: 12,
+  },
+  mentorName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  mentorExpertise: {
+    fontSize: 12,
+    color: '#8B7355',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  mentorMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 8,
   },
-  mentorRatingBadge: {
+  mentorRating: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
   },
   mentorRatingText: {
     fontSize: 12,
-    color: '#fff',
-    marginLeft: 4,
     fontWeight: '600',
+    color: '#2A2A2A',
+    marginLeft: 4,
   },
-  mentorOnlineBadge: {
+  mentorPrice: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B4513',
+  },
+  onlineIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    backgroundColor: '#10B981',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  onlinePulse: {
+  onlineDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     marginRight: 4,
   },
-  mentorOnlineText: {
+  onlineText: {
     fontSize: 10,
-    color: '#fff',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
-  mentorSpotlightInfo: {
-    alignItems: 'flex-start',
-  },
-  mentorSpotlightName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  mentorSpotlightTitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    lineHeight: 16,
-    marginBottom: 12,
-  },
-  mentorSpotlightMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-  },
-  mentorSpotlightPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  mentorSpotlightStudents: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  mentorStudentsText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  trendingSection: {
+
+  // Subjects Section
+  subjectsSection: {
     paddingHorizontal: 20,
     marginBottom: 24,
   },
-  trendingGrid: {
+  subjectsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  subjectPill: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  subjectPillGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  subjectPillText: {
-    fontSize: 13,
-    color: '#8b5a3c',
-    fontWeight: '600',
-  },
-  motivationSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  motivationCard: {
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
+  subjectChip: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(139, 90, 60, 0.1)',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    borderColor: '#D1C4B8',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  motivationText: {
-    fontSize: 16,
-    color: '#4a3728',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    lineHeight: 24,
-    marginVertical: 16,
+  subjectText: {
+    fontSize: 14,
+    color: '#8B4513',
     fontWeight: '500',
   },
-  motivationAuthor: {
-    fontSize: 14,
-    color: '#8b7355',
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  motivationDecor: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  motivationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(139, 90, 60, 0.4)',
-  },
-  motivationLine: {
-    width: 40,
-    height: 1,
-    backgroundColor: 'rgba(139, 90, 60, 0.3)',
-  },
+
   bottomPadding: {
-    height: 120,
+    height: 100,
   },
 });

@@ -1,4 +1,4 @@
-// app/profile/personal-info.tsx - Enhanced Creative Personal Information Screen
+// app/profile/personal-info.tsx - Updated with Dynamic API Service
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -10,17 +10,17 @@ import {
   Alert,
   Animated,
   Easing,
-  ImageBackground,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore, TokenManager } from "@/stores/authStore";
 import { MaterialIcons } from '@expo/vector-icons';
+import ApiService from "@/services/api"; // Updated import
 
 const { width } = Dimensions.get('window');
 
-// Enhanced options with better descriptions and emojis
+// ... (all the existing options remain the same)
 const genderOptions = [
   { 
     id: 'male', 
@@ -126,7 +126,6 @@ const studyLevels = [
   },
 ];
 
-// Enhanced timezones with better organization
 const timezoneGroups = {
   'Popular': [
     { id: 'UTC+05:30', label: 'India Standard Time (IST)', flag: '🇮🇳' },
@@ -274,26 +273,14 @@ export default function PersonalInfoScreen() {
         timezone: selectedTimezone,
       };
 
-      const API_BASE_URL = __DEV__ 
-        ? 'http://192.168.131.210:5000'
-        : 'https://your-production-api.com';
-
       console.log('🔄 Updating personal info with data:', updateData);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      const result = await response.json();
+      // Use the new ApiService with dynamic endpoint discovery
+      const result = await ApiService.put('UPDATE_PROFILE', updateData);
       
       console.log('📋 Personal info update response:', result);
 
-      if (response.ok && result.success) {
+      if (result.success) {
         if (result.data && result.data.user) {
           await updateProfile(result.data.user);
         }
@@ -326,10 +313,20 @@ export default function PersonalInfoScreen() {
     } catch (error: any) {
       console.error('💥 Personal info update error:', error);
       
-      if (error.name === 'TypeError' && error.message.includes('Network request failed')) {
+      if (error.message.includes('Network error') || error.message.includes('timeout')) {
         Alert.alert(
-          "Network Error", 
-          "Please check your internet connection and try again."
+          "Connection Error", 
+          "Could not connect to the server. Please check your connection settings and try again.",
+          [
+            {
+              text: "Check Settings",
+              onPress: () => router.push('/settings/connection'),
+            },
+            {
+              text: "Try Again",
+              onPress: handleSave,
+            },
+          ]
         );
       } else {
         Alert.alert(
@@ -353,6 +350,7 @@ export default function PersonalInfoScreen() {
     outputRange: [0, 12],
   });
 
+  // ... (all the existing component functions remain the same)
   const CreativeSection = ({ title, emoji, children, error }: any) => (
     <Animated.View
       style={[
@@ -392,6 +390,7 @@ export default function PersonalInfoScreen() {
     </Animated.View>
   );
 
+  // ... (all other component functions remain the same - GenderCard, AgeCard, StudyLevelCard, TimezoneGroup)
   const GenderCard = ({ option, isSelected, onSelect }: any) => (
     <TouchableOpacity
       style={[

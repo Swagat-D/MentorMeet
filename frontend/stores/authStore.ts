@@ -1,8 +1,8 @@
-// stores/authStore.ts - Enhanced with Better Google Authentication
+// stores/authStore.ts - Updated with Dynamic API Service
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiService, API_ENDPOINTS } from '../services/api';
+import ApiService from '../services/api'; // Updated import
 import { Alert } from 'react-native';
 
 // Types
@@ -58,6 +58,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isOnboarded: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   
   // Actions
   register: (data: RegisterData) => Promise<void>;
@@ -70,6 +71,7 @@ interface AuthState {
   updateProfile: (data: Partial<User>) => Promise<void>;
   completeOnboarding: (interests?: string[], goals?: string[]) => Promise<void>;
   checkAuthStatus: () => Promise<void>;
+  initializeAuth: () => Promise<void>;
   clearAuth: () => void;
   authenticateWithGoogleToken: (googleToken: string) => Promise<GoogleAuthResponse>;
   unlinkGoogleAccount: (password: string) => Promise<any>;
@@ -97,6 +99,15 @@ export const TokenManager = {
     }
   },
 
+  async getRefreshToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem('refresh_token');
+    } catch (error) {
+      console.error('Error getting refresh token:', error);
+      return null;
+    }
+  },
+
   async clearTokens(): Promise<void> {
     try {
       await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
@@ -114,6 +125,40 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isOnboarded: false,
       isLoading: false,
+      isInitialized: false,
+
+      // Initialize authentication state
+      initializeAuth: async () => {
+        try {
+          console.log('🔐 Initializing authentication...');
+          
+          const token = await TokenManager.getAccessToken();
+          if (!token) {
+            console.log('👤 No access token found, user not authenticated');
+            set({ 
+              isAuthenticated: false, 
+              user: null, 
+              isOnboarded: false,
+              isInitialized: true 
+            });
+            return;
+          }
+
+          // Check if token is still valid by calling auth check
+          await get().checkAuthStatus();
+          
+          set({ isInitialized: true });
+          console.log('✅ Authentication initialized');
+        } catch (error) {
+          console.error('❌ Auth initialization error:', error);
+          set({ 
+            isAuthenticated: false, 
+            user: null, 
+            isOnboarded: false,
+            isInitialized: true 
+          });
+        }
+      },
 
       // Register action
       register: async (data: RegisterData) => {
@@ -121,7 +166,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('🔐 Registering user:', data.email);
           
-          const response = await ApiService.post(API_ENDPOINTS.REGISTER, data);
+          const response = await ApiService.post('REGISTER', data);
           
           if (response.success) {
             console.log('✅ Registration successful');
@@ -129,9 +174,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Registration failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Registration error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -142,7 +193,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('🔐 Logging in user:', email);
           
-          const response = await ApiService.post(API_ENDPOINTS.LOGIN, {
+          const response = await ApiService.post('LOGIN', {
             email,
             password,
           });
@@ -166,83 +217,65 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Login failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Login error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
 
-      // Enhanced Google Authentication with better error handling
+      // Enhanced Google Authentication with dynamic API service
       authenticateWithGoogleToken: async (googleToken: string): Promise<GoogleAuthResponse> => {
         try {
           set({ isLoading: true });
           
           console.log('🔄 Sending Google token to backend...');
           
-          const response = await fetch(API_ENDPOINTS.AUTHENTICATION_WITH_GOOGLETOKEN, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ token: googleToken }),
+          const response = await ApiService.post('AUTHENTICATION_WITH_GOOGLETOKEN', {
+            token: googleToken
           });
           
-          const data = await response.json();
+          console.log('📋 Google auth response:', response);
           
-          console.log('📋 Backend response status:', response.status);
-          console.log('📋 Backend response data:', data);
-          
-          if (!response.ok) {
-            // Handle different error scenarios
-            if (response.status === 400) {
-              if (data.message?.includes('Invalid Google token')) {
-                throw new Error('Invalid Google authentication. Please try again.');
-              } else if (data.message?.includes('Email not provided')) {
-                throw new Error('Google account must have an email address.');
-              } else {
-                throw new Error(data.message || 'Authentication failed');
-              }
-            } else if (response.status === 500) {
-              throw new Error('Server error. Please try again later.');
-            } else {
-              throw new Error(data.message || 'Google sign-in failed');
-            }
-          }
-          
-          if (data.success && data.data) {
+          if (response.success && response.data) {
             // Store tokens
             await TokenManager.setTokens(
-              data.data.tokens.accessToken,
-              data.data.tokens.refreshToken
+              response.data.tokens.accessToken,
+              response.data.tokens.refreshToken
             );
             
             // Update state
             set({
-              user: data.data.user,
+              user: response.data.user,
               isAuthenticated: true,
-              isOnboarded: data.data.user.isOnboarded || false,
+              isOnboarded: response.data.user.isOnboarded || false,
               isLoading: false,
             });
             
             console.log('✅ Google authentication successful');
             console.log('👤 User info:', {
-              id: data.data.user.id,
-              email: data.data.user.email,
-              name: data.data.user.name,
-              isNewUser: data.isNewUser,
-              isOnboarded: data.data.user.isOnboarded,
+              id: response.data.user.id,
+              email: response.data.user.email,
+              name: response.data.user.name,
+              isNewUser: response.isNewUser,
+              isOnboarded: response.data.user.isOnboarded,
             });
             
             return {
               success: true,
-              message: data.message,
-              data: data.data,
-              isNewUser: data.isNewUser,
-              requiresOnboarding: !data.data.user.isOnboarded,
+              message: response.message,
+              data: response.data,
+              isNewUser: response.isNewUser,
+              requiresOnboarding: !response.data.user.isOnboarded,
             };
           } else {
-            throw new Error(data.message || 'Google authentication failed');
+            throw new Error(response.message || 'Google authentication failed');
           }
           
         } catch (error: any) {
@@ -253,8 +286,8 @@ export const useAuthStore = create<AuthState>()(
           let userMessage = 'Google sign-in failed. Please try again.';
           
           if (error.message) {
-            if (error.message.includes('Network request failed')) {
-              userMessage = 'Network error. Please check your internet connection.';
+            if (error.message.includes('Network error') || error.message.includes('timeout')) {
+              userMessage = 'Network error. Please check your internet connection and try again.';
             } else if (error.message.includes('Invalid Google')) {
               userMessage = 'Google authentication failed. Please try signing in again.';
             } else if (error.message.includes('Server error')) {
@@ -271,22 +304,9 @@ export const useAuthStore = create<AuthState>()(
       // Unlink Google account
       unlinkGoogleAccount: async (password: string) => {
         try {
-          const token = await TokenManager.getAccessToken();
-          
-          const response = await fetch(API_ENDPOINTS.UNLINK_GOOGLEACCOUNT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({ password }),
+          const response = await ApiService.post('UNLINK_GOOGLEACCOUNT', {
+            password
           });
-          
-          const data = await response.json();
-          
-          if (!response.ok) {
-            throw new Error(data.message || 'Failed to unlink Google account');
-          }
           
           const currentUser = get().user;
           if (currentUser) {
@@ -299,7 +319,7 @@ export const useAuthStore = create<AuthState>()(
             });
           }
           
-          return data;
+          return response;
           
         } catch (error: any) {
           console.error('Unlink Google error:', error);
@@ -313,7 +333,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('📧 Verifying email:', email);
           
-          const response = await ApiService.post(API_ENDPOINTS.VERIFY_EMAIL, {
+          const response = await ApiService.post('VERIFY_EMAIL', {
             email,
             otp,
           });
@@ -337,9 +357,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Email verification failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Email verification error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -350,7 +376,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('📧 Resending OTP to:', email);
           
-          const response = await ApiService.post(API_ENDPOINTS.RESEND_OTP, {
+          const response = await ApiService.post('RESEND_OTP', {
             email,
           });
 
@@ -361,9 +387,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Failed to resend OTP');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Resend OTP error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -374,7 +406,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('🔑 Requesting password reset for:', email);
           
-          const response = await ApiService.post(API_ENDPOINTS.FORGOT_PASSWORD, {
+          const response = await ApiService.post('FORGOT_PASSWORD', {
             email,
           });
 
@@ -385,9 +417,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Failed to send reset email');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Forgot password error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -395,27 +433,21 @@ export const useAuthStore = create<AuthState>()(
       // Reset password action
       resetPassword: async (email: string, otp: string, newPassword: string) => {
         try {
-          const response = await fetch(API_ENDPOINTS.RESET_PASSWORD, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email,
-              otp,
-              newPassword,
-            }),
+          const response = await ApiService.post('RESET_PASSWORD', {
+            email,
+            otp,
+            newPassword,
           });
 
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.message || 'Password reset failed');
-          }
-
-          return data;
+          return response;
         } catch (error: any) {
           console.error('Reset password error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw new Error(error.message || 'Password reset failed');
         }
       },
@@ -426,7 +458,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('👤 Updating profile');
           
-          const response = await ApiService.put(API_ENDPOINTS.UPDATE_PROFILE, data);
+          const response = await ApiService.put('UPDATE_PROFILE', data);
 
           if (response.success && response.data) {
             const { user: updatedUser } = response.data;
@@ -440,9 +472,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Profile update failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Update profile error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -464,7 +502,7 @@ export const useAuthStore = create<AuthState>()(
           if (interests) updateData.interests = interests;
           if (goals) updateData.goals = goals;
 
-          const response = await ApiService.put(API_ENDPOINTS.UPDATE_PROFILE, updateData);
+          const response = await ApiService.put('UPDATE_PROFILE', updateData);
 
           if (response.success) {
             set(state => ({
@@ -477,9 +515,15 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error(response.message || 'Onboarding completion failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Complete onboarding error:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('Network error') || error.message.includes('timeout')) {
+            throw new Error('Network connection failed. Please check your connection and try again.');
+          }
+          
           throw error;
         }
       },
@@ -495,7 +539,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('🔍 Checking auth status');
           
-          const response = await ApiService.get(API_ENDPOINTS.CHECK_AUTH);
+          const response = await ApiService.get('CHECK_AUTH');
 
           if (response.success && response.data) {
             const { user } = response.data;
@@ -509,10 +553,14 @@ export const useAuthStore = create<AuthState>()(
           } else {
             throw new Error('Auth check failed');
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('❌ Auth check error:', error);
-          await TokenManager.clearTokens();
-          set({ isAuthenticated: false, user: null, isOnboarded: false });
+          
+          // Only clear auth if it's actually an auth error, not a network error
+          if (!error.message.includes('Network error') && !error.message.includes('timeout')) {
+            await TokenManager.clearTokens();
+            set({ isAuthenticated: false, user: null, isOnboarded: false });
+          }
         }
       },
 
@@ -523,7 +571,7 @@ export const useAuthStore = create<AuthState>()(
           console.log('🚪 Logging out');
           
           try {
-            await ApiService.post(API_ENDPOINTS.LOGOUT);
+            await ApiService.post('LOGOUT');
           } catch (error) {
             console.warn('Logout endpoint failed, continuing with local logout');
           }
@@ -537,9 +585,18 @@ export const useAuthStore = create<AuthState>()(
           });
 
           console.log('✅ Logout successful');
-        } catch (error) {
+        } catch (error: any) {
           set({ isLoading: false });
           console.error('❌ Logout error:', error);
+          
+          // Even if logout fails, clear local state
+          await TokenManager.clearTokens();
+          set({
+            user: null,
+            isAuthenticated: false,
+            isOnboarded: false,
+            isLoading: false,
+          });
         }
       },
 
@@ -551,6 +608,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isOnboarded: false,
           isLoading: false,
+          isInitialized: true,
         });
       },
     }),
@@ -585,6 +643,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         isOnboarded: state.isOnboarded,
+        // Don't persist isInitialized - should always start as false
       }),
     }
   )
