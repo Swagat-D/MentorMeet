@@ -1,390 +1,380 @@
-// components/navigation/SidebarDrawer.tsx - Updated Professional Sidebar with Warm Theme
-import React, { useRef, useEffect } from "react";
+// components/navigation/SidebarDrawer.tsx - Minimal Professional Sidebar
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Image,
   TouchableOpacity,
+  Image,
   ScrollView,
   Animated,
   Dimensions,
-  Platform,
-  StatusBar,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { useAuthStore } from "@/stores/authStore";
-import { router } from "expo-router";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
+  Alert,
+} from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useAuthStore } from '@/stores/authStore';
 
-type SidebarProps = {
+const { width } = Dimensions.get('window');
+const SIDEBAR_WIDTH = Math.min(280, width * 0.75);
+
+interface SidebarDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-};
+}
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-const sidebarWidth = Math.min(screenWidth * 0.82, 300);
+interface MenuItem {
+  id: string;
+  title: string;
+  icon: string;
+  route: string;
+  badge?: string;
+  badgeColor?: string;
+  iconColor?: string;
+}
 
-export default function SidebarDrawer({ isOpen, onClose }: SidebarProps) {
+const menuSections = [
+  {
+    title: 'Learning',
+    items: [
+      { id: 'dashboard', title: 'Dashboard', icon: 'dashboard', route: '/(tabs)/', iconColor: '#8B4513' },
+      { id: 'search', title: 'Find Mentors', icon: 'search', route: '/(tabs)/search', iconColor: '#8B4513' },
+      { id: 'sessions', title: 'My Sessions', icon: 'video-call', route: '/(tabs)/sessions', iconColor: '#8B4513' },
+      { id: 'progress', title: 'Progress', icon: 'trending-up', route: '/progress', iconColor: '#8B4513' },
+    ]
+  },
+  {
+    title: 'Assessment',
+    items: [
+      { 
+        id: 'psychometric', 
+        title: 'Career Assessment', 
+        icon: 'psychology', 
+        route: '/psychometric-test', 
+        badge: 'NEW',
+        badgeColor: '#7C3AED',
+        iconColor: '#7C3AED'
+      },
+      { id: 'personality', title: 'Personality Test', icon: 'mood', route: '/personality-test', iconColor: '#059669' },
+      { id: 'skills', title: 'Skills Evaluation', icon: 'quiz', route: '/skills-evaluation', iconColor: '#DC2626' },
+    ]
+  },
+  {
+    title: 'Account',
+    items: [
+      { id: 'profile', title: 'My Profile', icon: 'person', route: '/(tabs)/profile', iconColor: '#8B4513' },
+      { id: 'achievements', title: 'Achievements', icon: 'emoji-events', route: '/achievements', iconColor: '#F59E0B' },
+      { id: 'settings', title: 'Settings', icon: 'settings', route: '/settings', iconColor: '#6B7280' },
+      { id: 'help', title: 'Help & Support', icon: 'help-outline', route: '/help', iconColor: '#6B7280' },
+    ]
+  }
+];
+
+export default function SidebarDrawer({ isOpen, onClose }: SidebarDrawerProps) {
   const { user, logout } = useAuthStore();
-  
-  const slideAnim = useRef(new Animated.Value(-sidebarWidth)).current;
+  const [slideAnim] = useState(new Animated.Value(-SIDEBAR_WIDTH));
+  const [upcomingSessions, setUpcomingSessions] = useState(0);
 
   useEffect(() => {
-    if (isOpen) {
-      StatusBar.setBarStyle('light-content', true);
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
-    } else {
-      StatusBar.setBarStyle('dark-content', true);
-      Animated.spring(slideAnim, {
-        toValue: -sidebarWidth,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
-    }
+    Animated.timing(slideAnim, {
+      toValue: isOpen ? 0 : -SIDEBAR_WIDTH,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
   }, [isOpen, slideAnim]);
 
-  const handleClose = () => {
+  const navigateTo = (route: string) => {
     onClose();
+    setTimeout(() => {
+      router.push(route as any);
+    }, 100);
   };
 
   const handleLogout = () => {
-    logout();
-    router.replace("/(auth)/login");
-    onClose();
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              onClose();
+              router.replace('/auth/login');
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const navigateTo = (path: string) => {
-    router.push(path);
-    onClose();
-  };
+  const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    user?.name || 'User'
+  )}&background=8B4513&color=fff&size=200&bold=true`;
 
-  const menuItems = [
-    {
-      icon: () => <MaterialIcons name="person" size={20} color="#8b5a3c" />,
-      title: "Profile",
-      route: "/(tabs)/profile",
-    },
-    {
-      icon: () => <MaterialIcons name="bookmark-border" size={20} color="#8b5a3c" />,
-      title: "Saved Mentors", 
-      route: "/favorites",
-    },
-    {
-      icon: () => <MaterialIcons name="notifications" size={20} color="#8b5a3c" />,
-      title: "Notifications",
-      route: "/settings/notifications", 
-    },
-    {
-      icon: () => <MaterialIcons name="settings" size={20} color="#8b5a3c" />,
-      title: "Settings",
-      route: "/settings/privacy",
-    },
-    {
-      icon: () => <MaterialIcons name="help-outline" size={20} color="#8b5a3c" />,
-      title: "Help & Support",
-      route: "/support/help",
-    },
-  ];
+  const renderMenuItem = (item: MenuItem, sectionIndex: number, itemIndex: number) => (
+    <TouchableOpacity
+      key={item.id}
+      style={styles.menuItem}
+      onPress={() => navigateTo(item.route)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.menuItemIcon}>
+        <MaterialIcons 
+          name={item.icon as any} 
+          size={20} 
+          color={item.iconColor || '#8B4513'} 
+        />
+      </View>
+      <Text style={styles.menuItemText}>{item.title}</Text>
+      
+      {item.id === 'sessions' && upcomingSessions > 0 && (
+        <View style={styles.menuItemBadge}>
+          <Text style={styles.badgeText}>{upcomingSessions}</Text>
+        </View>
+      )}
+      
+      {item.badge && (
+        <View style={[styles.menuItemBadge, { backgroundColor: item.badgeColor || '#8B4513' }]}>
+          <Text style={styles.badgeText}>{item.badge}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
     <Animated.View
       style={[
         styles.container,
         {
-          width: sidebarWidth,
           transform: [{ translateX: slideAnim }],
         },
       ]}
     >
-      {/* Header with Creative Warm Gradient */}
-      <LinearGradient
-        colors={["#fefbf3", "#f8f6f0", "#f1f0ec"]}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        {/* Creative overlay with subtle pattern */}
-        <LinearGradient
-          colors={["rgba(139, 90, 60, 0.1)", "rgba(217, 119, 6, 0.05)", "rgba(245, 158, 11, 0.08)"]}
-          style={styles.headerOverlay}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <View style={styles.headerTop}>
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <MaterialIcons name="close" size={22} color="#5d4e37" />
-          </TouchableOpacity>
-        </View>
-
+      {/* Compact Header */}
+      <View style={styles.header}>
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Image
-              source={{
-                uri: user?.avatar || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200",
-              }}
+            <Image 
+              source={{ uri: user?.avatar || defaultAvatar }} 
               style={styles.avatar}
             />
-            <View style={styles.onlineIndicator} />
+            <View style={styles.statusDot} />
           </View>
-          
-          <Text style={styles.userName}>{user?.name || "Student"}</Text>
-          <Text style={styles.userRole}>
-            {user?.role === 'mentee' ? 'Learning Journey' : 'Mentor'}
-          </Text>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName} numberOfLines={1}>
+              {user?.name || 'Student'}
+            </Text>
+            <Text style={styles.userRole}>Learning Journey</Text>
+          </View>
         </View>
+        
+        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <MaterialIcons name="close" size={24} color="#8B7355" />
+        </TouchableOpacity>
+      </View>
 
-        {/* Creative Stats Container */}
-        <View style={styles.statsContainer}>
-          <LinearGradient
-            colors={["rgba(139, 90, 60, 0.15)", "rgba(217, 119, 6, 0.1)"]}
-            style={styles.statsGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <View style={styles.statItem}>
-              <MaterialIcons name="schedule" size={14} color="#8b5a3c" />
-              <Text style={styles.statText}>
-                {user?.stats?.totalHoursLearned?.toString() || '0'}h
-              </Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <MaterialIcons name="star" size={14} color="#d97706" />
-              <Text style={styles.statText}>
-                {user?.stats?.averageRating?.toString() || '0'}
-              </Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <MaterialIcons name="emoji-events" size={14} color="#f59e0b" />
-              <Text style={styles.statText}>
-                {user?.stats?.sessionsCompleted?.toString() || '0'}
-              </Text>
-            </View>
-          </LinearGradient>
-        </View>
-      </LinearGradient>
+      {/* Menu Container - Fixed height, no scroll needed */}
+      <View style={styles.menuContainer}>
+        {menuSections.map((section, sectionIndex) => (
+          <View key={section.title} style={styles.menuSection}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            {section.items.map((item, itemIndex) => 
+              renderMenuItem(item, sectionIndex, itemIndex)
+            )}
+          </View>
+        ))}
+      </View>
 
-      {/* Menu Content */}
-      <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.menuSection}>
-          {menuItems.map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.menuItem}
-              onPress={() => navigateTo(item.route)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={styles.menuIconContainer}>
-                  <item.icon />
-                </View>
-                <Text style={styles.menuItemTitle}>{item.title}</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={16} color="#a0916d" />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Logout Button */}
+      {/* Footer */}
+      <View style={styles.footer}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <MaterialIcons name="logout" size={20} color="#d97706" />
+          <MaterialIcons name="logout" size={18} color="#EF4444" />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
-
-        {/* App Info */}
-        <View style={styles.appInfo}>
-          <Text style={styles.appName}>MentorMatch</Text>
-          <Text style={styles.appVersion}>Version 1.0.0</Text>
+        
+        <View style={styles.versionInfo}>
+          <Text style={styles.versionText}>MentorMatch v1.0.0</Text>
         </View>
-      </ScrollView>
+      </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#fefbf3",
-    height: screenHeight,
-    shadowColor: "#8b7355",
+    width: SIDEBAR_WIDTH,
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
     shadowOffset: { width: 2, height: 0 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 16,
+    elevation: 8,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
   },
+  
+  // Compact header section
   header: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 24,
+    paddingTop: 50,
     paddingHorizontal: 20,
-    position: 'relative',
-  },
-  headerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 24,
-    zIndex: 1,
-  },
-  closeButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(93, 78, 55, 0.1)",
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+    backgroundColor: '#FAFAFA',
+    borderTopRightRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   profileSection: {
-    alignItems: "center",
-    marginBottom: 24,
-    zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   avatarContainer: {
-    position: "relative",
-    marginBottom: 16,
+    position: 'relative',
   },
   avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    borderWidth: 3,
-    borderColor: "rgba(139, 90, 60, 0.3)",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 2,
+    borderColor: '#E8DDD1',
   },
-  onlineIndicator: {
-    position: "absolute",
+  statusDot: {
+    position: 'absolute',
     bottom: 2,
     right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#10B981",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
     borderWidth: 2,
-    borderColor: "#fff",
+    borderColor: '#FFFFFF',
+  },
+  userInfo: {
+    marginLeft: 12,
+    flex: 1,
   },
   userName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#4a3728",
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  userRole: {
-    fontSize: 14,
-    color: "#8b7355",
-    textAlign: "center",
-  },
-  statsContainer: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: 8,
-    zIndex: 1,
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statsGradient: {
-    flexDirection: "row",
-    padding: 12,
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  statItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  statText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4a3728",
-    marginTop: 4,
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "rgba(139, 90, 60, 0.2)",
-    marginHorizontal: 8,
-  },
-  menuContainer: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  menuSection: {
-    paddingVertical: 12,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginHorizontal: 8,
-    borderRadius: 12,
-  },
-  menuItemLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  menuIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(139, 90, 60, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  menuItemTitle: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#4a3728",
-  },
-  logoutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginTop: 20,
-    marginHorizontal: 8,
-    borderRadius: 12,
-    backgroundColor: "rgba(217, 119, 6, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(217, 119, 6, 0.2)",
-  },
-  logoutText: {
-    fontSize: 16,
-    color: "#d97706",
-    fontWeight: "600",
-    marginLeft: 12,
-  },
-  appInfo: {
-    alignItems: "center",
-    paddingVertical: 24,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(184, 134, 100, 0.2)",
-    marginTop: 20,
-  },
-  appName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4a3728",
+    fontWeight: '700',
+    color: '#2A2A2A',
     marginBottom: 2,
   },
-  appVersion: {
+  userRole: {
     fontSize: 12,
-    color: "#a0916d",
+    color: '#8B7355',
+    fontWeight: '500',
+  },
+  closeButton: {
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+  },
+  
+  // Menu sections - Fixed layout
+  menuContainer: {
+    flex: 1,
+    paddingVertical: 12,
+  },
+  menuSection: {
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B7355',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 4,
+  },
+  
+  // Menu items with modern box structure
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginHorizontal: 12,
+    marginVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  menuItemIcon: {
+    width: 24,
+    marginRight: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2A2A2A',
+    flex: 1,
+  },
+  menuItemBadge: {
+    backgroundColor: '#8B4513',
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    minWidth: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  
+  // Footer
+  footer: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
+    backgroundColor: '#FAFAFA',
+    borderBottomRightRadius: 16,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginBottom: 12,
+  },
+  logoutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+    marginLeft: 8,
+  },
+  versionInfo: {
+    alignItems: 'center',
+  },
+  versionText: {
+    fontSize: 11,
+    color: '#8B7355',
+    fontWeight: '500',
   },
 });

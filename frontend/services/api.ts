@@ -760,6 +760,38 @@ export const getApiStatusSummary = async (): Promise<{
   }
 };
 
+ export const apiRequest = async (url: string, options: {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  body?: any;
+  headers?: Record<string, string>;
+}) => {
+  try {
+    const config: any = {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    };
+
+    if (options.body && options.method !== 'GET') {
+      config.body = JSON.stringify(options.body);
+    }
+
+    const response = await fetch(url, config);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('API Request Error:', error);
+    throw error;
+  }
+};
+
 // Utility function for debugging API issues
 export const debugApiConnection = async (): Promise<{
   report: string;
