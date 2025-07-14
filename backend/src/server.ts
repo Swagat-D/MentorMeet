@@ -9,6 +9,8 @@ import { validateEnvironment } from './config/environment';
 import authRoutes from './routes/auth.routes';
 import { errorHandler, notFound } from './middleware/error.middleware';
 import { globalRateLimit } from './middleware/rateLimit.middleware';
+import studentRoutes from './routes/student.routes';
+import mentorRoutes from './routes/mentor.routes';
 
 const app = express();
 
@@ -179,6 +181,9 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/v1/student', studentRoutes);
+app.use('/api/v1/mentors', mentorRoutes);
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
@@ -201,7 +206,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
-      error: error.message,
+      error: (error instanceof Error ? error.message : String(error)),
     });
   }
 });
@@ -224,6 +229,34 @@ app.get('/network-info', (req, res) => {
       mobileConfig: `Update your frontend api.ts with: BASE_URL: 'http://${primaryIP}:${process.env.PORT || 5000}'`,
     }
   });
+});
+
+// Add this route after your other routes
+app.get('/api/v1/status', async (req, res) => {
+  try {
+    const dbHealth = await healthCheck();
+    res.json({
+      success: true,
+      status: 'operational',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: dbHealth.status === 'connected' ? 'healthy' : 'unhealthy',
+        auth: 'operational',
+        student: 'operational',
+        mentors: 'operational'
+      },
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      status: 'degraded',
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // API routes

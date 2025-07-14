@@ -1,51 +1,45 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export interface IAchievementCriteria {
-  metric: string; // e.g., 'total_sessions', 'streak_days'
-  threshold: number; // e.g., 10, 30
-  subject?: string; // optional, for subject-specific achievements
-}
-
 export interface IAchievement extends Document {
+  _id: Types.ObjectId;
   studentId: Types.ObjectId;
-  
-  type: 'session_milestone' | 'streak' | 'rating' | 'subject_mastery' | 'consistency';
+  type: 'streak' | 'milestone' | 'completion' | 'rating' | 'hours' | 'subjects';
   title: string;
   description: string;
   icon: string;
-  
-  // Achievement Criteria
-  criteria: IAchievementCriteria;
-  
   earnedAt: Date;
-  createdAt: Date;
+  metadata?: {
+    streakDays?: number;
+    hoursCompleted?: number;
+    sessionsCompleted?: number;
+    subjectsExplored?: number;
+    rating?: number;
+  };
 }
 
 const achievementSchema = new Schema<IAchievement>({
   studentId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  
   type: { 
     type: String, 
-    enum: ['session_milestone', 'streak', 'rating', 'subject_mastery', 'consistency'],
+    enum: ['streak', 'milestone', 'completion', 'rating', 'hours', 'subjects'], 
     required: true 
   },
-  
-  title: { type: String, required: true },
-  description: { type: String, required: true },
+  title: { type: String, required: true, maxlength: 100 },
+  description: { type: String, required: true, maxlength: 500 },
   icon: { type: String, required: true },
-  
-  // Achievement Criteria
-  criteria: {
-    metric: { type: String, required: true },
-    threshold: { type: Number, required: true },
-    subject: { type: String }
-  },
-  
-  earnedAt: { type: Date, default: Date.now }
+  earnedAt: { type: Date, default: Date.now },
+  metadata: {
+    streakDays: { type: Number },
+    hoursCompleted: { type: Number },
+    sessionsCompleted: { type: Number },
+    subjectsExplored: { type: Number },
+    rating: { type: Number }
+  }
 }, {
   timestamps: true
 });
 
 achievementSchema.index({ studentId: 1, earnedAt: -1 });
+achievementSchema.index({ type: 1, earnedAt: -1 });
 
 export const Achievement = model<IAchievement>('Achievement', achievementSchema);

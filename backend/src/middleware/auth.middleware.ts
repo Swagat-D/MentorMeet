@@ -95,6 +95,7 @@ export const authenticate = async (
       success: false,
       message: 'Authentication failed',
     });
+    return;
   }
 };
 
