@@ -143,7 +143,7 @@ otpSchema.virtual('id').get(function() {
 // Transform for JSON serialization
 otpSchema.set('toJSON', {
   virtuals: true,
-  transform: function(doc, ret) {
+  transform: function(doc: any, ret: Record<string, any>) {
     delete ret._id;
     delete ret.code; // Never include actual OTP code in JSON responses
     return ret;

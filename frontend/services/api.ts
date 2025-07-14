@@ -760,34 +760,42 @@ export const getApiStatusSummary = async (): Promise<{
   }
 };
 
- export const apiRequest = async (url: string, options: {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  body?: any;
-  headers?: Record<string, string>;
-}) => {
+ export const apiRequest = async (url: string, options: any = {}) => {
   try {
-    const config: any = {
-      method: options.method,
+    console.log('🌐 API Request:', { url, method: options.method });
+    
+    const response = await fetch(url, {
+      ...options,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
-    };
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
 
-    if (options.body && options.method !== 'GET') {
-      config.body = JSON.stringify(options.body);
+    console.log('📡 API Response Status:', response.status, response.statusText);
+    
+    // Get the response text first
+    const responseText = await response.text();
+    console.log('📄 Raw Response (first 200 chars):', responseText.substring(0, 200));
+    
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ JSON Parse Error - Server returned HTML/non-JSON');
+      console.error('📄 Full Response:', responseText);
+      throw new Error(`Server error: ${response.status} - ${responseText.substring(0, 100)}`);
     }
 
-    const response = await fetch(url, config);
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+      throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
     }
 
     return data;
   } catch (error) {
-    console.error('API Request Error:', error);
+    console.error('❌ API Request Error:', error);
     throw error;
   }
 };

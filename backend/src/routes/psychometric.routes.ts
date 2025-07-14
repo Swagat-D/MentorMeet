@@ -1,12 +1,26 @@
-// backend/src/routes/psychometric.routes.ts - Psychometric Test Routes
+// backend/src/routes/psychometric.routes.ts - Fixed Routes
 import { Router, Request, Response } from 'express';
-import expressValidator from 'express-validator';
-const { body, param, query, validationResult } = require ('expressValidator');
+const expressValidator = require('express-validator');
+const { body, param, query, validationResult } = expressValidator;
 import withAuth from '../middleware/auth.middleware';
 import { PsychometricTestService } from '../services/psychometricTestService';
 import { IUser } from '../models/User.model';
+import mongoose from 'mongoose';
 
 const router = Router();
+
+router.get('/test', (req: Request, res: Response) => {
+  console.log('🧪 Psychometric test route accessed');
+  return res.json({
+    success: true,
+    message: 'Psychometric API is working',
+    timestamp: new Date().toISOString(),
+    models: {
+      registered: mongoose.modelNames(),
+      psychometricRegistered: mongoose.modelNames().includes('PsychometricTest')
+    }
+  });
+});
 
 // Validation middleware
 const validateRequest = (req: Request, res: Response, next: any) => {
@@ -25,34 +39,37 @@ const validateRequest = (req: Request, res: Response, next: any) => {
  * GET /api/v1/psychometric/test
  * Get or create a new psychometric test for the user
  */
-router.get('/test', withAuth.authenticate, async (req: Request, res: Response) => {
+router.get('/user-test', withAuth.authenticate, async (req: Request, res: Response) => {
   try {
     const user = req.user as IUser;
     console.log(`🧠 Getting/creating psychometric test for user: ${user._id}`);
 
     const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         nextSection: test.getNextSection(),
         startedAt: test.startedAt,
         totalTimeSpent: test.totalTimeSpent,
+        lastActiveSection: test.lastActiveSection,
+        progressData: test.progressData,
         riasecResult: test.riasecResult,
         brainProfileResult: test.brainProfileResult,
         employabilityResult: test.employabilityResult,
         personalInsightsResult: test.personalInsightsResult,
-        overallResults: test.overallResults
+        overallResults: test.overallResults,
+        isComplete: test.isComplete()
       }
     });
 
   } catch (error: any) {
     console.error('❌ Error getting psychometric test:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to get psychometric test'
     });
@@ -75,28 +92,38 @@ router.post('/riasec', [
 
     console.log(`📝 Saving RIASEC results for user: ${user._id}`);
 
+    // Validate responses count
+    const responseCount = Object.keys(responses).length;
+    if (responseCount !== 54) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid number of responses. Expected 54, received ${responseCount}`
+      });
+    }
+
     const test = await PsychometricTestService.saveRiasecResults(
       user._id.toString(),
       responses,
       timeSpent
     );
 
-    res.json({
+    return res.json({
       success: true,
       message: 'RIASEC results saved successfully',
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         riasecResult: test.riasecResult,
-        nextSection: test.getNextSection()
+        nextSection: test.getNextSection(),
+        isComplete: test.isComplete()
       }
     });
 
   } catch (error: any) {
     console.error('❌ Error saving RIASEC results:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to save RIASEC results'
     });
@@ -125,13 +152,13 @@ router.post('/brain-profile', [
       timeSpent
     );
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Brain Profile results saved successfully',
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         brainProfileResult: test.brainProfileResult,
         nextSection: test.getNextSection()
@@ -140,7 +167,7 @@ router.post('/brain-profile', [
 
   } catch (error: any) {
     console.error('❌ Error saving Brain Profile results:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to save Brain Profile results'
     });
@@ -169,13 +196,13 @@ router.post('/employability', [
       timeSpent
     );
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Employability results saved successfully',
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         employabilityResult: test.employabilityResult,
         nextSection: test.getNextSection()
@@ -184,7 +211,7 @@ router.post('/employability', [
 
   } catch (error: any) {
     console.error('❌ Error saving Employability results:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to save Employability results'
     });
@@ -225,13 +252,13 @@ router.post('/personal-insights', [
       timeSpent
     );
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Personal insights saved successfully',
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         personalInsightsResult: test.personalInsightsResult,
         overallResults: test.overallResults,
@@ -241,9 +268,52 @@ router.post('/personal-insights', [
 
   } catch (error: any) {
     console.error('❌ Error saving Personal Insights:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to save Personal Insights'
+    });
+  }
+});
+
+/**
+ * POST /api/v1/psychometric/save-progress
+ * Save intermediate progress (for auto-save functionality)
+ */
+router.post('/save-progress', [
+  withAuth.authenticate,
+  body('sectionType').isIn(['riasec', 'brainProfile', 'employability', 'personalInsights']).withMessage('Invalid section type'),
+  body('responses').isObject().withMessage('Responses must be an object'),
+  body('currentQuestionIndex').optional().isNumeric().withMessage('Current question index must be a number'),
+  validateRequest
+], async (req: Request, res: Response) => {
+  try {
+    const user = req.user as IUser;
+    const { sectionType, responses, currentQuestionIndex } = req.body;
+
+    console.log(`💾 Auto-saving progress for user: ${user._id}, section: ${sectionType}`);
+
+    await PsychometricTestService.saveProgress(
+      user._id.toString(),
+      sectionType,
+      responses,
+      currentQuestionIndex
+    );
+    
+    return res.json({
+      success: true,
+      message: 'Progress saved successfully',
+      data: {
+        sectionType,
+        savedResponses: Object.keys(responses).length,
+        currentQuestionIndex: currentQuestionIndex || 0
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error saving progress:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to save progress'
     });
   }
 });
@@ -275,12 +345,12 @@ router.get('/results/:testId?', [
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         testId: test.testId,
         status: test.status,
-        completionPercentage: test.completionPercentage,
+        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         startedAt: test.startedAt,
         completedAt: test.completedAt,
         totalTimeSpent: test.totalTimeSpent,
@@ -296,7 +366,7 @@ router.get('/results/:testId?', [
 
   } catch (error: any) {
     console.error('❌ Error getting test results:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to get test results'
     });
@@ -314,7 +384,6 @@ router.get('/history', [
 ], async (req: Request, res: Response) => {
   try {
     const user = req.user as IUser;
-    const limit = parseInt(req.query.limit as string) || 10;
 
     console.log(`📚 Getting test history for user: ${user._id}`);
 
@@ -323,7 +392,7 @@ router.get('/history', [
     const formattedTests = tests.map(test => ({
       testId: test.testId,
       status: test.status,
-      completionPercentage: test.completionPercentage,
+      completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
       startedAt: test.startedAt,
       completedAt: test.completedAt,
       totalTimeSpent: test.totalTimeSpent,
@@ -331,7 +400,7 @@ router.get('/history', [
       employabilityQuotient: test.overallResults?.employabilityQuotient
     }));
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         tests: formattedTests,
@@ -341,7 +410,7 @@ router.get('/history', [
 
   } catch (error: any) {
     console.error('❌ Error getting test history:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to get test history'
     });
@@ -375,14 +444,14 @@ router.delete('/test/:testId', [
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Test deleted successfully'
     });
 
   } catch (error: any) {
     console.error('❌ Error deleting test:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to delete test'
     });
@@ -390,42 +459,7 @@ router.delete('/test/:testId', [
 });
 
 /**
- * GET /api/v1/psychometric/stats (Admin only)
- * Get platform psychometric test statistics
- */
-router.get('/stats', withAuth.authenticate, async (req: Request, res: Response) => {
-  try {
-    const user = req.user as IUser;
-    
-    // Check if user is admin (you can adjust this based on your auth system)
-    if (user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Admin privileges required.'
-      });
-    }
-
-    console.log('📊 Getting platform psychometric statistics');
-
-    const stats = await PsychometricTestService.getPlatformStats();
-
-    res.json({
-      success: true,
-      data: stats
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error getting platform stats:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to get platform statistics'
-    });
-  }
-});
-
-/**
  * POST /api/v1/psychometric/validate-section
- * Validate a section's responses before submission
  */
 router.post('/validate-section', [
   withAuth.authenticate,
@@ -434,75 +468,66 @@ router.post('/validate-section', [
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
+    console.log('🔍 Validation route accessed');
+    console.log('📥 Request body:', req.body);
+    
     const { sectionType, responses } = req.body;
     
-    console.log(`✅ Validating ${sectionType} section responses`);
-
     let isValid = false;
     let validationErrors: string[] = [];
+    const responseCount = Object.keys(responses).length;
+
+    console.log(`📊 Validating ${sectionType} with ${responseCount} responses`);
 
     switch (sectionType) {
       case 'riasec':
-        // Validate RIASEC responses (should have 54 boolean responses)
-        const riasecKeys = Object.keys(responses);
-        isValid = riasecKeys.length >= 54 && riasecKeys.every(key => 
-          typeof responses[key] === 'boolean'
-        );
+        isValid = responseCount === 54 && Object.values(responses).every(val => typeof val === 'boolean');
         if (!isValid) {
-          validationErrors.push('RIASEC section requires 54 yes/no responses');
+          validationErrors.push(`RIASEC requires 54 boolean responses. Got ${responseCount}`);
         }
         break;
 
       case 'brainProfile':
-        // Validate Brain Profile responses (should have 10 ranking arrays)
-        const brainKeys = Object.keys(responses);
-        isValid = brainKeys.length >= 10 && brainKeys.every(key => 
-          Array.isArray(responses[key]) && responses[key].length === 4
-        );
+        isValid = responseCount === 10 && Object.values(responses).every(val => Array.isArray(val) && val.length === 4);
         if (!isValid) {
-          validationErrors.push('Brain Profile section requires 10 ranking questions with 4 options each');
+          validationErrors.push('Brain Profile requires 10 ranking arrays');
         }
         break;
 
       case 'employability':
-        // Validate STEPS responses (should have 25 numeric responses 1-5)
-        const stepsKeys = Object.keys(responses);
-        isValid = stepsKeys.length >= 25 && stepsKeys.every(key => 
-          typeof responses[key] === 'number' && responses[key] >= 1 && responses[key] <= 5
-        );
+        isValid = responseCount === 25 && Object.values(responses).every(val => typeof val === 'number' && val >= 1 && val <= 5);
         if (!isValid) {
-          validationErrors.push('Employability section requires 25 responses with scores 1-5');
+          validationErrors.push('Employability requires 25 numeric responses (1-5)');
         }
         break;
 
       case 'personalInsights':
-        // Validate Personal Insights structure
         const required = ['whatYouLike', 'whatYouAreGoodAt', 'recentProjects'];
-        const hasRequired = required.every(field => 
-          responses[field] && typeof responses[field] === 'string' && responses[field].length >= 10
-        );
+        const hasRequired = required.every(field => responses[field] && responses[field].length >= 10);
         const hasArrays = Array.isArray(responses.characterStrengths) && Array.isArray(responses.valuesInLife);
         isValid = hasRequired && hasArrays;
         if (!isValid) {
-          validationErrors.push('Personal Insights section requires all text fields (min 10 chars) and strength/value arrays');
+          validationErrors.push('Personal Insights missing required fields');
         }
         break;
     }
 
-    res.json({
+    console.log(`✅ Validation result: ${isValid}`);
+
+    return res.json({
       success: true,
       data: {
         isValid,
         validationErrors,
-        responseCount: Object.keys(responses).length
+        responseCount
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error validating section:', error);
-    res.status(500).json({
+    console.error('❌ Validation route error:', error);
+    return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to validate section'
+      message: error.message || 'Validation failed'
     });
   }
 });
@@ -557,7 +582,7 @@ router.get('/career-recommendations/:hollandCode', [
       }
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         hollandCode: hollandCode.toUpperCase(),
@@ -569,7 +594,7 @@ router.get('/career-recommendations/:hollandCode', [
 
   } catch (error: any) {
     console.error('❌ Error getting career recommendations:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to get career recommendations'
     });
@@ -577,44 +602,35 @@ router.get('/career-recommendations/:hollandCode', [
 });
 
 /**
- * POST /api/v1/psychometric/save-progress
- * Save intermediate progress (for auto-save functionality)
+ * GET /api/v1/psychometric/stats (Admin only)
+ * Get platform psychometric test statistics
  */
-router.post('/save-progress', [
-  withAuth.authenticate,
-  body('sectionType').isIn(['riasec', 'brainProfile', 'employability', 'personalInsights']).withMessage('Invalid section type'),
-  body('responses').isObject().withMessage('Responses must be an object'),
-  body('currentQuestionIndex').optional().isNumeric().withMessage('Current question index must be a number'),
-  validateRequest
-], async (req: Request, res: Response) => {
+router.get('/stats', withAuth.authenticate, async (req: Request, res: Response) => {
   try {
     const user = req.user as IUser;
-    const { sectionType, responses, currentQuestionIndex } = req.body;
-
-    console.log(`💾 Auto-saving progress for user: ${user._id}, section: ${sectionType}`);
-
-    // Get existing test
-    const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
-
-    // Save progress to a temporary field (you might want to add this to your schema)
-    // For now, we'll just acknowledge the save
     
-    res.json({
+    // Check if user is admin (adjust this based on your auth system)
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    console.log('📊 Getting platform psychometric statistics');
+
+    const stats = await PsychometricTestService.getPlatformStats();
+
+    return res.json({
       success: true,
-      message: 'Progress saved successfully',
-      data: {
-        testId: test.testId,
-        sectionType,
-        savedResponses: Object.keys(responses).length,
-        currentQuestionIndex: currentQuestionIndex || 0
-      }
+      data: stats
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving progress:', error);
-    res.status(500).json({
+    console.error('❌ Error getting platform stats:', error);
+    return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to save progress'
+      message: error.message || 'Failed to get platform statistics'
     });
   }
 });

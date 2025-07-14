@@ -1,5 +1,5 @@
 // frontend/services/psychometricService.ts - Frontend Psychometric Test Service
-import {apiRequest} from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Types matching backend interfaces
 export interface RiasecScores {
@@ -101,7 +101,145 @@ export interface CareerRecommendations {
 }
 
 class PsychometricService {
-  private baseUrl = '/api/v1/psychometric';
+  private baseUrl = `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/v1/psychometric`;
+  private timeout = 50000; // Reduced to 10 seconds
+
+  /**
+   * Get auth token from storage
+   */
+  private async getAuthToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem('access_token');
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Make authenticated request with better error handling
+   */
+  private async makeAuthenticatedRequest(url: string, options: any = {}): Promise<any> {
+    try {
+      const token = await this.getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      
+      console.log('🚀 Making request to:', url);
+      
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...options.headers,
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log(`📡 Response: ${response.status} ${response.statusText}`);
+
+      // Get response text first to debug
+      const responseText = await response.text();
+      console.log('📄 Raw response (first 200 chars):', responseText.substring(0, 200));
+
+      if (response.status === 401) {
+        throw new Error('Your session has expired. Please log out and log back in.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status} - ${responseText.substring(0, 100)}`);
+      }
+
+      // Try to parse as JSON
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Failed to parse response as JSON');
+        throw new Error('Server returned invalid response format');
+      }
+
+      return data;
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout. Please try again.');
+      } else if (error.message.includes('Network request failed')) {
+        throw new Error('Network connection failed. Please check your internet connection.');
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Client-side validation for RIASEC responses
+   */
+  validateRiasecResponses(responses: { [questionId: string]: boolean }): {isValid: boolean, validationErrors: string[]} {
+    const responseCount = Object.keys(responses).length;
+    const validationErrors: string[] = [];
+    
+    if (responseCount !== 54) {
+      validationErrors.push(`Need exactly 54 responses, got ${responseCount}`);
+    }
+    
+    const hasInvalidResponses = Object.values(responses).some(val => typeof val !== 'boolean');
+    if (hasInvalidResponses) {
+      validationErrors.push('All responses must be true/false');
+    }
+    
+    return {
+      isValid: validationErrors.length === 0,
+      validationErrors
+    };
+  }
+
+  /**
+   * Submit RIASEC section results - Direct submission
+   */
+  async submitRiasecResults(
+    responses: { [questionId: string]: boolean },
+    timeSpent: number
+  ): Promise<PsychometricTest> {
+    try {
+      console.log('📝 Submitting RIASEC results directly...');
+      console.log(`📊 Submitting ${Object.keys(responses).length} responses`);
+      
+      // Client-side validation first
+      const validation = this.validateRiasecResponses(responses);
+      if (!validation.isValid) {
+        throw new Error(`Validation failed: ${validation.validationErrors.join(', ')}`);
+      }
+      
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/riasec`, {
+        method: 'POST',
+        body: {
+          responses,
+          timeSpent
+        }
+      });
+
+      console.log('✅ RIASEC submission successful:', response.success);
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to submit RIASEC results');
+      }
+
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error submitting RIASEC results:', error);
+      throw error;
+    }
+  }
 
   /**
    * Get or create a new psychometric test
@@ -110,7 +248,7 @@ class PsychometricService {
     try {
       console.log('🧠 Getting/creating psychometric test...');
       
-      const response = await apiRequest(`${this.baseUrl}/test`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/user-test`, {
         method: 'GET',
       });
 
@@ -126,35 +264,6 @@ class PsychometricService {
   }
 
   /**
-   * Submit RIASEC section results
-   */
-  async submitRiasecResults(
-    responses: { [questionId: string]: boolean },
-    timeSpent: number
-  ): Promise<PsychometricTest> {
-    try {
-      console.log('📝 Submitting RIASEC results...');
-      
-      const response = await apiRequest(`${this.baseUrl}/riasec`, {
-        method: 'POST',
-        body: {
-          responses,
-          timeSpent
-        }
-      });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to submit RIASEC results');
-      }
-
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error submitting RIASEC results:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Submit Brain Profile section results
    */
   async submitBrainProfileResults(
@@ -164,7 +273,7 @@ class PsychometricService {
     try {
       console.log('🧠 Submitting Brain Profile results...');
       
-      const response = await apiRequest(`${this.baseUrl}/brain-profile`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/brain-profile`, {
         method: 'POST',
         body: {
           responses,
@@ -193,7 +302,7 @@ class PsychometricService {
     try {
       console.log('💼 Submitting Employability results...');
       
-      const response = await apiRequest(`${this.baseUrl}/employability`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/employability`, {
         method: 'POST',
         body: {
           responses,
@@ -222,7 +331,7 @@ class PsychometricService {
     try {
       console.log('📝 Submitting Personal Insights...');
       
-      const response = await apiRequest(`${this.baseUrl}/personal-insights`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/personal-insights`, {
         method: 'POST',
         body: {
           ...insights,
@@ -252,7 +361,7 @@ class PsychometricService {
         ? `${this.baseUrl}/results/${testId}`
         : `${this.baseUrl}/results`;
       
-      const response = await apiRequest(url, {
+      const response = await this.makeAuthenticatedRequest(url, {
         method: 'GET',
       });
 
@@ -274,7 +383,7 @@ class PsychometricService {
     try {
       console.log('📚 Getting test history...');
       
-      const response = await apiRequest(`${this.baseUrl}/history?limit=${limit}`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/history?limit=${limit}`, {
         method: 'GET',
       });
 
@@ -296,7 +405,7 @@ class PsychometricService {
     try {
       console.log(`🗑️ Deleting test ${testId}...`);
       
-      const response = await apiRequest(`${this.baseUrl}/test/${testId}`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/test/${testId}`, {
         method: 'DELETE',
       });
 
@@ -310,50 +419,31 @@ class PsychometricService {
   }
 
   /**
-   * Validate section responses before submission
-   */
-  async validateSection(
-    sectionType: 'riasec' | 'brainProfile' | 'employability' | 'personalInsights',
-    responses: any
-  ): Promise<{isValid: boolean, validationErrors: string[], responseCount: number}> {
-    try {
-      console.log(`✅ Validating ${sectionType} section...`);
-      
-      const response = await apiRequest(`${this.baseUrl}/validate-section`, {
-        method: 'POST',
-        body: {
-          sectionType,
-          responses
-        }
-      });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to validate section');
-      }
-
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error validating section:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get career recommendations for Holland Code
    */
   async getCareerRecommendations(hollandCode: string): Promise<CareerRecommendations> {
     try {
       console.log(`💼 Getting career recommendations for ${hollandCode}...`);
       
-      const response = await apiRequest(`${this.baseUrl}/career-recommendations/${hollandCode}`, {
+      // This endpoint doesn't require auth
+      const response = await fetch(`${this.baseUrl}/career-recommendations/${hollandCode}`, {
         method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to get career recommendations');
+      if (!response.ok) {
+        throw new Error(`Failed to get career recommendations: ${response.status}`);
       }
 
-      return response.data;
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to get career recommendations');
+      }
+
+      return data.data;
     } catch (error) {
       console.error('❌ Error getting career recommendations:', error);
       throw error;
@@ -371,7 +461,7 @@ class PsychometricService {
     try {
       console.log(`💾 Auto-saving progress for ${sectionType}...`);
       
-      const response = await apiRequest(`${this.baseUrl}/save-progress`, {
+      const response = await this.makeAuthenticatedRequest(`${this.baseUrl}/save-progress`, {
         method: 'POST',
         body: {
           sectionType,
@@ -382,7 +472,6 @@ class PsychometricService {
 
       if (!response.success) {
         console.warn('⚠️ Failed to auto-save progress:', response.message);
-        // Don't throw error for auto-save failures
       }
     } catch (error) {
       console.warn('⚠️ Error auto-saving progress:', error);

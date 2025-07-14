@@ -41,3 +41,4 @@ learningInsightSchema.index({ studentId: 1, isActive: 1, priority: -1 });
 learningInsightSchema.index({ expiresAt: 1 });
 
 export const LearningInsight = model<ILearningInsight>('LearningInsight', learningInsightSchema);
+export default LearningInsight;

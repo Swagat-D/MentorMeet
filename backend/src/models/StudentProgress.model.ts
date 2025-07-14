@@ -99,3 +99,4 @@ const studentProgressSchema = new Schema<IStudentProgress>({
 });
 
 export const StudentProgress = model<IStudentProgress>('StudentProgress', studentProgressSchema);
+export default StudentProgress;

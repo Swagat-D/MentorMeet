@@ -146,3 +146,4 @@ mentorSchema.index({ isVerified: 1, rating: -1 });
 mentorSchema.index({ 'languages.language': 1 });
 
 export const Mentor = model<IMentor>('Mentor', mentorSchema);
+export default Mentor;

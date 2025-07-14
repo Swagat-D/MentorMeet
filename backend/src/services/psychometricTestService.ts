@@ -1,3 +1,4 @@
+// backend/src/services/psychometricTestService.ts - Fixed and Improved Service
 import { Types } from 'mongoose';
 import PsychometricTest, { 
   IPsychometricTest, 
@@ -33,14 +34,22 @@ export class PsychometricTestService {
             brainProfile: false,
             employability: false,
             personalInsights: false,
+          },
+          progressData: {
+            currentQuestionIndex: 0,
+            partialResponses: {}
           }
         });
 
         await test.save();
+        console.log(`✅ Created new psychometric test: ${test.testId} for user: ${userId}`);
+      } else {
+        console.log(`📋 Found existing test: ${test.testId} for user: ${userId}`);
       }
 
       return test;
     } catch (error) {
+      console.error('❌ Error in getOrCreateTest:', error);
       throw new Error(`Failed to get or create test: ${error}`);
     }
   }
@@ -54,7 +63,17 @@ export class PsychometricTestService {
     timeSpent: number
   ): Promise<IPsychometricTest> {
     try {
+      console.log(`📝 Saving RIASEC results for user: ${userId}`);
+      
       const test = await this.getOrCreateTest(userId);
+
+      // Validate responses
+      const expectedQuestions = 54;
+      const actualQuestions = Object.keys(responses).length;
+      
+      if (actualQuestions !== expectedQuestions) {
+        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+      }
 
       // Calculate RIASEC scores
       const scores = this.calculateRiasecScores(responses);
@@ -79,10 +98,27 @@ export class PsychometricTestService {
       test.riasecResult = testResult;
       test.sectionsCompleted.riasec = true;
       test.totalTimeSpent += timeSpent;
+      test.lastActiveSection = 'riasec';
+
+      // Clear progress data for this section
+      if (test.progressData) {
+        test.progressData.currentQuestionIndex = 0;
+        test.progressData.partialResponses = {};
+      }
 
       await test.save();
+      console.log(`✅ RIASEC results saved successfully for test: ${test.testId}`);
+      
+      const savedTest = await PsychometricTest.findById(test._id);
+console.log('🔍 Verification - saved test data:', {
+  testId: savedTest?.testId,
+  sectionsCompleted: savedTest?.sectionsCompleted,
+  riasecResult: savedTest?.riasecResult ? 'Present' : 'Missing'
+});
+
       return test;
     } catch (error) {
+      console.error('❌ Error saving RIASEC results:', error);
       throw new Error(`Failed to save RIASEC results: ${error}`);
     }
   }
@@ -96,7 +132,17 @@ export class PsychometricTestService {
     timeSpent: number
   ): Promise<IPsychometricTest> {
     try {
+      console.log(`🧠 Saving Brain Profile results for user: ${userId}`);
+      
       const test = await this.getOrCreateTest(userId);
+
+      // Validate responses
+      const expectedQuestions = 10;
+      const actualQuestions = Object.keys(responses).length;
+      
+      if (actualQuestions !== expectedQuestions) {
+        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+      }
 
       // Calculate brain scores
       const scores = this.calculateBrainScores(responses);
@@ -121,10 +167,14 @@ export class PsychometricTestService {
       test.brainProfileResult = testResult;
       test.sectionsCompleted.brainProfile = true;
       test.totalTimeSpent += timeSpent;
+      test.lastActiveSection = 'brainProfile';
 
       await test.save();
+      console.log(`✅ Brain Profile results saved successfully for test: ${test.testId}`);
+      
       return test;
     } catch (error) {
+      console.error('❌ Error saving Brain Profile results:', error);
       throw new Error(`Failed to save brain profile results: ${error}`);
     }
   }
@@ -138,7 +188,17 @@ export class PsychometricTestService {
     timeSpent: number
   ): Promise<IPsychometricTest> {
     try {
+      console.log(`💼 Saving Employability results for user: ${userId}`);
+      
       const test = await this.getOrCreateTest(userId);
+
+      // Validate responses
+      const expectedQuestions = 25;
+      const actualQuestions = Object.keys(responses).length;
+      
+      if (actualQuestions !== expectedQuestions) {
+        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+      }
 
       // Calculate STEPS scores
       const scores = this.calculateStepsScores(responses);
@@ -163,10 +223,14 @@ export class PsychometricTestService {
       test.employabilityResult = testResult;
       test.sectionsCompleted.employability = true;
       test.totalTimeSpent += timeSpent;
+      test.lastActiveSection = 'employability';
 
       await test.save();
+      console.log(`✅ Employability results saved successfully for test: ${test.testId}`);
+      
       return test;
     } catch (error) {
+      console.error('❌ Error saving Employability results:', error);
       throw new Error(`Failed to save employability results: ${error}`);
     }
   }
@@ -180,7 +244,20 @@ export class PsychometricTestService {
     timeSpent: number
   ): Promise<IPsychometricTest> {
     try {
+      console.log(`📝 Saving Personal Insights for user: ${userId}`);
+      
       const test = await this.getOrCreateTest(userId);
+
+      // Validate insights
+      if (!insights.whatYouLike || insights.whatYouLike.length < 10) {
+        throw new Error('What you like must be at least 10 characters');
+      }
+      if (!insights.whatYouAreGoodAt || insights.whatYouAreGoodAt.length < 10) {
+        throw new Error('What you are good at must be at least 10 characters');
+      }
+      if (!insights.recentProjects || insights.recentProjects.length < 10) {
+        throw new Error('Recent projects must be at least 10 characters');
+      }
 
       // Update test
       test.personalInsightsResult = {
@@ -191,11 +268,48 @@ export class PsychometricTestService {
       };
       test.sectionsCompleted.personalInsights = true;
       test.totalTimeSpent += timeSpent;
+      test.lastActiveSection = 'personalInsights';
 
       await test.save();
+      console.log(`✅ Personal Insights saved successfully for test: ${test.testId}`);
+      
       return test;
     } catch (error) {
+      console.error('❌ Error saving Personal Insights:', error);
       throw new Error(`Failed to save personal insights: ${error}`);
+    }
+  }
+
+  /**
+   * Save progress for auto-save functionality
+   */
+  static async saveProgress(
+    userId: string,
+    sectionType: string,
+    responses: any,
+    currentQuestionIndex?: number
+  ): Promise<void> {
+    try {
+      const test = await this.getOrCreateTest(userId);
+      
+      if (!test.progressData) {
+        test.progressData = {
+          currentQuestionIndex: 0,
+          partialResponses: {}
+        };
+      }
+
+      test.progressData.partialResponses[sectionType] = responses;
+      if (currentQuestionIndex !== undefined) {
+        test.progressData.currentQuestionIndex = currentQuestionIndex;
+      }
+      test.lastActiveSection = sectionType;
+
+      await test.save();
+      console.log(`💾 Progress saved for user: ${userId}, section: ${sectionType}`);
+    } catch (error) {
+      console.error('❌ Error saving progress:', error);
+      // Don't throw error for auto-save failures
     }
   }
 
@@ -208,14 +322,13 @@ export class PsychometricTestService {
       
       if (testId) {
         query.testId = testId;
+        return await PsychometricTest.findOne(query).exec();
       } else {
         // Get latest test
         return await PsychometricTest.findOne(query)
           .sort({ createdAt: -1 })
           .exec();
-      }
-
-      return await PsychometricTest.findOne(query).exec();
+          }
     } catch (error) {
       throw new Error(`Failed to get test results: ${error}`);
     }
@@ -238,12 +351,29 @@ export class PsychometricTestService {
   }
 
   /**
+   * Delete test (if user wants to restart)
+   */
+  static async deleteTest(userId: string, testId: string): Promise<boolean> {
+    try {
+      const result = await PsychometricTest.deleteOne({
+        userId: new Types.ObjectId(userId),
+        testId,
+        status: 'in_progress' // Only allow deletion of in-progress tests
+      });
+
+      return result.deletedCount > 0;
+    } catch (error) {
+      throw new Error(`Failed to delete test: ${error}`);
+    }
+  }
+
+  /**
    * Calculate RIASEC scores from responses
    */
   private static calculateRiasecScores(responses: { [questionId: string]: boolean }): IRiasecScores {
     const scores: IRiasecScores = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
 
-    // RIASEC question mapping (based on your document)
+    // RIASEC question mapping (based on standard RIASEC assessment)
     const questionTagMapping: { [questionId: string]: keyof IRiasecScores } = {
       '1': 'I', '2': 'C', '3': 'A', '4': 'A', '5': 'C', '6': 'E', '7': 'A', '8': 'E',
       '9': 'A', '10': 'E', '11': 'R', '12': 'E', '13': 'I', '14': 'S', '15': 'R',
@@ -274,10 +404,16 @@ export class PsychometricTestService {
     const scores: IBrainScores = { L1: 0, L2: 0, R1: 0, R2: 0 };
 
     Object.values(responses).forEach(rankings => {
-      // Rankings are 1-4, where 4 is "most like me"
-      scores.L2 += rankings[1] || 0; // Second option is L2
-      scores.R1 += rankings[2] || 0; // Third option is R1
-      scores.R2 += rankings[3] || 0; // Fourth option is R2
+      // Rankings are arrays where index represents position (0=1st choice, 1=2nd choice, etc.)
+      // Values are the scores (4 for 1st choice, 3 for 2nd, 2 for 3rd, 1 for 4th)
+      rankings.forEach((score, index) => {
+        switch(index) {
+          case 0: scores.L1 += score; break; // First option is L1
+          case 1: scores.L2 += score; break; // Second option is L2
+          case 2: scores.R1 += score; break; // Third option is R1
+          case 3: scores.R2 += score; break; // Fourth option is R2
+        }
+      });
     });
 
     return scores;
@@ -290,7 +426,7 @@ export class PsychometricTestService {
     const scores: IStepsScores = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
     const counts = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
 
-    // STEPS question mapping (based on your document)
+    // STEPS question mapping (5 questions per category)
     const questionTagMapping: { [questionId: string]: keyof IStepsScores } = {
       '1': 'S', '2': 'S', '3': 'S', '4': 'S', '5': 'S',     // Self Management
       '6': 'T', '7': 'T', '8': 'T', '9': 'T', '10': 'T',    // Team Work
@@ -451,24 +587,7 @@ export class PsychometricTestService {
   }
 
   /**
-   * Delete test (if user wants to restart)
-   */
-  static async deleteTest(userId: string, testId: string): Promise<boolean> {
-    try {
-      const result = await PsychometricTest.deleteOne({
-        userId: new Types.ObjectId(userId),
-        testId,
-        status: 'in_progress' // Only allow deletion of in-progress tests
-      });
-
-      return result.deletedCount > 0;
-    } catch (error) {
-      throw new Error(`Failed to delete test: ${error}`);
-    }
-  }
-
-  /**
-   * Get platform statistics
+   * Get platform statistics (admin only)
    */
   static async getPlatformStats(): Promise<any> {
     try {
@@ -505,6 +624,63 @@ export class PsychometricTestService {
     } catch (error) {
       throw new Error(`Failed to get platform stats: ${error}`);
     }
+  }
+
+  /**
+   * Validate section responses
+   */
+  static validateSectionResponses(
+    sectionType: 'riasec' | 'brainProfile' | 'employability' | 'personalInsights',
+    responses: any
+  ): { isValid: boolean; validationErrors: string[] } {
+    const validationErrors: string[] = [];
+    let isValid = false;
+
+    switch (sectionType) {
+      case 'riasec':
+        const riasecKeys = Object.keys(responses);
+        isValid = riasecKeys.length === 54 && riasecKeys.every(key => 
+          typeof responses[key] === 'boolean'
+        );
+        if (!isValid) {
+          validationErrors.push('RIASEC section requires exactly 54 yes/no responses');
+        }
+        break;
+
+      case 'brainProfile':
+        const brainKeys = Object.keys(responses);
+        isValid = brainKeys.length === 10 && brainKeys.every(key => 
+          Array.isArray(responses[key]) && responses[key].length === 4
+        );
+        if (!isValid) {
+          validationErrors.push('Brain Profile section requires 10 ranking questions with 4 options each');
+        }
+        break;
+
+      case 'employability':
+        const stepsKeys = Object.keys(responses);
+        isValid = stepsKeys.length === 25 && stepsKeys.every(key => 
+          typeof responses[key] === 'number' && responses[key] >= 1 && responses[key] <= 5
+        );
+        if (!isValid) {
+          validationErrors.push('Employability section requires 25 responses with scores 1-5');
+        }
+        break;
+
+      case 'personalInsights':
+        const required = ['whatYouLike', 'whatYouAreGoodAt', 'recentProjects'];
+        const hasRequired = required.every(field => 
+          responses[field] && typeof responses[field] === 'string' && responses[field].length >= 10
+        );
+        const hasArrays = Array.isArray(responses.characterStrengths) && Array.isArray(responses.valuesInLife);
+        isValid = hasRequired && hasArrays;
+        if (!isValid) {
+          validationErrors.push('Personal Insights section requires all text fields (min 10 chars) and strength/value arrays');
+        }
+        break;
+    }
+
+    return { isValid, validationErrors };
   }
 }
 

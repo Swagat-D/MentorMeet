@@ -16,6 +16,7 @@ import InterestInventoryInstructions from '@/components/tests/InterestInventoryI
 import InterestInventoryTest from '@/components/tests/InterestInventoryTest';
 import InterestInventoryResults from '@/components/tests/InterestInventoryResults';
 import { questions } from '@/data/riasecQuestions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ScreenType = 'instructions' | 'test' | 'results' | 'submitting';
 type AnswerStatus = 'unanswered' | 'yes' | 'no' | 'review';
@@ -54,6 +55,41 @@ export default function InterestInventory() {
     return 'unanswered';
   };
 
+  const testAuth = async () => {
+  try {
+    console.log('🔐 Testing authentication...');
+    
+    const token = await AsyncStorage.getItem('access_token');
+    if (!token) {
+      console.error('❌ No auth token found');
+      return false;
+    }
+    
+    console.log('✅ Auth token found, length:', token.length);
+    
+    // Test auth with backend
+    const response = await fetch('http://192.168.8.1:5000/api/v1/auth/check', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ Auth check successful:', data);
+      return true;
+    } else {
+      console.error('❌ Auth check failed:', response.status);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Auth test failed:', error);
+    return false;
+  }
+};
+
   const handleAnswer = (answer: boolean) => {
     const newAnswers = { ...answers, [questions[currentQuestionIndex].id]: answer };
     setAnswers(newAnswers);
@@ -86,50 +122,53 @@ export default function InterestInventory() {
   };
 
   const submitTest = async () => {
-    try {
-      setSubmitting(true);
-      setCurrentScreen('submitting');
+  try {
+    setSubmitting(true);
+    setCurrentScreen('submitting');
 
-      // Calculate time spent
-      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000); // minutes
+    const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+    
+    console.log('📝 Starting submission process...');
+    console.log(`📊 Total responses: ${Object.keys(answers).length}`);
+    
+    // Direct submission with built-in validation
+    console.log('📤 Submitting to backend...');
+    const testResult = await psychometricService.submitRiasecResults(answers, timeSpent);
+    
+    console.log('✅ Backend submission successful');
+    
+    const localResults = calculateLocalResults();
+    setResults(localResults);
+    setTestData(testResult);
+    setCurrentScreen('results');
 
-      // Validate responses first
-      const validation = await psychometricService.validateSection('riasec', answers);
-      
-      if (!validation.isValid) {
-        Alert.alert(
-          'Incomplete Test',
-          `Please answer all questions before submitting. ${validation.validationErrors.join(', ')}`,
-          [{ text: 'OK', onPress: () => setCurrentScreen('test') }]
-        );
-        return;
-      }
+    console.log('✅ Test completed successfully');
 
-      // Submit to backend
-      const testResult = await psychometricService.submitRiasecResults(answers, timeSpent);
-      
-      // Calculate local results for immediate display
-      const localResults = calculateLocalResults();
-      setResults(localResults);
-      setTestData(testResult);
-      setCurrentScreen('results');
-
-      console.log('✅ RIASEC test submitted successfully');
-
-    } catch (error: any) {
-      console.error('❌ Error submitting test:', error);
-      Alert.alert(
-        'Submission Failed',
-        error.message || 'Failed to submit test. Please try again.',
-        [
-          { text: 'Retry', onPress: () => submitTest() },
-          { text: 'Cancel', onPress: () => setCurrentScreen('test') }
-        ]
-      );
-    } finally {
-      setSubmitting(false);
+  } catch (error: any) {
+    console.error('❌ Error submitting test:', error);
+    
+    let errorMessage = error.message || 'Failed to submit test. Please try again.';
+    
+    if (error.message.includes('session has expired')) {
+      errorMessage = 'Your session has expired. Please go back to the main app and log in again.';
+    } else if (error.message.includes('Network connection failed')) {
+      errorMessage = 'Cannot connect to server. Please check:\n• WiFi connection\n• Server is running\n• Both devices on same network';
+    } else if (error.message.includes('Validation failed')) {
+      errorMessage = `Please complete all questions:\n${error.message}`;
     }
-  };
+    
+    Alert.alert(
+      'Submission Failed',
+      errorMessage,
+      [
+        { text: 'Retry', onPress: () => submitTest() },
+        { text: 'Cancel', onPress: () => setCurrentScreen('test') }
+      ]
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleBack = () => {
     if (currentScreen === 'test' && Object.keys(answers).length > 0) {

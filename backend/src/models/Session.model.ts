@@ -57,3 +57,4 @@ sessionSchema.index({ status: 1, scheduledTime: 1 });
 sessionSchema.index({ scheduledTime: 1 });
 
 export const Session = model<ISession>('Session', sessionSchema);
+export default Session;

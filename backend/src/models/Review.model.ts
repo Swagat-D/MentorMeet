@@ -26,3 +26,4 @@ reviewSchema.index({ studentId: 1, createdAt: -1 });
 reviewSchema.index({ sessionId: 1 }, { unique: true });
 
 export const Review = model<IReview>('Review', reviewSchema);
+export default Review;

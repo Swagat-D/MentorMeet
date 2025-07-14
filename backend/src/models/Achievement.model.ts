@@ -43,3 +43,4 @@ achievementSchema.index({ studentId: 1, earnedAt: -1 });
 achievementSchema.index({ type: 1, earnedAt: -1 });
 
 export const Achievement = model<IAchievement>('Achievement', achievementSchema);
+export default Achievement;

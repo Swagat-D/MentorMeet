@@ -286,7 +286,7 @@ userSchema.virtual('canChangePassword').get(function() {
 // Ensure virtual fields are serialized
 userSchema.set('toJSON', {
   virtuals: true,
-  transform: function(_doc, ret) {
+  transform: function(_doc, ret: any) {
     delete ret._id;
     delete ret.password; // Never include password in JSON
     return ret;

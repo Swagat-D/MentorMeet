@@ -40,6 +40,8 @@ export const connectDB = async (): Promise<void> => {
     // Handle connection events
     setupConnectionEventHandlers();
     
+    verifyModels();
+
     // Create indexes after connection
     await createIndexes();
     
@@ -232,6 +234,18 @@ export const createIndexes = async (): Promise<void> => {
     } catch (error) {
       console.log('📝 Refresh token collection indexes will be created when collection exists');
     }
+
+    try {
+      await mongoose.connection.collection('psychometrictests').createIndex({ userId: 1, status: 1 });
+      await mongoose.connection.collection('psychometrictests').createIndex({ testId: 1 }, { unique: true });
+      await mongoose.connection.collection('psychometrictests').createIndex({ userId: 1 });
+      await mongoose.connection.collection('psychometrictests').createIndex({ status: 1 });
+      await mongoose.connection.collection('psychometrictests').createIndex({ createdAt: -1 });
+      await mongoose.connection.collection('psychometrictests').createIndex({ completedAt: -1 });
+      console.log('✅ Psychometric test indexes created');
+    } catch (error) {
+      console.log('📝 Psychometric test collection indexes will be created when collection exists');
+    }
     
     console.log('✅ Database indexes setup completed');
   } catch (error) {
@@ -263,6 +277,46 @@ export const getDatabaseStats = async () => {
   } catch (error) {
     console.error('❌ Error getting database stats:', error);
     return null;
+  }
+};
+
+/**
+ * Verify all models are registered
+ */
+export const verifyModels = (): void => {
+  try {
+    const modelNames = mongoose.modelNames();
+    console.log('📋 Registered models:', modelNames);
+    
+    const expectedModels = [
+      'User', 'OTP', 'Session', 'StudentProgress', 
+      'Achievement', 'LearningInsight', 'Mentor', 
+      'Review', 'RefreshToken', 'PsychometricTest'
+    ];
+    
+    const missingModels = expectedModels.filter(model => !modelNames.includes(model));
+    
+    if (missingModels.length > 0) {
+      console.warn('⚠️ Missing models:', missingModels);
+      
+      // Try to force import missing models
+      missingModels.forEach(model => {
+        try {
+          require(`../models/${model}.model`);
+          console.log(`🔄 Force imported ${model} model`);
+        } catch (error) {
+          console.error(`❌ Failed to import ${model} model:`, error);
+        }
+      });
+      
+      // Check again after force import
+      const updatedModelNames = mongoose.modelNames();
+      console.log('📋 Updated registered models:', updatedModelNames);
+    } else {
+      console.log('✅ All expected models are registered');
+    }
+  } catch (error) {
+    console.error('❌ Error verifying models:', error);
   }
 };
 

@@ -11,7 +11,8 @@ import { errorHandler, notFound } from './middleware/error.middleware';
 import { globalRateLimit } from './middleware/rateLimit.middleware';
 import studentRoutes from './routes/student.routes';
 import mentorRoutes from './routes/mentor.routes';
-
+import './models'
+import psychometricRoutes from './routes/psychometric.routes';
 const app = express();
 
 // Validate environment variables first
@@ -183,6 +184,8 @@ app.use((req, res, next) => {
 
 app.use('/api/v1/student', studentRoutes);
 app.use('/api/v1/mentors', mentorRoutes);
+app.use('/api/v1/psychometric', psychometricRoutes);
+console.log('📝 Psychometric routes registered at /api/v1/psychometric');
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

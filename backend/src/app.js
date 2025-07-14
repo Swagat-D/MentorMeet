@@ -5,10 +5,12 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { connectDB, healthCheck } from './src/config/database.js';
 import { validateEnvironment } from './src/config/environment.js';
-import authRoutes from './src/routes/auth.routes.js';
+import authRoutes from './routes/auth.routes';
 import { errorHandler, notFound } from './src/middleware/error.middleware.js';
 import { globalRateLimit } from './src/middleware/rateLimit.middleware.js';
 import corsOptions from './src/config/cors.js';
+import './models'
+import psychometricRoutes from './routes/psychometric.routes'
 
 const app = express();
 
@@ -60,6 +62,9 @@ app.get('/health', async (req, res) => {
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
+
+app.use('/api/v1/psychometric', psychometricRoutes);
+console.log('📝 Psychometric routes registered at /api/v1/psychometric');
 
 // Root endpoint
 app.get('/', (req, res) => {

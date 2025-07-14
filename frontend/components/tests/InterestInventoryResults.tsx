@@ -22,6 +22,8 @@ interface Props {
 }
 
 export default function InterestInventoryResults({ results, testData, onBack }: Props) {
+
+  console.log('🔍 InterestInventoryResults received:', { results, testData });
   const [careerRecommendations, setCareerRecommendations] = useState<CareerRecommendations | null>(null);
   const [loadingCareers, setLoadingCareers] = useState(true);
 

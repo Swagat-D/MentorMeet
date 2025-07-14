@@ -1,4 +1,4 @@
-// backend/src/models/PsychometricTest.model.ts - Complete Psychometric Test Model
+// backend/src/models/PsychometricTest.model.ts - Fixed and Improved Model
 import { Schema, model, Document, Types } from 'mongoose';
 
 // RIASEC Scores Interface (Section A)
@@ -60,16 +60,13 @@ export interface IAssessmentResults {
   skillDevelopmentAreas: string[];
 }
 
-// Main Psychometric Test Document
+// Main Psychometric Test Document Interface
 export interface IPsychometricTest extends Document {
   userId: Types.ObjectId;
   
   // Test Metadata
   testId: string; // Unique test identifier
   status: 'in_progress' | 'completed' | 'abandoned';
-  isComplete(): boolean;
-  calculateOverallResults(): IAssessmentResults;
-  generateSummary(): string;
   startedAt: Date;
   completedAt?: Date;
   totalTimeSpent: number; // in minutes
@@ -96,12 +93,25 @@ export interface IPsychometricTest extends Document {
   // Overall Assessment Results (calculated when all sections complete)
   overallResults?: IAssessmentResults;
   
+  // Progress tracking
+  lastActiveSection?: string;
+  progressData?: {
+    currentQuestionIndex: number;
+    partialResponses: { [key: string]: any };
+  };
+  
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
+  
+  // Instance methods
+  isComplete(): boolean;
+  calculateOverallResults(): IAssessmentResults;
+  generateSummary(): string;
+  getNextSection(): string | null;
 }
 
-// Schema Definition
+// Schema Definitions
 const riasecScoresSchema = new Schema<IRiasecScores>({
   R: { type: Number, default: 0, min: 0 },
   I: { type: Number, default: 0, min: 0 },
@@ -155,13 +165,8 @@ const assessmentResultsSchema = new Schema<IAssessmentResults>({
   skillDevelopmentAreas: [{ type: String, maxlength: 100 }],
 }, { _id: false });
 
-interface IPsychometricTestDocument extends IPsychometricTest, Document {
-  isComplete(): boolean;
-  calculateOverallResults(): any;
-  generateSummary(): string;
-}
-
-const psychometricTestSchema = new Schema<IPsychometricTestDocument>({
+// Main Schema
+const psychometricTestSchema = new Schema<IPsychometricTest>({
   userId: { 
     type: Schema.Types.ObjectId, 
     ref: 'User', 
@@ -218,6 +223,16 @@ const psychometricTestSchema = new Schema<IPsychometricTestDocument>({
   
   overallResults: assessmentResultsSchema,
   
+  lastActiveSection: {
+    type: String,
+    enum: ['riasec', 'brainProfile', 'employability', 'personalInsights']
+  },
+  
+  progressData: {
+    currentQuestionIndex: { type: Number, default: 0 },
+    partialResponses: { type: Schema.Types.Mixed, default: {} }
+  }
+  
 }, {
   timestamps: true,
   versionKey: false
@@ -244,6 +259,11 @@ psychometricTestSchema.methods.getNextSection = function(): string | null {
     }
   }
   return null;
+};
+
+// Instance method to check if test is complete
+psychometricTestSchema.methods.isComplete = function(): boolean {
+  return Object.values(this.sectionsCompleted).every(Boolean);
 };
 
 // Instance method to calculate overall results
@@ -294,7 +314,7 @@ psychometricTestSchema.methods.calculateOverallResults = function(): IAssessment
   };
 };
 
-// Helper methods for generating interpretations
+// Helper method for generating overall interpretation
 psychometricTestSchema.methods.generateOverallInterpretation = function(
   hollandCode: string, 
   brainQuadrants: string[], 
@@ -327,6 +347,7 @@ psychometricTestSchema.methods.generateOverallInterpretation = function(
   return `Based on your assessment, you have a ${primaryInterest} personality with ${primaryBrain} thinking preferences. Your Holland Code ${hollandCode} suggests you thrive in environments that match these characteristics. Your employability skills are at a ${employabilityLevel} level (${employabilityQuotient}/10), indicating ${employabilityQuotient >= 7 ? 'strong job readiness' : 'areas for professional development'}.`;
 };
 
+// Helper method for generating career recommendations
 psychometricTestSchema.methods.generateCareerRecommendations = function(hollandCode: string): string[] {
   const careerMappings = {
     R: ['Engineer', 'Technician', 'Mechanic', 'Farmer', 'Construction Worker'],
@@ -342,10 +363,10 @@ psychometricTestSchema.methods.generateCareerRecommendations = function(hollandC
     recommendations.push(...careerMappings[letter as keyof typeof careerMappings]);
   }
   
-  // Remove duplicates and return top 10
   return [...new Set(recommendations)].slice(0, 10);
 };
 
+// Helper method for generating learning recommendations
 psychometricTestSchema.methods.generateLearningRecommendations = function(brainQuadrants: string[]): string[] {
   const learningMappings = {
     L1: ['Use logical frameworks and step-by-step approaches', 'Focus on facts and data-driven learning'],
@@ -362,6 +383,7 @@ psychometricTestSchema.methods.generateLearningRecommendations = function(brainQ
   return recommendations;
 };
 
+// Helper method for generating skill development areas
 psychometricTestSchema.methods.generateSkillDevelopmentAreas = function(stepsScores: IStepsScores): string[] {
   const skillMappings = {
     S: 'Self-management skills',
@@ -371,7 +393,6 @@ psychometricTestSchema.methods.generateSkillDevelopmentAreas = function(stepsSco
     Speaking: 'Communication skills'
   };
   
-  // Identify areas with scores below 3.5
   const developmentAreas: string[] = [];
   Object.entries(stepsScores).forEach(([key, score]) => {
     if (score < 3.5) {
@@ -382,38 +403,22 @@ psychometricTestSchema.methods.generateSkillDevelopmentAreas = function(stepsSco
   return developmentAreas.length > 0 ? developmentAreas : ['Continue developing all skill areas'];
 };
 
-// Add instance methods to your schema
-psychometricTestSchema.methods.isComplete = function(): boolean {
-  // Define your completion logic
-  const requiredSections = ['riasec', 'brainProfile', 'employability', 'personalInsights'];
-  
-  return requiredSections.every(section => {
-    switch(section) {
-      case 'riasec':
-        return this.riasecResult && Object.keys(this.riasecResult).length > 0;
-      case 'brainProfile':
-        return this.brainProfileResult && Object.keys(this.brainProfileResult).length > 0;
-      case 'employability':
-        return this.employabilityResult && Object.keys(this.employabilityResult).length > 0;
-      case 'personalInsights':
-        return this.personalInsightsResult && Object.keys(this.personalInsightsResult).length > 0;
-      default:
-        return false;
-    }
-  });
-};
-
+// Instance method to generate summary
 psychometricTestSchema.methods.generateSummary = function(): string {
   let summary = '';
   
   if (this.riasecResult) {
-    const topType = Object.entries(this.riasecResult)
+    const riasecScores = this.riasecResult.scores as IRiasecScores;
+    const topType = Object.entries(riasecScores)
       .sort(([,a], [,b]) => (b as number) - (a as number))[0];
     summary += `Your dominant career interest is ${topType[0]}. `;
   }
   
   if (this.brainProfileResult) {
-    summary += `Your learning style is ${this.brainProfileResult.dominantQuadrant}. `;
+    const brainScores = this.brainProfileResult.scores as IBrainScores;
+    const dominantQuadrant = Object.entries(brainScores)
+      .sort(([,a], [,b]) => (b as number) - (a as number))[0][0];
+    summary += `Your learning style is ${dominantQuadrant}. `;
   }
   
   return summary.trim();
@@ -455,3 +460,5 @@ psychometricTestSchema.pre('save', function(next) {
 // Export the model
 export const PsychometricTest = model<IPsychometricTest>('PsychometricTest', psychometricTestSchema);
 export default PsychometricTest;
+
+console.log('PsychometriccTest model registered.')
