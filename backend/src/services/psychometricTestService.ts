@@ -1,4 +1,4 @@
-// backend/src/services/psychometricTestService.ts - Fixed and Improved Service
+// backend/src/services/psychometricTestService.ts - Production-Ready Service
 import { Types } from 'mongoose';
 import PsychometricTest, { 
   IPsychometricTest, 
@@ -12,19 +12,21 @@ import PsychometricTest, {
 export class PsychometricTestService {
   
   /**
-   * Create or get existing test for user
+   * Create or get existing test for user with optimization
    */
   static async getOrCreateTest(userId: string): Promise<IPsychometricTest> {
     try {
-      // Check for existing in-progress test
+      console.log(`📋 Getting/creating test for user: ${userId}`);
+      
+      // Use lean() for better performance on read operations
       let test = await PsychometricTest.findOne({
         userId: new Types.ObjectId(userId),
         status: 'in_progress'
-      });
+      }).lean();
 
       if (!test) {
-        // Create new test
-        test = new PsychometricTest({
+        // Create new test with optimized structure
+        const newTest = new PsychometricTest({
           userId: new Types.ObjectId(userId),
           status: 'in_progress',
           startedAt: new Date(),
@@ -41,13 +43,19 @@ export class PsychometricTestService {
           }
         });
 
-        await test.save();
-        console.log(`✅ Created new psychometric test: ${test.testId} for user: ${userId}`);
+        await newTest.save();
+        test = await PsychometricTest.findOne({
+          userId: new Types.ObjectId(userId),
+          status: 'in_progress'
+        }).lean();
+        console.log(`✅ Created new test: ${test?.testId}`);
       } else {
-        console.log(`📋 Found existing test: ${test.testId} for user: ${userId}`);
+        console.log(`📋 Found existing test: ${test.testId}`);
+        // Convert lean result back to document
+        test = await PsychometricTest.findById(test._id);
       }
 
-      return test;
+      return test as IPsychometricTest;
     } catch (error) {
       console.error('❌ Error in getOrCreateTest:', error);
       throw new Error(`Failed to get or create test: ${error}`);
@@ -55,7 +63,7 @@ export class PsychometricTestService {
   }
 
   /**
-   * Save RIASEC section results
+   * Save RIASEC section results with optimized calculation
    */
   static async saveRiasecResults(
     userId: string, 
@@ -64,23 +72,32 @@ export class PsychometricTestService {
   ): Promise<IPsychometricTest> {
     try {
       console.log(`📝 Saving RIASEC results for user: ${userId}`);
+      console.log(`📊 Processing ${Object.keys(responses).length} responses`);
       
-      const test = await this.getOrCreateTest(userId);
-
-      // Validate responses
+      // Validation
       const expectedQuestions = 54;
       const actualQuestions = Object.keys(responses).length;
       
       if (actualQuestions !== expectedQuestions) {
-        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+        throw new Error(`Invalid responses count. Expected: ${expectedQuestions}, Got: ${actualQuestions}`);
       }
 
-      // Calculate RIASEC scores
-      const scores = this.calculateRiasecScores(responses);
+      // Get test with minimal data for update
+      const test = await PsychometricTest.findOne({
+        userId: new Types.ObjectId(userId),
+        status: 'in_progress'
+      });
+
+      if (!test) {
+        throw new Error('No active test found for user');
+      }
+
+      // Calculate scores efficiently
+      const scores = this.calculateRiasecScoresOptimized(responses);
       
-      // Generate interpretation and recommendations
-      const interpretation = this.generateRiasecInterpretation(scores);
-      const recommendations = this.generateRiasecRecommendations(scores);
+      // Generate interpretation
+      const interpretation = this.generateRiasecInterpretationOptimized(scores);
+      const recommendations = this.generateRiasecRecommendationsOptimized(scores);
 
       // Create test result
       const testResult: ITestResult = {
@@ -94,32 +111,37 @@ export class PsychometricTestService {
         recommendations
       };
 
-      // Update test
-      test.riasecResult = testResult;
-      test.sectionsCompleted.riasec = true;
-      test.totalTimeSpent += timeSpent;
-      test.lastActiveSection = 'riasec';
+      // Update using atomic operations for better performance
+      const updatedTest = await PsychometricTest.findByIdAndUpdate(
+        test._id,
+        {
+          $set: {
+            riasecResult: testResult,
+            'sectionsCompleted.riasec': true,
+            lastActiveSection: 'riasec',
+            'progressData.currentQuestionIndex': 0,
+            'progressData.partialResponses': {}
+          },
+          $inc: {
+            totalTimeSpent: timeSpent
+          }
+        },
+        { 
+          new: true,
+          runValidators: true 
+        }
+      );
 
-      // Clear progress data for this section
-      if (test.progressData) {
-        test.progressData.currentQuestionIndex = 0;
-        test.progressData.partialResponses = {};
+      if (!updatedTest) {
+        throw new Error('Failed to update test');
       }
 
-      await test.save();
-      console.log(`✅ RIASEC results saved successfully for test: ${test.testId}`);
-      
-      const savedTest = await PsychometricTest.findById(test._id);
-console.log('🔍 Verification - saved test data:', {
-  testId: savedTest?.testId,
-  sectionsCompleted: savedTest?.sectionsCompleted,
-  riasecResult: savedTest?.riasecResult ? 'Present' : 'Missing'
-});
+      console.log(`✅ RIASEC results saved for test: ${updatedTest.testId}`);
+      return updatedTest;
 
-      return test;
     } catch (error) {
       console.error('❌ Error saving RIASEC results:', error);
-      throw new Error(`Failed to save RIASEC results: ${error}`);
+      throw error;
     }
   }
 
@@ -134,24 +156,28 @@ console.log('🔍 Verification - saved test data:', {
     try {
       console.log(`🧠 Saving Brain Profile results for user: ${userId}`);
       
-      const test = await this.getOrCreateTest(userId);
+      const test = await PsychometricTest.findOne({
+        userId: new Types.ObjectId(userId),
+        status: 'in_progress'
+      });
+
+      if (!test) {
+        throw new Error('No active test found for user');
+      }
 
       // Validate responses
       const expectedQuestions = 10;
       const actualQuestions = Object.keys(responses).length;
       
       if (actualQuestions !== expectedQuestions) {
-        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+        throw new Error(`Invalid responses count. Expected: ${expectedQuestions}, Got: ${actualQuestions}`);
       }
 
       // Calculate brain scores
-      const scores = this.calculateBrainScores(responses);
-      
-      // Generate interpretation and recommendations
-      const interpretation = this.generateBrainInterpretation(scores);
-      const recommendations = this.generateBrainRecommendations(scores);
+      const scores = this.calculateBrainScoresOptimized(responses);
+      const interpretation = this.generateBrainInterpretationOptimized(scores);
+      const recommendations = this.generateBrainRecommendationsOptimized(scores);
 
-      // Create test result
       const testResult: ITestResult = {
         sectionId: 'brainProfile',
         sectionName: 'Brain Profile Test',
@@ -163,19 +189,27 @@ console.log('🔍 Verification - saved test data:', {
         recommendations
       };
 
-      // Update test
-      test.brainProfileResult = testResult;
-      test.sectionsCompleted.brainProfile = true;
-      test.totalTimeSpent += timeSpent;
-      test.lastActiveSection = 'brainProfile';
+      const updatedTest = await PsychometricTest.findByIdAndUpdate(
+        test._id,
+        {
+          $set: {
+            brainProfileResult: testResult,
+            'sectionsCompleted.brainProfile': true,
+            lastActiveSection: 'brainProfile'
+          },
+          $inc: {
+            totalTimeSpent: timeSpent
+          }
+        },
+        { new: true, runValidators: true }
+      );
 
-      await test.save();
-      console.log(`✅ Brain Profile results saved successfully for test: ${test.testId}`);
-      
-      return test;
+      console.log(`✅ Brain Profile results saved for test: ${updatedTest?.testId}`);
+      return updatedTest!;
+
     } catch (error) {
       console.error('❌ Error saving Brain Profile results:', error);
-      throw new Error(`Failed to save brain profile results: ${error}`);
+      throw error;
     }
   }
 
@@ -190,24 +224,28 @@ console.log('🔍 Verification - saved test data:', {
     try {
       console.log(`💼 Saving Employability results for user: ${userId}`);
       
-      const test = await this.getOrCreateTest(userId);
+      const test = await PsychometricTest.findOne({
+        userId: new Types.ObjectId(userId),
+        status: 'in_progress'
+      });
+
+      if (!test) {
+        throw new Error('No active test found for user');
+      }
 
       // Validate responses
       const expectedQuestions = 25;
       const actualQuestions = Object.keys(responses).length;
       
       if (actualQuestions !== expectedQuestions) {
-        throw new Error(`Invalid number of responses. Expected ${expectedQuestions}, got ${actualQuestions}`);
+        throw new Error(`Invalid responses count. Expected: ${expectedQuestions}, Got: ${actualQuestions}`);
       }
 
       // Calculate STEPS scores
-      const scores = this.calculateStepsScores(responses);
-      
-      // Generate interpretation and recommendations
-      const interpretation = this.generateStepsInterpretation(scores);
-      const recommendations = this.generateStepsRecommendations(scores);
+      const scores = this.calculateStepsScoresOptimized(responses);
+      const interpretation = this.generateStepsInterpretationOptimized(scores);
+      const recommendations = this.generateStepsRecommendationsOptimized(scores);
 
-      // Create test result
       const testResult: ITestResult = {
         sectionId: 'employability',
         sectionName: 'Employability Test (STEPS)',
@@ -219,19 +257,27 @@ console.log('🔍 Verification - saved test data:', {
         recommendations
       };
 
-      // Update test
-      test.employabilityResult = testResult;
-      test.sectionsCompleted.employability = true;
-      test.totalTimeSpent += timeSpent;
-      test.lastActiveSection = 'employability';
+      const updatedTest = await PsychometricTest.findByIdAndUpdate(
+        test._id,
+        {
+          $set: {
+            employabilityResult: testResult,
+            'sectionsCompleted.employability': true,
+            lastActiveSection: 'employability'
+          },
+          $inc: {
+            totalTimeSpent: timeSpent
+          }
+        },
+        { new: true, runValidators: true }
+      );
 
-      await test.save();
-      console.log(`✅ Employability results saved successfully for test: ${test.testId}`);
-      
-      return test;
+      console.log(`✅ Employability results saved for test: ${updatedTest?.testId}`);
+      return updatedTest!;
+
     } catch (error) {
       console.error('❌ Error saving Employability results:', error);
-      throw new Error(`Failed to save employability results: ${error}`);
+      throw error;
     }
   }
 
@@ -246,42 +292,354 @@ console.log('🔍 Verification - saved test data:', {
     try {
       console.log(`📝 Saving Personal Insights for user: ${userId}`);
       
-      const test = await this.getOrCreateTest(userId);
+      const test = await PsychometricTest.findOne({
+        userId: new Types.ObjectId(userId),
+        status: 'in_progress'
+      });
+
+      if (!test) {
+        throw new Error('No active test found for user');
+      }
 
       // Validate insights
-      if (!insights.whatYouLike || insights.whatYouLike.length < 10) {
-        throw new Error('What you like must be at least 10 characters');
-      }
-      if (!insights.whatYouAreGoodAt || insights.whatYouAreGoodAt.length < 10) {
-        throw new Error('What you are good at must be at least 10 characters');
-      }
-      if (!insights.recentProjects || insights.recentProjects.length < 10) {
-        throw new Error('Recent projects must be at least 10 characters');
+      this.validatePersonalInsights(insights);
+
+      const updatedTest = await PsychometricTest.findByIdAndUpdate(
+        test._id,
+        {
+          $set: {
+            personalInsightsResult: {
+              sectionId: 'personalInsights',
+              sectionName: 'Personal Insights',
+              completedAt: new Date(),
+              responses: insights
+            },
+            'sectionsCompleted.personalInsights': true,
+            lastActiveSection: 'personalInsights'
+          },
+          $inc: {
+            totalTimeSpent: timeSpent
+          }
+        },
+        { new: true, runValidators: true }
+      );
+
+      // Check if test is complete and calculate overall results
+      if (updatedTest && this.isTestComplete(updatedTest.sectionsCompleted)) {
+        await this.finalizeTest(updatedTest._id as Types.ObjectId);
       }
 
-      // Update test
-      test.personalInsightsResult = {
-        sectionId: 'personalInsights',
-        sectionName: 'Personal Insights',
-        completedAt: new Date(),
-        responses: insights
-      };
-      test.sectionsCompleted.personalInsights = true;
-      test.totalTimeSpent += timeSpent;
-      test.lastActiveSection = 'personalInsights';
+      console.log(`✅ Personal Insights saved for test: ${updatedTest?.testId}`);
+      return updatedTest!;
 
-      await test.save();
-      console.log(`✅ Personal Insights saved successfully for test: ${test.testId}`);
-      
-      return test;
     } catch (error) {
       console.error('❌ Error saving Personal Insights:', error);
-      throw new Error(`Failed to save personal insights: ${error}`);
+      throw error;
     }
   }
 
   /**
-   * Save progress for auto-save functionality
+   * Finalize test when all sections are complete
+   */
+  private static async finalizeTest(testId: Types.ObjectId): Promise<void> {
+    try {
+      const test = await PsychometricTest.findById(testId);
+      if (!test) return;
+
+      const overallResults = test.calculateOverallResults();
+      
+      await PsychometricTest.findByIdAndUpdate(
+        testId,
+        {
+          $set: {
+            status: 'completed',
+            completedAt: new Date(),
+            overallResults
+          }
+        }
+      );
+
+      console.log(`🎉 Test finalized: ${test.testId}`);
+    } catch (error) {
+      console.error('❌ Error finalizing test:', error);
+    }
+  }
+
+  /**
+   * Check if test is complete
+   */
+  private static isTestComplete(sectionsCompleted: any): boolean {
+    return Object.values(sectionsCompleted).every(Boolean);
+  }
+
+  /**
+   * Validate personal insights
+   */
+  private static validatePersonalInsights(insights: IPersonalInsights): void {
+    if (!insights.whatYouLike || insights.whatYouLike.length < 10) {
+      throw new Error('What you like must be at least 10 characters');
+    }
+    if (!insights.whatYouAreGoodAt || insights.whatYouAreGoodAt.length < 10) {
+      throw new Error('What you are good at must be at least 10 characters');
+    }
+    if (!insights.recentProjects || insights.recentProjects.length < 10) {
+      throw new Error('Recent projects must be at least 10 characters');
+    }
+    if (!Array.isArray(insights.characterStrengths) || insights.characterStrengths.length < 3) {
+      throw new Error('At least 3 character strengths are required');
+    }
+    if (!Array.isArray(insights.valuesInLife) || insights.valuesInLife.length < 3) {
+      throw new Error('At least 3 life values are required');
+    }
+  }
+
+  /**
+   * Optimized RIASEC score calculation
+   */
+  private static calculateRiasecScoresOptimized(responses: { [questionId: string]: boolean }): IRiasecScores {
+    const scores: IRiasecScores = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+
+    // Optimized mapping for faster lookup
+    const mapping = new Map([
+      ['1', 'I'], ['2', 'C'], ['3', 'A'], ['4', 'A'], ['5', 'C'], ['6', 'E'], ['7', 'A'], ['8', 'E'],
+      ['9', 'A'], ['10', 'E'], ['11', 'R'], ['12', 'E'], ['13', 'I'], ['14', 'S'], ['15', 'R'],
+      ['16', 'C'], ['17', 'C'], ['18', 'R'], ['19', 'C'], ['20', 'I'], ['21', 'I'], ['22', 'E'],
+      ['23', 'S'], ['24', 'I'], ['25', 'S'], ['26', 'R'], ['27', 'S'], ['28', 'S'], ['29', 'R'],
+      ['30', 'A'], ['31', 'R'], ['32', 'C'], ['33', 'E'], ['34', 'S'], ['35', 'I'], ['36', 'A'],
+      ['37', 'C'], ['38', 'S'], ['39', 'A'], ['40', 'E'], ['41', 'S'], ['42', 'I'], ['43', 'R'],
+      ['44', 'C'], ['45', 'R'], ['46', 'E'], ['47', 'S'], ['48', 'E'], ['49', 'A'], ['50', 'C'],
+      ['51', 'I'], ['52', 'I'], ['53', 'A'], ['54', 'R']
+    ]);
+
+    for (const [questionId, answer] of Object.entries(responses)) {
+      if (answer === true) {
+        const tag = mapping.get(questionId);
+        if (tag) {
+          scores[tag as keyof IRiasecScores]++;
+        }
+      }
+    }
+
+    return scores;
+  }
+
+  /**
+   * Optimized brain score calculation
+   */
+  private static calculateBrainScoresOptimized(responses: { [questionId: string]: number[] }): IBrainScores {
+    const scores: IBrainScores = { L1: 0, L2: 0, R1: 0, R2: 0 };
+
+    for (const rankings of Object.values(responses)) {
+      scores.L1 += rankings[0] || 0;
+      scores.L2 += rankings[1] || 0;
+      scores.R1 += rankings[2] || 0;
+      scores.R2 += rankings[3] || 0;
+    }
+
+    return scores;
+  }
+
+  /**
+   * Optimized STEPS score calculation
+   */
+  private static calculateStepsScoresOptimized(responses: { [questionId: string]: number }): IStepsScores {
+    const scores: IStepsScores = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
+    const counts = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
+
+    // Pre-computed mapping for performance
+    const categoryMap = new Map<string, string>([
+  ...Array.from({length: 5}, (_, i) => [`${i + 1}`, 'S'] as [string, string]),
+  ...Array.from({length: 5}, (_, i) => [`${i + 6}`, 'T'] as [string, string]),
+  ...Array.from({length: 5}, (_, i) => [`${i + 11}`, 'E'] as [string, string]),
+  ...Array.from({length: 5}, (_, i) => [`${i + 16}`, 'P'] as [string, string]),
+  ...Array.from({length: 5}, (_, i) => [`${i + 21}`, 'Speaking'] as [string, string])
+]);
+
+    for (const [questionId, score] of Object.entries(responses)) {
+      const category = categoryMap.get(questionId);
+      if (category && score >= 1 && score <= 5) {
+        const cat = category as keyof IStepsScores;
+        scores[cat] += score;
+        counts[cat]++;
+      }
+    }
+
+    // Calculate averages
+    for (const key of Object.keys(scores) as Array<keyof IStepsScores>) {
+      if (counts[key] > 0) {
+        scores[key] = Number((scores[key] / counts[key]).toFixed(2));
+      }
+    }
+
+    return scores;
+  }
+
+  /**
+   * Generate RIASEC interpretation efficiently
+   */
+  private static generateRiasecInterpretationOptimized(scores: IRiasecScores): string {
+    const sortedScores = Object.entries(scores)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3);
+    
+    const topThree = sortedScores.map(([letter]) => letter).join('');
+    
+    const descriptions = new Map([
+      ['R', 'hands-on and practical work'],
+      ['I', 'research, analysis, and intellectual challenges'],
+      ['A', 'creative and expressive activities'],
+      ['S', 'working with and helping people'],
+      ['E', 'leadership and business activities'],
+      ['C', 'structured, detail-oriented work']
+    ]);
+
+    const topDesc = descriptions.get(sortedScores[0][0]);
+    return `Your Holland Code is ${topThree}. You show strongest interest in ${topDesc}.`;
+  }
+
+  /**
+   * Generate RIASEC recommendations efficiently
+   */
+  private static generateRiasecRecommendationsOptimized(scores: IRiasecScores): string[] {
+    const careerMap = new Map([
+      ['R', ['Engineer', 'Technician', 'Mechanic', 'Farmer']],
+      ['I', ['Researcher', 'Scientist', 'Analyst', 'Doctor']],
+      ['A', ['Artist', 'Designer', 'Writer', 'Musician']],
+      ['S', ['Teacher', 'Counselor', 'Social Worker', 'Nurse']],
+      ['E', ['Manager', 'Entrepreneur', 'Sales Rep', 'Lawyer']],
+      ['C', ['Accountant', 'Administrator', 'Data Analyst', 'Librarian']]
+    ]);
+
+    const topThree = Object.entries(scores)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3)
+      .map(([letter]) => letter);
+
+    const recommendations: string[] = [];
+    for (const letter of topThree) {
+      const careers = careerMap.get(letter);
+      if (careers) recommendations.push(...careers);
+    }
+
+    return [...new Set(recommendations)].slice(0, 8);
+  }
+
+  /**
+   * Generate brain interpretation efficiently
+   */
+  private static generateBrainInterpretationOptimized(scores: IBrainScores): string {
+    const quadrants = new Map([
+      ['L1', 'logical and analytical thinking'],
+      ['L2', 'structured and systematic approaches'],
+      ['R1', 'creative and strategic thinking'],
+      ['R2', 'empathetic and collaborative approaches']
+    ]);
+
+    const topQuadrant = Object.entries(scores)
+      .sort(([,a], [,b]) => b - a)[0][0];
+
+    const description = quadrants.get(topQuadrant);
+    return `Your dominant thinking style emphasizes ${description}.`;
+  }
+
+  /**
+   * Generate brain recommendations efficiently
+   */
+  private static generateBrainRecommendationsOptimized(scores: IBrainScores): string[] {
+    const recommendations = new Map([
+      ['L1', ['Use logical frameworks', 'Focus on data-driven learning']],
+      ['L2', ['Create structured schedules', 'Use organized materials']],
+      ['R1', ['Engage in creative problem-solving', 'Use visual aids']],
+      ['R2', ['Learn through group discussions', 'Seek mentoring']]
+    ]);
+
+    const topQuadrant = Object.entries(scores)
+      .sort(([,a], [,b]) => b - a)[0][0];
+
+    return recommendations.get(topQuadrant) || ['General learning strategies'];
+  }
+
+  /**
+   * Generate STEPS interpretation efficiently
+   */
+  private static generateStepsInterpretationOptimized(scores: IStepsScores): string {
+    const avgScore = Object.values(scores).reduce((a, b) => a + b, 0) / 5;
+    const quotient = Number(((avgScore / 5) * 10).toFixed(1));
+    
+    let assessment = '';
+    if (quotient >= 8) assessment = 'Excellent job readiness!';
+    else if (quotient >= 6) assessment = 'Good employability with room for growth.';
+    else if (quotient >= 4) assessment = 'Developing employability skills.';
+    else assessment = 'Focus needed on key employability areas.';
+
+    return `Your Employability Quotient is ${quotient}/10. ${assessment}`;
+  }
+
+  /**
+   * Generate STEPS recommendations efficiently
+   */
+  private static generateStepsRecommendationsOptimized(scores: IStepsScores): string[] {
+    const improvements = new Map([
+      ['S', 'Develop self-management and time management skills'],
+      ['T', 'Enhance teamwork and collaboration abilities'],
+      ['E', 'Build leadership and enterprising skills'],
+      ['P', 'Strengthen problem-solving and critical thinking'],
+      ['Speaking', 'Improve communication and presentation skills']
+    ]);
+
+    const weakAreas = Object.entries(scores)
+      .filter(([, score]) => score < 3.5)
+      .map(([area]) => area);
+
+    if (weakAreas.length === 0) {
+      return ['Continue developing all areas to maintain high employability'];
+    }
+
+    return weakAreas.map(area => improvements.get(area)).filter(Boolean) as string[];
+  }
+
+  /**
+   * Get test results efficiently
+   */
+  static async getTestResults(userId: string, testId?: string): Promise<IPsychometricTest | null> {
+    try {
+      const query: any = { userId: new Types.ObjectId(userId) };
+      
+      if (testId) {
+        query.testId = testId;
+      }
+
+      return await PsychometricTest.findOne(query)
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+    } catch (error) {
+      console.error('❌ Error getting test results:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get test history efficiently
+   */
+  static async getTestHistory(userId: string, limit: number = 10): Promise<IPsychometricTest[]> {
+    try {
+      return await PsychometricTest.find({ 
+        userId: new Types.ObjectId(userId) 
+      })
+        .select('testId status sectionsCompleted startedAt completedAt totalTimeSpent overallResults.hollandCode overallResults.employabilityQuotient')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec();
+    } catch (error) {
+      console.error('❌ Error getting test history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save progress efficiently (for auto-save)
    */
   static async saveProgress(
     userId: string,
@@ -290,397 +648,102 @@ console.log('🔍 Verification - saved test data:', {
     currentQuestionIndex?: number
   ): Promise<void> {
     try {
-      const test = await this.getOrCreateTest(userId);
-      
-      if (!test.progressData) {
-        test.progressData = {
-          currentQuestionIndex: 0,
-          partialResponses: {}
-        };
-      }
+      const updateObj: any = {
+        [`progressData.partialResponses.${sectionType}`]: responses,
+        lastActiveSection: sectionType
+      };
 
-      test.progressData.partialResponses[sectionType] = responses;
       if (currentQuestionIndex !== undefined) {
-        test.progressData.currentQuestionIndex = currentQuestionIndex;
+        updateObj['progressData.currentQuestionIndex'] = currentQuestionIndex;
       }
-      test.lastActiveSection = sectionType;
 
-      await test.save();
+      await PsychometricTest.updateOne(
+        {
+          userId: new Types.ObjectId(userId),
+          status: 'in_progress'
+        },
+        { $set: updateObj }
+      );
+
       console.log(`💾 Progress saved for user: ${userId}, section: ${sectionType}`);
     } catch (error) {
-      console.error('❌ Error saving progress:', error);
-      // Don't throw error for auto-save failures
+      console.warn('⚠️ Error saving progress:', error);
+      // Don't throw - auto-save should be non-blocking
     }
   }
 
   /**
-   * Get test results for user
-   */
-  static async getTestResults(userId: string, testId?: string): Promise<IPsychometricTest | null> {
-    try {
-      const query: any = { userId: new Types.ObjectId(userId) };
-      
-      if (testId) {
-        query.testId = testId;
-        return await PsychometricTest.findOne(query).exec();
-      } else {
-        // Get latest test
-        return await PsychometricTest.findOne(query)
-          .sort({ createdAt: -1 })
-          .exec();
-          }
-    } catch (error) {
-      throw new Error(`Failed to get test results: ${error}`);
-    }
-  }
-
-  /**
-   * Get user's test history
-   */
-  static async getTestHistory(userId: string): Promise<IPsychometricTest[]> {
-    try {
-      return await PsychometricTest.find({ 
-        userId: new Types.ObjectId(userId) 
-      })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .exec();
-    } catch (error) {
-      throw new Error(`Failed to get test history: ${error}`);
-    }
-  }
-
-  /**
-   * Delete test (if user wants to restart)
+   * Delete test efficiently
    */
   static async deleteTest(userId: string, testId: string): Promise<boolean> {
     try {
       const result = await PsychometricTest.deleteOne({
         userId: new Types.ObjectId(userId),
         testId,
-        status: 'in_progress' // Only allow deletion of in-progress tests
+        status: 'in_progress'
       });
 
       return result.deletedCount > 0;
     } catch (error) {
-      throw new Error(`Failed to delete test: ${error}`);
+      console.error('❌ Error deleting test:', error);
+      throw error;
     }
   }
 
   /**
-   * Calculate RIASEC scores from responses
-   */
-  private static calculateRiasecScores(responses: { [questionId: string]: boolean }): IRiasecScores {
-    const scores: IRiasecScores = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
-
-    // RIASEC question mapping (based on standard RIASEC assessment)
-    const questionTagMapping: { [questionId: string]: keyof IRiasecScores } = {
-      '1': 'I', '2': 'C', '3': 'A', '4': 'A', '5': 'C', '6': 'E', '7': 'A', '8': 'E',
-      '9': 'A', '10': 'E', '11': 'R', '12': 'E', '13': 'I', '14': 'S', '15': 'R',
-      '16': 'C', '17': 'C', '18': 'R', '19': 'C', '20': 'I', '21': 'I', '22': 'E',
-      '23': 'S', '24': 'I', '25': 'S', '26': 'R', '27': 'S', '28': 'S', '29': 'R',
-      '30': 'A', '31': 'R', '32': 'C', '33': 'E', '34': 'S', '35': 'I', '36': 'A',
-      '37': 'C', '38': 'S', '39': 'A', '40': 'E', '41': 'S', '42': 'I', '43': 'R',
-      '44': 'C', '45': 'R', '46': 'E', '47': 'S', '48': 'E', '49': 'A', '50': 'C',
-      '51': 'I', '52': 'I', '53': 'A', '54': 'R'
-    };
-
-    Object.entries(responses).forEach(([questionId, answer]) => {
-      if (answer === true) { // Only count "Yes" answers
-        const tag = questionTagMapping[questionId];
-        if (tag) {
-          scores[tag]++;
-        }
-      }
-    });
-
-    return scores;
-  }
-
-  /**
-   * Calculate Brain Profile scores from responses
-   */
-  private static calculateBrainScores(responses: { [questionId: string]: number[] }): IBrainScores {
-    const scores: IBrainScores = { L1: 0, L2: 0, R1: 0, R2: 0 };
-
-    Object.values(responses).forEach(rankings => {
-      // Rankings are arrays where index represents position (0=1st choice, 1=2nd choice, etc.)
-      // Values are the scores (4 for 1st choice, 3 for 2nd, 2 for 3rd, 1 for 4th)
-      rankings.forEach((score, index) => {
-        switch(index) {
-          case 0: scores.L1 += score; break; // First option is L1
-          case 1: scores.L2 += score; break; // Second option is L2
-          case 2: scores.R1 += score; break; // Third option is R1
-          case 3: scores.R2 += score; break; // Fourth option is R2
-        }
-      });
-    });
-
-    return scores;
-  }
-
-  /**
-   * Calculate STEPS scores from responses
-   */
-  private static calculateStepsScores(responses: { [questionId: string]: number }): IStepsScores {
-    const scores: IStepsScores = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
-    const counts = { S: 0, T: 0, E: 0, P: 0, Speaking: 0 };
-
-    // STEPS question mapping (5 questions per category)
-    const questionTagMapping: { [questionId: string]: keyof IStepsScores } = {
-      '1': 'S', '2': 'S', '3': 'S', '4': 'S', '5': 'S',     // Self Management
-      '6': 'T', '7': 'T', '8': 'T', '9': 'T', '10': 'T',    // Team Work
-      '11': 'E', '12': 'E', '13': 'E', '14': 'E', '15': 'E', // Enterprising
-      '16': 'P', '17': 'P', '18': 'P', '19': 'P', '20': 'P', // Problem Solving
-      '21': 'Speaking', '22': 'Speaking', '23': 'Speaking', '24': 'Speaking', '25': 'Speaking' // Speaking & Listening
-    };
-
-    Object.entries(responses).forEach(([questionId, score]) => {
-      const tag = questionTagMapping[questionId];
-      if (tag && score >= 1 && score <= 5) {
-        scores[tag] += score;
-        counts[tag]++;
-      }
-    });
-
-    // Calculate averages
-    Object.keys(scores).forEach(key => {
-      const k = key as keyof IStepsScores;
-      if (counts[k] > 0) {
-        scores[k] = scores[k] / counts[k];
-      }
-    });
-
-    return scores;
-  }
-
-  /**
-   * Generate RIASEC interpretation
-   */
-  private static generateRiasecInterpretation(scores: IRiasecScores): string {
-    const sortedScores = Object.entries(scores)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3);
-    
-    const topThree = sortedScores.map(([letter]) => letter).join('');
-    
-    const interpretations = {
-      'R': 'Realistic (Doers) - You prefer hands-on work and practical activities',
-      'I': 'Investigative (Thinkers) - You enjoy research, analysis, and intellectual challenges',
-      'A': 'Artistic (Creators) - You are drawn to creative and expressive activities',
-      'S': 'Social (Helpers) - You like working with and helping people',
-      'E': 'Enterprising (Persuaders) - You enjoy leadership and business activities',
-      'C': 'Conventional (Organizers) - You prefer structured, detail-oriented work'
-    };
-
-    const descriptions = sortedScores.map(([letter, score]) => 
-      `${interpretations[letter as keyof typeof interpretations]} (${score} points)`
-    );
-
-    return `Your Holland Code is ${topThree}. Your top interests are: ${descriptions.join(', ')}`;
-  }
-
-  /**
-   * Generate RIASEC recommendations
-   */
-  private static generateRiasecRecommendations(scores: IRiasecScores): string[] {
-    const topInterests = Object.entries(scores)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([letter]) => letter);
-    
-    const recommendations = {
-      'R': ['Engineering', 'Agriculture', 'Construction', 'Mechanics', 'Outdoor Work'],
-      'I': ['Research', 'Science', 'Medicine', 'Technology', 'Analysis'],
-      'A': ['Design', 'Writing', 'Music', 'Theatre', 'Visual Arts'],
-      'S': ['Teaching', 'Counseling', 'Healthcare', 'Social Work', 'Human Resources'],
-      'E': ['Business', 'Sales', 'Management', 'Entrepreneurship', 'Politics'],
-      'C': ['Accounting', 'Administration', 'Banking', 'Data Management', 'Operations']
-    };
-
-    const careerList: string[] = [];
-    topInterests.forEach(interest => {
-      careerList.push(...recommendations[interest as keyof typeof recommendations]);
-    });
-
-    return [...new Set(careerList)].slice(0, 8);
-  }
-
-  /**
-   * Generate Brain Profile interpretation
-   */
-  private static generateBrainInterpretation(scores: IBrainScores): string {
-    const sortedScores = Object.entries(scores)
-      .sort(([,a], [,b]) => b - a);
-    
-    const interpretations = {
-      'L1': 'Analyst and Realist - You are logical, practical, and fact-based',
-      'L2': 'Conservative/Organizer - You are structured, detailed, and systematic',
-      'R1': 'Strategist and Imaginative - You are creative, innovative, and big-picture focused',
-      'R2': 'Socializer and Empathic - You are people-oriented, emotional, and collaborative'
-    };
-
-    const topTwo = sortedScores.slice(0, 2);
-    const total = Object.values(scores).reduce((a, b) => a + b, 0);
-    
-    const descriptions = topTwo.map(([quad, score]) => 
-      `${interpretations[quad as keyof typeof interpretations]} (${Math.round((score / total) * 100)}%)`
-    );
-
-    return `Your dominant brain quadrants are ${descriptions.join(' and ')}`;
-  }
-
-  /**
-   * Generate Brain Profile recommendations
-   */
-  private static generateBrainRecommendations(scores: IBrainScores): string[] {
-    const topQuadrant = Object.entries(scores)
-      .sort(([,a], [,b]) => b - a)[0][0];
-    
-    const recommendations = {
-      'L1': ['Use logical frameworks and step-by-step approaches', 'Focus on facts and data-driven learning'],
-      'L2': ['Create structured study schedules', 'Use detailed notes and organized materials'],
-      'R1': ['Engage in creative problem-solving', 'Use visual aids and mind maps'],
-      'R2': ['Learn through group discussions', 'Seek mentors who provide emotional support']
-    };
-
-    return recommendations[topQuadrant as keyof typeof recommendations] || ['General learning recommendations'];
-  }
-
-  /**
-   * Generate STEPS interpretation
-   */
-  private static generateStepsInterpretation(scores: IStepsScores): string {
-    const avgScore = Object.values(scores).reduce((a, b) => a + b, 0) / 5;
-    const employabilityQuotient = (avgScore / 5) * 10;
-    
-    let assessment = '';
-    if (employabilityQuotient >= 8) assessment = 'Excellent job readiness!';
-    else if (employabilityQuotient >= 6) assessment = 'Good potential with room for improvement.';
-    else if (employabilityQuotient >= 4) assessment = 'Moderate job readiness - focus on skill development.';
-    else assessment = 'Significant improvement needed in key employability skills.';
-
-    return `Your Employability Quotient is ${employabilityQuotient.toFixed(1)}/10. ${assessment}`;
-  }
-
-  /**
-   * Generate STEPS recommendations
-   */
-  private static generateStepsRecommendations(scores: IStepsScores): string[] {
-    const weakAreas = Object.entries(scores)
-      .filter(([, score]) => score < 3.5)
-      .map(([area]) => area);
-    
-    const improvements = {
-      'S': 'Focus on self-management skills: time management, grooming, emotional control',
-      'T': 'Develop teamwork skills: empathy, adaptability, conflict resolution',
-      'E': 'Build enterprising skills: leadership, networking, risk management',
-      'P': 'Enhance problem-solving: critical thinking, creativity, resilience',
-      'Speaking': 'Improve communication: verbal skills, listening, body language'
-    };
-
-    if (weakAreas.length > 0) {
-      return weakAreas.map(area => improvements[area as keyof typeof improvements]);
-    }
-
-    return ['Continue developing all areas to maintain high employability'];
-  }
-
-  /**
-   * Get platform statistics (admin only)
+   * Get platform statistics
    */
   static async getPlatformStats(): Promise<any> {
     try {
-      const [
-        totalTests,
-        completedTests,
-        avgCompletionTime,
-        topHollandCodes
-      ] = await Promise.all([
-        PsychometricTest.countDocuments(),
-        PsychometricTest.countDocuments({ status: 'completed' }),
-        PsychometricTest.aggregate([
-          { $match: { status: 'completed' } },
-          { $group: { _id: null, avgTime: { $avg: '$totalTimeSpent' } } }
-        ]),
-        PsychometricTest.aggregate([
-          { $match: { status: 'completed', 'overallResults.hollandCode': { $exists: true } } },
-          { $group: { _id: '$overallResults.hollandCode', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 10 }
-        ])
+      const [stats] = await PsychometricTest.aggregate([
+        {
+          $facet: {
+            totalTests: [{ $count: "count" }],
+            completedTests: [
+              { $match: { status: 'completed' } },
+              { $count: "count" }
+            ],
+            avgCompletionTime: [
+              { $match: { status: 'completed' } },
+              { $group: { _id: null, avgTime: { $avg: '$totalTimeSpent' } } }
+            ],
+            topHollandCodes: [
+              { 
+                $match: { 
+                  status: 'completed', 
+                  'overallResults.hollandCode': { $exists: true } 
+                } 
+              },
+              { 
+                $group: { 
+                  _id: '$overallResults.hollandCode', 
+                  count: { $sum: 1 } 
+                } 
+              },
+              { $sort: { count: -1 } },
+              { $limit: 10 }
+            ]
+          }
+        }
       ]);
+
+      const totalTests = stats.totalTests[0]?.count || 0;
+      const completedTests = stats.completedTests[0]?.count || 0;
 
       return {
         totalTests,
         completedTests,
-        completionRate: totalTests > 0 ? (completedTests / totalTests) * 100 : 0,
-        avgCompletionTime: avgCompletionTime[0]?.avgTime || 0,
-        topHollandCodes: topHollandCodes.map((item: any) => ({
+        completionRate: totalTests > 0 ? Math.round((completedTests / totalTests) * 100) : 0,
+        avgCompletionTime: Math.round(stats.avgCompletionTime[0]?.avgTime || 0),
+        topHollandCodes: stats.topHollandCodes.map((item: any) => ({
           code: item._id,
           count: item.count
         }))
       };
     } catch (error) {
-      throw new Error(`Failed to get platform stats: ${error}`);
+      console.error('❌ Error getting platform stats:', error);
+      throw error;
     }
-  }
-
-  /**
-   * Validate section responses
-   */
-  static validateSectionResponses(
-    sectionType: 'riasec' | 'brainProfile' | 'employability' | 'personalInsights',
-    responses: any
-  ): { isValid: boolean; validationErrors: string[] } {
-    const validationErrors: string[] = [];
-    let isValid = false;
-
-    switch (sectionType) {
-      case 'riasec':
-        const riasecKeys = Object.keys(responses);
-        isValid = riasecKeys.length === 54 && riasecKeys.every(key => 
-          typeof responses[key] === 'boolean'
-        );
-        if (!isValid) {
-          validationErrors.push('RIASEC section requires exactly 54 yes/no responses');
-        }
-        break;
-
-      case 'brainProfile':
-        const brainKeys = Object.keys(responses);
-        isValid = brainKeys.length === 10 && brainKeys.every(key => 
-          Array.isArray(responses[key]) && responses[key].length === 4
-        );
-        if (!isValid) {
-          validationErrors.push('Brain Profile section requires 10 ranking questions with 4 options each');
-        }
-        break;
-
-      case 'employability':
-        const stepsKeys = Object.keys(responses);
-        isValid = stepsKeys.length === 25 && stepsKeys.every(key => 
-          typeof responses[key] === 'number' && responses[key] >= 1 && responses[key] <= 5
-        );
-        if (!isValid) {
-          validationErrors.push('Employability section requires 25 responses with scores 1-5');
-        }
-        break;
-
-      case 'personalInsights':
-        const required = ['whatYouLike', 'whatYouAreGoodAt', 'recentProjects'];
-        const hasRequired = required.every(field => 
-          responses[field] && typeof responses[field] === 'string' && responses[field].length >= 10
-        );
-        const hasArrays = Array.isArray(responses.characterStrengths) && Array.isArray(responses.valuesInLife);
-        isValid = hasRequired && hasArrays;
-        if (!isValid) {
-          validationErrors.push('Personal Insights section requires all text fields (min 10 chars) and strength/value arrays');
-        }
-        break;
-    }
-
-    return { isValid, validationErrors };
   }
 }
 

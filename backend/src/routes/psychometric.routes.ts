@@ -1,7 +1,7 @@
-// backend/src/routes/psychometric.routes.ts - Fixed Routes
+// backend/src/routes/psychometric.routes.ts - Production-Ready Routes
 import { Router, Request, Response } from 'express';
-const expressValidator = require('express-validator');
-const { body, param, query, validationResult } = expressValidator;
+import rateLimit from 'express-rate-limit';
+import { body, param, query, validationResult } from 'express-validator';
 import withAuth from '../middleware/auth.middleware';
 import { PsychometricTestService } from '../services/psychometricTestService';
 import { IUser } from '../models/User.model';
@@ -9,17 +9,23 @@ import mongoose from 'mongoose';
 
 const router = Router();
 
-router.get('/test', (req: Request, res: Response) => {
-  console.log('🧪 Psychometric test route accessed');
-  return res.json({
-    success: true,
-    message: 'Psychometric API is working',
-    timestamp: new Date().toISOString(),
-    models: {
-      registered: mongoose.modelNames(),
-      psychometricRegistered: mongoose.modelNames().includes('PsychometricTest')
-    }
-  });
+// Rate limiting for different endpoints
+const testRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: {
+    success: false,
+    message: 'Too many requests, please try again later'
+  }
+});
+
+const submissionRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 submissions per minute
+  message: {
+    success: false,
+    message: 'Too many submissions, please slow down'
+  }
 });
 
 // Validation middleware
@@ -35,55 +41,116 @@ const validateRequest = (req: Request, res: Response, next: any) => {
   return next();
 };
 
-/**
- * GET /api/v1/psychometric/test
- * Get or create a new psychometric test for the user
- */
-router.get('/user-test', withAuth.authenticate, async (req: Request, res: Response) => {
-  try {
-    const user = req.user as IUser;
-    console.log(`🧠 Getting/creating psychometric test for user: ${user._id}`);
-
-    const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
-
-    return res.json({
-      success: true,
-      data: {
-        testId: test.testId,
-        status: test.status,
-        completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
-        sectionsCompleted: test.sectionsCompleted,
-        nextSection: test.getNextSection(),
-        startedAt: test.startedAt,
-        totalTimeSpent: test.totalTimeSpent,
-        lastActiveSection: test.lastActiveSection,
-        progressData: test.progressData,
-        riasecResult: test.riasecResult,
-        brainProfileResult: test.brainProfileResult,
-        employabilityResult: test.employabilityResult,
-        personalInsightsResult: test.personalInsightsResult,
-        overallResults: test.overallResults,
-        isComplete: test.isComplete()
-      }
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error getting psychometric test:', error);
-    return res.status(500).json({
+// Error handling middleware
+const handleServiceError = (error: any, res: Response, defaultMessage: string) => {
+  console.error('❌ Service Error:', error);
+  
+  if (error.message.includes('Invalid responses count') || 
+      error.message.includes('must be at least') ||
+      error.message.includes('are required')) {
+    return res.status(400).json({
       success: false,
-      message: error.message || 'Failed to get psychometric test'
+      message: error.message
     });
   }
+  
+  if (error.message.includes('No active test found')) {
+    return res.status(404).json({
+      success: false,
+      message: 'No active test found. Please start a new test.'
+    });
+  }
+  
+  return res.status(500).json({
+    success: false,
+    message: defaultMessage,
+    ...(process.env.NODE_ENV === 'development' && { debug: error.message })
+  });
+};
+
+/**
+ * GET /api/v1/psychometric/test - Health check
+ */
+router.get('/test', testRateLimit, (req: Request, res: Response) => {
+  console.log('🧪 Psychometric test route accessed');
+  return res.json({
+    success: true,
+    message: 'Psychometric API is working',
+    timestamp: new Date().toISOString(),
+    models: {
+      registered: mongoose.modelNames(),
+      psychometricRegistered: mongoose.modelNames().includes('PsychometricTest')
+    }
+  });
 });
 
 /**
- * POST /api/v1/psychometric/riasec
- * Submit RIASEC (Interest Inventory) section results
+ * GET /api/v1/psychometric/user-test - Get or create user test
+ */
+router.get('/user-test', 
+  testRateLimit,
+  withAuth.authenticate, 
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user as IUser;
+      console.log(`🧠 Getting/creating psychometric test for user: ${user._id}`);
+
+      const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
+
+      return res.json({
+        success: true,
+        data: {
+          testId: test.testId,
+          status: test.status,
+          completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
+          sectionsCompleted: test.sectionsCompleted,
+          nextSection: test.getNextSection(),
+          startedAt: test.startedAt,
+          totalTimeSpent: test.totalTimeSpent,
+          lastActiveSection: test.lastActiveSection,
+          progressData: test.progressData,
+          riasecResult: test.riasecResult,
+          brainProfileResult: test.brainProfileResult,
+          employabilityResult: test.employabilityResult,
+          personalInsightsResult: test.personalInsightsResult,
+          overallResults: test.overallResults,
+          isComplete: test.isComplete()
+        }
+      });
+
+    } catch (error: any) {
+      return handleServiceError(error, res, 'Failed to get psychometric test');
+    }
+  }
+);
+
+/**
+ * POST /api/v1/psychometric/riasec - Submit RIASEC results
  */
 router.post('/riasec', [
+  submissionRateLimit,
   withAuth.authenticate,
-  body('responses').isObject().withMessage('Responses must be an object'),
-  body('timeSpent').isNumeric().withMessage('Time spent must be a number'),
+  body('responses')
+    .isObject()
+    .withMessage('Responses must be an object')
+    .custom((value : any) => {
+      const responseCount = Object.keys(value).length;
+      if (responseCount !== 54) {
+        throw new Error(`Expected 54 responses, received ${responseCount}`);
+      }
+      
+      const hasInvalidResponses = Object.values(value).some(val => typeof val !== 'boolean');
+      if (hasInvalidResponses) {
+        throw new Error('All responses must be true/false');
+      }
+      
+      return true;
+    }),
+  body('timeSpent')
+    .isNumeric()
+    .withMessage('Time spent must be a number')
+    .isInt({ min: 1, max: 7200 })
+    .withMessage('Time spent must be between 1 and 7200 seconds'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -91,15 +158,7 @@ router.post('/riasec', [
     const { responses, timeSpent } = req.body;
 
     console.log(`📝 Saving RIASEC results for user: ${user._id}`);
-
-    // Validate responses count
-    const responseCount = Object.keys(responses).length;
-    if (responseCount !== 54) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid number of responses. Expected 54, received ${responseCount}`
-      });
-    }
+    console.log(`📊 Processing ${Object.keys(responses).length} responses`);
 
     const test = await PsychometricTestService.saveRiasecResults(
       user._id.toString(),
@@ -122,22 +181,39 @@ router.post('/riasec', [
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving RIASEC results:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to save RIASEC results'
-    });
+    return handleServiceError(error, res, 'Failed to save RIASEC results');
   }
 });
 
 /**
- * POST /api/v1/psychometric/brain-profile
- * Submit Brain Profile section results
+ * POST /api/v1/psychometric/brain-profile - Submit Brain Profile results
  */
 router.post('/brain-profile', [
+  submissionRateLimit,
   withAuth.authenticate,
-  body('responses').isObject().withMessage('Responses must be an object'),
-  body('timeSpent').isNumeric().withMessage('Time spent must be a number'),
+  body('responses')
+    .isObject()
+    .withMessage('Responses must be an object')
+    .custom((value: any) => {
+      const responseCount = Object.keys(value).length;
+      if (responseCount !== 10) {
+        throw new Error(`Expected 10 responses, received ${responseCount}`);
+      }
+      
+      const hasInvalidResponses = Object.values(value).some(val => 
+        !Array.isArray(val) || val.length !== 4 || val.some(v => typeof v !== 'number')
+      );
+      if (hasInvalidResponses) {
+        throw new Error('All responses must be arrays of 4 numbers');
+      }
+      
+      return true;
+    }),
+  body('timeSpent')
+    .isNumeric()
+    .withMessage('Time spent must be a number')
+    .isInt({ min: 1, max: 3600 })
+    .withMessage('Time spent must be between 1 and 3600 seconds'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -161,27 +237,45 @@ router.post('/brain-profile', [
         completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         brainProfileResult: test.brainProfileResult,
-        nextSection: test.getNextSection()
+        nextSection: test.getNextSection(),
+        isComplete: test.isComplete()
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving Brain Profile results:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to save Brain Profile results'
-    });
+    return handleServiceError(error, res, 'Failed to save Brain Profile results');
   }
 });
 
 /**
- * POST /api/v1/psychometric/employability
- * Submit Employability (STEPS) section results
+ * POST /api/v1/psychometric/employability - Submit Employability results
  */
 router.post('/employability', [
+  submissionRateLimit,
   withAuth.authenticate,
-  body('responses').isObject().withMessage('Responses must be an object'),
-  body('timeSpent').isNumeric().withMessage('Time spent must be a number'),
+  body('responses')
+    .isObject()
+    .withMessage('Responses must be an object')
+    .custom((value: any) => {
+      const responseCount = Object.keys(value).length;
+      if (responseCount !== 25) {
+        throw new Error(`Expected 25 responses, received ${responseCount}`);
+      }
+      
+      const hasInvalidResponses = Object.values(value).some(val => 
+        typeof val !== 'number' || val < 1 || val > 5
+      );
+      if (hasInvalidResponses) {
+        throw new Error('All responses must be numbers between 1 and 5');
+      }
+      
+      return true;
+    }),
+  body('timeSpent')
+    .isNumeric()
+    .withMessage('Time spent must be a number')
+    .isInt({ min: 1, max: 3600 })
+    .withMessage('Time spent must be between 1 and 3600 seconds'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -205,31 +299,45 @@ router.post('/employability', [
         completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
         sectionsCompleted: test.sectionsCompleted,
         employabilityResult: test.employabilityResult,
-        nextSection: test.getNextSection()
+        nextSection: test.getNextSection(),
+        isComplete: test.isComplete()
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving Employability results:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to save Employability results'
-    });
+    return handleServiceError(error, res, 'Failed to save Employability results');
   }
 });
 
 /**
- * POST /api/v1/psychometric/personal-insights
- * Submit Personal Insights section results
+ * POST /api/v1/psychometric/personal-insights - Submit Personal Insights
  */
 router.post('/personal-insights', [
+  submissionRateLimit,
   withAuth.authenticate,
-  body('whatYouLike').isString().isLength({ min: 10, max: 500 }).withMessage('What you like must be 10-500 characters'),
-  body('whatYouAreGoodAt').isString().isLength({ min: 10, max: 500 }).withMessage('What you are good at must be 10-500 characters'),
-  body('recentProjects').isString().isLength({ min: 10, max: 500 }).withMessage('Recent projects must be 10-500 characters'),
-  body('characterStrengths').isArray().withMessage('Character strengths must be an array'),
-  body('valuesInLife').isArray().withMessage('Values in life must be an array'),
-  body('timeSpent').isNumeric().withMessage('Time spent must be a number'),
+  body('whatYouLike')
+    .isString()
+    .isLength({ min: 10, max: 500 })
+    .withMessage('What you like must be 10-500 characters'),
+  body('whatYouAreGoodAt')
+    .isString()
+    .isLength({ min: 10, max: 500 })
+    .withMessage('What you are good at must be 10-500 characters'),
+  body('recentProjects')
+    .isString()
+    .isLength({ min: 10, max: 500 })
+    .withMessage('Recent projects must be 10-500 characters'),
+  body('characterStrengths')
+    .isArray({ min: 3, max: 10 })
+    .withMessage('Character strengths must be an array of 3-10 items'),
+  body('valuesInLife')
+    .isArray({ min: 3, max: 10 })
+    .withMessage('Values in life must be an array of 3-10 items'),
+  body('timeSpent')
+    .isNumeric()
+    .withMessage('Time spent must be a number')
+    .isInt({ min: 1, max: 1800 })
+    .withMessage('Time spent must be between 1 and 1800 seconds'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -267,23 +375,26 @@ router.post('/personal-insights', [
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving Personal Insights:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to save Personal Insights'
-    });
+    return handleServiceError(error, res, 'Failed to save Personal Insights');
   }
 });
 
 /**
- * POST /api/v1/psychometric/save-progress
- * Save intermediate progress (for auto-save functionality)
+ * POST /api/v1/psychometric/save-progress - Auto-save progress
  */
 router.post('/save-progress', [
+  testRateLimit,
   withAuth.authenticate,
-  body('sectionType').isIn(['riasec', 'brainProfile', 'employability', 'personalInsights']).withMessage('Invalid section type'),
-  body('responses').isObject().withMessage('Responses must be an object'),
-  body('currentQuestionIndex').optional().isNumeric().withMessage('Current question index must be a number'),
+  body('sectionType')
+    .isIn(['riasec', 'brainProfile', 'employability', 'personalInsights'])
+    .withMessage('Invalid section type'),
+  body('responses')
+    .isObject()
+    .withMessage('Responses must be an object'),
+  body('currentQuestionIndex')
+    .optional()
+    .isNumeric()
+    .withMessage('Current question index must be a number'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -310,21 +421,25 @@ router.post('/save-progress', [
     });
 
   } catch (error: any) {
-    console.error('❌ Error saving progress:', error);
-    return res.status(500).json({
+    // Don't fail auto-save requests
+    console.warn('⚠️ Auto-save failed:', error);
+    return res.json({
       success: false,
-      message: error.message || 'Failed to save progress'
+      message: 'Progress save failed but test continues'
     });
   }
 });
 
 /**
- * GET /api/v1/psychometric/results/:testId?
- * Get test results by test ID or latest test
+ * GET /api/v1/psychometric/results/:testId? - Get test results
  */
 router.get('/results/:testId?', [
+  testRateLimit,
   withAuth.authenticate,
-  param('testId').optional().isString().withMessage('Test ID must be a string'),
+  param('testId')
+    .optional()
+    .isString()
+    .withMessage('Test ID must be a string'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -360,34 +475,36 @@ router.get('/results/:testId?', [
         employabilityResult: test.employabilityResult,
         personalInsightsResult: test.personalInsightsResult,
         overallResults: test.overallResults,
-        isComplete: test.isComplete()
+        isComplete: test.isComplete ? test.isComplete() : false
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error getting test results:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to get test results'
-    });
+    return handleServiceError(error, res, 'Failed to get test results');
   }
 });
 
 /**
- * GET /api/v1/psychometric/history
- * Get user's test history
+ * GET /api/v1/psychometric/history - Get test history
  */
 router.get('/history', [
+  testRateLimit,
   withAuth.authenticate,
-  query('limit').optional().isNumeric().withMessage('Limit must be a number'),
+  query('limit')
+    .optional()
+    .isNumeric()
+    .withMessage('Limit must be a number')
+    .isInt({ min: 1, max: 50 })
+    .withMessage('Limit must be between 1 and 50'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
     const user = req.user as IUser;
+    const limit = parseInt(req.query.limit as string) || 10;
 
     console.log(`📚 Getting test history for user: ${user._id}`);
 
-    const tests = await PsychometricTestService.getTestHistory(user._id.toString());
+    const tests = await PsychometricTestService.getTestHistory(user._id.toString(), limit);
 
     const formattedTests = tests.map(test => ({
       testId: test.testId,
@@ -409,21 +526,19 @@ router.get('/history', [
     });
 
   } catch (error: any) {
-    console.error('❌ Error getting test history:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to get test history'
-    });
+    return handleServiceError(error, res, 'Failed to get test history');
   }
 });
 
 /**
- * DELETE /api/v1/psychometric/test/:testId
- * Delete an in-progress test (restart functionality)
+ * DELETE /api/v1/psychometric/test/:testId - Delete test
  */
 router.delete('/test/:testId', [
+  submissionRateLimit,
   withAuth.authenticate,
-  param('testId').isString().withMessage('Test ID is required'),
+  param('testId')
+    .isString()
+    .withMessage('Test ID is required'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -450,21 +565,22 @@ router.delete('/test/:testId', [
     });
 
   } catch (error: any) {
-    console.error('❌ Error deleting test:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to delete test'
-    });
+    return handleServiceError(error, res, 'Failed to delete test');
   }
 });
 
 /**
- * POST /api/v1/psychometric/validate-section
+ * POST /api/v1/psychometric/validate-section - Validate section responses
  */
 router.post('/validate-section', [
+  testRateLimit,
   withAuth.authenticate,
-  body('sectionType').isIn(['riasec', 'brainProfile', 'employability', 'personalInsights']).withMessage('Invalid section type'),
-  body('responses').isObject().withMessage('Responses must be an object'),
+  body('sectionType')
+    .isIn(['riasec', 'brainProfile', 'employability', 'personalInsights'])
+    .withMessage('Invalid section type'),
+  body('responses')
+    .isObject()
+    .withMessage('Responses must be an object'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -488,14 +604,18 @@ router.post('/validate-section', [
         break;
 
       case 'brainProfile':
-        isValid = responseCount === 10 && Object.values(responses).every(val => Array.isArray(val) && val.length === 4);
+        isValid = responseCount === 10 && Object.values(responses).every(val => 
+          Array.isArray(val) && val.length === 4 && val.every(v => typeof v === 'number')
+        );
         if (!isValid) {
-          validationErrors.push('Brain Profile requires 10 ranking arrays');
+          validationErrors.push('Brain Profile requires 10 ranking arrays of 4 numbers each');
         }
         break;
 
       case 'employability':
-        isValid = responseCount === 25 && Object.values(responses).every(val => typeof val === 'number' && val >= 1 && val <= 5);
+        isValid = responseCount === 25 && Object.values(responses).every(val => 
+          typeof val === 'number' && val >= 1 && val <= 5
+        );
         if (!isValid) {
           validationErrors.push('Employability requires 25 numeric responses (1-5)');
         }
@@ -503,11 +623,16 @@ router.post('/validate-section', [
 
       case 'personalInsights':
         const required = ['whatYouLike', 'whatYouAreGoodAt', 'recentProjects'];
-        const hasRequired = required.every(field => responses[field] && responses[field].length >= 10);
-        const hasArrays = Array.isArray(responses.characterStrengths) && Array.isArray(responses.valuesInLife);
+        const hasRequired = required.every(field => 
+          responses[field] && typeof responses[field] === 'string' && responses[field].length >= 10
+        );
+        const hasArrays = Array.isArray(responses.characterStrengths) && 
+                         Array.isArray(responses.valuesInLife) &&
+                         responses.characterStrengths.length >= 3 &&
+                         responses.valuesInLife.length >= 3;
         isValid = hasRequired && hasArrays;
         if (!isValid) {
-          validationErrors.push('Personal Insights missing required fields');
+          validationErrors.push('Personal Insights missing required fields or insufficient data');
         }
         break;
     }
@@ -533,11 +658,15 @@ router.post('/validate-section', [
 });
 
 /**
- * GET /api/v1/psychometric/career-recommendations/:hollandCode
- * Get career recommendations for a specific Holland Code
+ * GET /api/v1/psychometric/career-recommendations/:hollandCode - Get career recommendations
  */
 router.get('/career-recommendations/:hollandCode', [
-  param('hollandCode').isLength({ min: 1, max: 6 }).withMessage('Holland Code must be 1-6 characters'),
+  testRateLimit,
+  param('hollandCode')
+    .isLength({ min: 1, max: 6 })
+    .withMessage('Holland Code must be 1-6 characters')
+    .matches(/^[RIASEC]+$/)
+    .withMessage('Holland Code must contain only letters R, I, A, S, E, C'),
   validateRequest
 ], async (req: Request, res: Response) => {
   try {
@@ -554,19 +683,6 @@ router.get('/career-recommendations/:hollandCode', [
       'C': ['Accountant', 'Administrator', 'Data Analyst', 'Librarian', 'Secretary', 'Banker', 'Insurance Agent', 'Tax Preparer']
     };
 
-    const careers: string[] = [];
-    const industries: Set<string> = new Set();
-    
-    for (const letter of hollandCode.toUpperCase()) {
-      if (careerMappings[letter as keyof typeof careerMappings]) {
-        careers.push(...careerMappings[letter as keyof typeof careerMappings]);
-      }
-    }
-
-    // Remove duplicates and limit to top 15
-    const uniqueCareers = [...new Set(careers)].slice(0, 15);
-
-    // Add industry categories
     const industryMappings = {
       'R': ['Manufacturing', 'Construction', 'Agriculture', 'Transportation'],
       'I': ['Healthcare', 'Research', 'Technology', 'Education'],
@@ -576,11 +692,19 @@ router.get('/career-recommendations/:hollandCode', [
       'C': ['Finance', 'Administration', 'Data Management', 'Government']
     };
 
+    const careers: string[] = [];
+    const industries: Set<string> = new Set();
+    
     for (const letter of hollandCode.toUpperCase()) {
+      if (careerMappings[letter as keyof typeof careerMappings]) {
+        careers.push(...careerMappings[letter as keyof typeof careerMappings]);
+      }
       if (industryMappings[letter as keyof typeof industryMappings]) {
         industryMappings[letter as keyof typeof industryMappings].forEach(industry => industries.add(industry));
       }
     }
+
+    const uniqueCareers = [...new Set(careers)].slice(0, 15);
 
     return res.json({
       success: true,
@@ -596,20 +720,22 @@ router.get('/career-recommendations/:hollandCode', [
     console.error('❌ Error getting career recommendations:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to get career recommendations'
+      message: 'Failed to get career recommendations'
     });
   }
 });
 
 /**
- * GET /api/v1/psychometric/stats (Admin only)
- * Get platform psychometric test statistics
+ * GET /api/v1/psychometric/stats - Platform statistics (Admin only)
  */
-router.get('/stats', withAuth.authenticate, async (req: Request, res: Response) => {
+router.get('/stats', [
+  testRateLimit,
+  withAuth.authenticate
+], async (req: Request, res: Response) => {
   try {
     const user = req.user as IUser;
     
-    // Check if user is admin (adjust this based on your auth system)
+    // Check if user is admin
     if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -627,11 +753,7 @@ router.get('/stats', withAuth.authenticate, async (req: Request, res: Response) 
     });
 
   } catch (error: any) {
-    console.error('❌ Error getting platform stats:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to get platform statistics'
-    });
+    return handleServiceError(error, res, 'Failed to get platform statistics');
   }
 });
 

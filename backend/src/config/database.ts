@@ -1,19 +1,65 @@
-// src/config/database.ts - MongoDB Connection Configuration (Production Ready)
+// backend/src/config/database.ts - Production-Ready MongoDB Configuration
 import mongoose from 'mongoose';
 import { dbConfig, appConfig } from './environment';
 
 // MongoDB connection state
 let isConnected = false;
+let connectionRetries = 0;
+const maxRetries = 5;
+const retryDelay = 5000; // 5 seconds
 
-// Connection options
+// Optimized connection options for production
 const mongooseOptions = {
   ...dbConfig.options,
   dbName: 'mentormatch',
+  
+  // Write Concern for data consistency
   w: 'majority' as const,
+  journal: true,
+  
+  // Connection Pool Optimization
+  maxPoolSize: 50, // Maximum number of connections in pool
+  minPoolSize: 5,  // Minimum number of connections in pool
+  maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+  
+  // Performance Optimizations
+  bufferMaxEntries: 0, // Disable mongoose buffering
+  bufferCommands: false, // Disable command buffering
+  
+  // Timeout Settings
+  serverSelectionTimeoutMS: 10000, // How long to try selecting a server
+  socketTimeoutMS: 45000, // How long a send or receive on a socket can take
+  connectTimeoutMS: 10000, // How long to wait for initial connection
+  
+  // Heartbeat and Monitoring
+  heartbeatFrequencyMS: 10000, // How often to check server status
+  
+  // Compression for network efficiency
+  compressors: ['zstd', 'zlib', 'snappy'] as ('zstd' | 'zlib' | 'snappy' | 'none')[],
+  
+  // Read Preference
+  readPreference: 'primaryPreferred' as const,
+  
+  // SSL/TLS
+  ssl: appConfig.isProduction,
+  
+  // Auto-retry writes
+  retryWrites: true,
+  retryReads: true,
+  
+  // Application name for monitoring
+  appName: 'MentorMatch-API',
 };
 
 /**
- * Connect to MongoDB database
+ * Sleep utility for retry delays
+ */
+const sleep = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+/**
+ * Connect to MongoDB database with retry logic
  */
 export const connectDB = async (): Promise<void> => {
   // Avoid multiple connections
@@ -22,38 +68,59 @@ export const connectDB = async (): Promise<void> => {
     return;
   }
 
-  try {
-    console.log('🔄 Connecting to MongoDB...');
-    
-    // Set mongoose options for better error handling
-    mongoose.set('strictQuery', false);
-    
-    // Connect to MongoDB
-    const connection = await mongoose.connect(dbConfig.uri, mongooseOptions);
-    
-    isConnected = true;
-    
-    console.log(`🍃 MongoDB connected successfully`);
-    console.log(`📍 Database: ${connection.connection.name}`);
-    console.log(`🌐 Host: ${connection.connection.host}:${connection.connection.port}`);
-    
-    // Handle connection events
-    setupConnectionEventHandlers();
-    
-    verifyModels();
+  while (connectionRetries < maxRetries) {
+    try {
+      console.log(`🔄 Connecting to MongoDB... (Attempt ${connectionRetries + 1}/${maxRetries})`);
+      
+      // Set mongoose options for better error handling
+      mongoose.set('strictQuery', false);
+      mongoose.set('bufferCommands', false);
+      
+      // Enable query logging in development
+      if (!appConfig.isProduction) {
+        mongoose.set('debug', true);
+      }
+      
+      // Connect to MongoDB
+      await mongoose.connect(dbConfig.uri, mongooseOptions);
+      
+      isConnected = true;
+      connectionRetries = 0; // Reset retry count on successful connection
+      
+      console.log(`🍃 MongoDB connected successfully`);
+      console.log(`📍 Database: ${mongoose.connection.name}`);
+      console.log(`🌐 Host: ${mongoose.connection.host}:${mongoose.connection.port}`);
+      console.log(`📊 Connection Pool Size: Min=${mongooseOptions.minPoolSize}, Max=${mongooseOptions.maxPoolSize}`);
+      
+      // Handle connection events
+      setupConnectionEventHandlers();
+      
+      // Verify models
+      verifyModels();
 
-    // Create indexes after connection
-    await createIndexes();
-    
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    
-    // Exit process with failure in production
-    if (appConfig.isProduction) {
-      process.exit(1);
+      // Create indexes after connection
+      await createIndexes();
+      
+      // Start background maintenance tasks
+      startMaintenanceTasks();
+      
+      return;
+      
+    } catch (error) {
+      connectionRetries++;
+      console.error(`❌ MongoDB connection error (Attempt ${connectionRetries}/${maxRetries}):`, error);
+      
+      if (connectionRetries >= maxRetries) {
+        console.error('💥 Max connection retries exceeded. Exiting...');
+        if (appConfig.isProduction) {
+          process.exit(1);
+        }
+        throw error;
+      }
+      
+      console.log(`⏳ Retrying connection in ${retryDelay}ms...`);
+      await sleep(retryDelay);
     }
-    
-    throw error;
   }
 };
 
@@ -85,6 +152,7 @@ export const getConnectionStatus = () => {
     name: mongoose.connection.name,
     host: mongoose.connection.host,
     port: mongoose.connection.port,
+    collections: Object.keys(mongoose.connection.collections).length,
   };
 };
 
@@ -97,12 +165,22 @@ const setupConnectionEventHandlers = () => {
   // Connection opened
   connection.on('connected', () => {
     console.log('🟢 Mongoose connected to MongoDB');
+    isConnected = true;
+    connectionRetries = 0;
   });
   
   // Connection error
   connection.on('error', (error) => {
     console.error('🔴 Mongoose connection error:', error);
     isConnected = false;
+    
+    // Attempt to reconnect on error
+    if (connectionRetries < maxRetries) {
+      setTimeout(() => {
+        console.log('🔄 Attempting to reconnect...');
+        connectDB();
+      }, retryDelay);
+    }
   });
   
   // Connection disconnected
@@ -115,6 +193,7 @@ const setupConnectionEventHandlers = () => {
   connection.on('reconnected', () => {
     console.log('🟢 Mongoose reconnected to MongoDB');
     isConnected = true;
+    connectionRetries = 0;
   });
   
   // Connection timeout
@@ -126,6 +205,11 @@ const setupConnectionEventHandlers = () => {
   connection.on('close', () => {
     console.log('🔵 Mongoose connection closed');
     isConnected = false;
+  });
+  
+  // Buffer full
+  connection.on('fullsetup', () => {
+    console.log('🔧 Mongoose full setup complete');
   });
   
   // Graceful shutdown handlers
@@ -149,10 +233,21 @@ const setupConnectionEventHandlers = () => {
   process.on('SIGINT', gracefulShutdown('SIGINT'));
   process.on('SIGTERM', gracefulShutdown('SIGTERM'));
   process.on('SIGUSR2', gracefulShutdown('SIGUSR2')); // Nodemon restart
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught Exception:', err);
+    gracefulShutdown('UNCAUGHT_EXCEPTION')();
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION')();
+  });
 };
 
 /**
- * Database health check
+ * Database health check with detailed diagnostics
  */
 export const healthCheck = async () => {
   try {
@@ -162,15 +257,29 @@ export const healthCheck = async () => {
       throw new Error('Database not connected');
     }
     
-    // Test database operation
+    // Test database operation with timeout
     if (!mongoose.connection.db) {
       throw new Error('Database connection is not established.');
     }
+    
+    const startTime = Date.now();
     await mongoose.connection.db.admin().ping();
+    const responseTime = Date.now() - startTime;
+    
+    // Get database stats
+    const dbStats = await mongoose.connection.db.stats();
     
     return {
       status: 'healthy',
       connection: status,
+      responseTime: `${responseTime}ms`,
+      stats: {
+        collections: dbStats.collections,
+        dataSize: `${Math.round(dbStats.dataSize / 1024 / 1024 * 100) / 100}MB`,
+        storageSize: `${Math.round(dbStats.storageSize / 1024 / 1024 * 100) / 100}MB`,
+        indexes: dbStats.indexes,
+        objects: dbStats.objects,
+      },
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
@@ -190,62 +299,75 @@ export const createIndexes = async (): Promise<void> => {
   try {
     console.log('🔧 Creating database indexes...');
     
-    // Check if collections exist first to avoid errors
     if (!mongoose.connection.db) {
       throw new Error('Database connection is not established.');
     }
-    //const collections = await mongoose.connection.db.listCollections().toArray();
+
+    const indexPromises = [];
     
-    // Create indexes only if collections exist or will be created
     // User indexes
     try {
-      await mongoose.connection.collection('users').createIndex({ email: 1 }, { unique: true });
-      await mongoose.connection.collection('users').createIndex({ role: 1 });
-      await mongoose.connection.collection('users').createIndex({ isEmailVerified: 1 });
-      await mongoose.connection.collection('users').createIndex({ isActive: 1 });
-      await mongoose.connection.collection('users').createIndex({ onboardingStatus: 1 });
-      await mongoose.connection.collection('users').createIndex({ createdAt: -1 });
-      await mongoose.connection.collection('users').createIndex({ lastLoginAt: -1 });
-      console.log('✅ User indexes created');
+      indexPromises.push(
+        mongoose.connection.collection('users').createIndex({ email: 1 }, { unique: true, background: true }),
+        mongoose.connection.collection('users').createIndex({ role: 1 }, { background: true }),
+        mongoose.connection.collection('users').createIndex({ isEmailVerified: 1 }, { background: true }),
+        mongoose.connection.collection('users').createIndex({ isActive: 1 }, { background: true }),
+        mongoose.connection.collection('users').createIndex({ onboardingStatus: 1 }, { background: true }),
+        mongoose.connection.collection('users').createIndex({ createdAt: -1 }, { background: true }),
+        mongoose.connection.collection('users').createIndex({ lastLoginAt: -1 }, { background: true })
+      );
+      console.log('📋 User indexes queued');
     } catch (error) {
-      // Ignore errors for non-existent collections
       console.log('📝 User collection indexes will be created when collection exists');
     }
     
     // OTP indexes
     try {
-      await mongoose.connection.collection('otps').createIndex({ email: 1, type: 1 });
-      await mongoose.connection.collection('otps').createIndex({ email: 1, type: 1, status: 1 });
-      await mongoose.connection.collection('otps').createIndex({ code: 1, type: 1 });
-      await mongoose.connection.collection('otps').createIndex({ userId: 1 });
-      await mongoose.connection.collection('otps').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-      await mongoose.connection.collection('otps').createIndex({ createdAt: -1 });
-      console.log('✅ OTP indexes created');
+      indexPromises.push(
+        mongoose.connection.collection('otps').createIndex({ email: 1, type: 1 }, { background: true }),
+        mongoose.connection.collection('otps').createIndex({ email: 1, type: 1, status: 1 }, { background: true }),
+        mongoose.connection.collection('otps').createIndex({ code: 1, type: 1 }, { background: true }),
+        mongoose.connection.collection('otps').createIndex({ userId: 1 }, { background: true }),
+        mongoose.connection.collection('otps').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true }),
+        mongoose.connection.collection('otps').createIndex({ createdAt: -1 }, { background: true })
+      );
+      console.log('📋 OTP indexes queued');
     } catch (error) {
       console.log('📝 OTP collection indexes will be created when collection exists');
     }
     
-    // Refresh token indexes (for future use)
+    // Refresh token indexes
     try {
-      await mongoose.connection.collection('refreshtokens').createIndex({ token: 1 }, { unique: true });
-      await mongoose.connection.collection('refreshtokens').createIndex({ userId: 1 });
-      await mongoose.connection.collection('refreshtokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-      console.log('✅ Refresh token indexes created');
+      indexPromises.push(
+        mongoose.connection.collection('refreshtokens').createIndex({ token: 1 }, { unique: true, background: true }),
+        mongoose.connection.collection('refreshtokens').createIndex({ userId: 1 }, { background: true }),
+        mongoose.connection.collection('refreshtokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true })
+      );
+      console.log('📋 Refresh token indexes queued');
     } catch (error) {
       console.log('📝 Refresh token collection indexes will be created when collection exists');
     }
 
+    // Psychometric test indexes (critical for performance)
     try {
-      await mongoose.connection.collection('psychometrictests').createIndex({ userId: 1, status: 1 });
-      await mongoose.connection.collection('psychometrictests').createIndex({ testId: 1 }, { unique: true });
-      await mongoose.connection.collection('psychometrictests').createIndex({ userId: 1 });
-      await mongoose.connection.collection('psychometrictests').createIndex({ status: 1 });
-      await mongoose.connection.collection('psychometrictests').createIndex({ createdAt: -1 });
-      await mongoose.connection.collection('psychometrictests').createIndex({ completedAt: -1 });
-      console.log('✅ Psychometric test indexes created');
+      indexPromises.push(
+        mongoose.connection.collection('psychometrictests').createIndex({ userId: 1, status: 1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ testId: 1 }, { unique: true, background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ userId: 1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ status: 1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ createdAt: -1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ completedAt: -1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ userId: 1, createdAt: -1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ 'overallResults.hollandCode': 1 }, { background: true }),
+        mongoose.connection.collection('psychometrictests').createIndex({ status: 1, completedAt: -1 }, { background: true })
+      );
+      console.log('📋 Psychometric test indexes queued');
     } catch (error) {
       console.log('📝 Psychometric test collection indexes will be created when collection exists');
     }
+    
+    // Wait for all indexes to be created
+    await Promise.allSettled(indexPromises);
     
     console.log('✅ Database indexes setup completed');
   } catch (error) {
@@ -263,16 +385,27 @@ export const getDatabaseStats = async () => {
     if (!db) {
       throw new Error('Database connection is not established.');
     }
-    const stats = await db.stats();
+    
+    const [stats, collections] = await Promise.all([
+      db.stats(),
+      db.listCollections().toArray()
+    ]);
     
     return {
-      collections: stats.collections,
-      dataSize: stats.dataSize,
-      storageSize: stats.storageSize,
-      indexes: stats.indexes,
-      indexSize: stats.indexSize,
-      objects: stats.objects,
-      avgObjSize: stats.avgObjSize,
+      database: {
+        collections: stats.collections,
+        dataSize: `${Math.round(stats.dataSize / 1024 / 1024 * 100) / 100}MB`,
+        storageSize: `${Math.round(stats.storageSize / 1024 / 1024 * 100) / 100}MB`,
+        indexes: stats.indexes,
+        indexSize: `${Math.round(stats.indexSize / 1024 / 1024 * 100) / 100}MB`,
+        objects: stats.objects,
+        avgObjSize: `${Math.round(stats.avgObjSize)}B`,
+      },
+      collections: collections.map(col => ({
+        name: col.name,
+        type: col.type
+      })),
+      connection: getConnectionStatus()
     };
   } catch (error) {
     console.error('❌ Error getting database stats:', error);
@@ -298,20 +431,6 @@ export const verifyModels = (): void => {
     
     if (missingModels.length > 0) {
       console.warn('⚠️ Missing models:', missingModels);
-      
-      // Try to force import missing models
-      missingModels.forEach(model => {
-        try {
-          require(`../models/${model}.model`);
-          console.log(`🔄 Force imported ${model} model`);
-        } catch (error) {
-          console.error(`❌ Failed to import ${model} model:`, error);
-        }
-      });
-      
-      // Check again after force import
-      const updatedModelNames = mongoose.modelNames();
-      console.log('📋 Updated registered models:', updatedModelNames);
     } else {
       console.log('✅ All expected models are registered');
     }
@@ -321,29 +440,71 @@ export const verifyModels = (): void => {
 };
 
 /**
- * Cleanup old documents (utility function)
+ * Cleanup old documents and optimize database
  */
 export const performCleanup = async (): Promise<void> => {
   try {
     console.log('🧹 Starting database cleanup...');
     
+    const cleanupTasks = [];
+    
     // Clean up expired OTPs (older than 24 hours)
-    const otpCleanup = await mongoose.connection.collection('otps').deleteMany({
-      $or: [
-        { expiresAt: { $lte: new Date() } },
-        { status: { $in: ['verified', 'failed'] } },
-        { createdAt: { $lte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
-      ]
+    cleanupTasks.push(
+      mongoose.connection.collection('otps').deleteMany({
+        $or: [
+          { expiresAt: { $lte: new Date() } },
+          { status: { $in: ['verified', 'failed'] } },
+          { createdAt: { $lte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
+        ]
+      })
+    );
+    
+    // Clean up old abandoned tests (older than 7 days)
+    cleanupTasks.push(
+      mongoose.connection.collection('psychometrictests').deleteMany({
+        status: 'abandoned',
+        createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      })
+    );
+    
+    // Clean up expired refresh tokens
+    cleanupTasks.push(
+      mongoose.connection.collection('refreshtokens').deleteMany({
+        expiresAt: { $lte: new Date() }
+      })
+    );
+    
+    const results = await Promise.allSettled(cleanupTasks);
+    
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const taskNames = ['OTPs', 'abandoned tests', 'refresh tokens'];
+        console.log(`🗑️ Cleaned up ${result.value.deletedCount || 0} ${taskNames[index]}`);
+      }
     });
-    
-    console.log(`🗑️ Cleaned up ${otpCleanup.deletedCount || 0} old OTP records`);
-    
-    // Add more cleanup tasks here as needed
     
     console.log('✅ Database cleanup completed');
   } catch (error) {
     console.error('❌ Error during database cleanup:', error);
   }
+};
+
+/**
+ * Start background maintenance tasks
+ */
+const startMaintenanceTasks = () => {
+  // Run cleanup every 6 hours
+  setInterval(performCleanup, 6 * 60 * 60 * 1000);
+  
+  // Log connection stats every hour
+  setInterval(async () => {
+    if (isConnected) {
+      const health = await healthCheck();
+      if (health.status === 'healthy') {
+        console.log(`📊 DB Health: ${health.responseTime} response time, ${health.stats?.objects} objects`);
+      }
+    }
+  }, 60 * 60 * 1000);
 };
 
 /**
@@ -372,4 +533,5 @@ export default {
   getDatabaseStats,
   performCleanup,
   ensureConnection,
+  verifyModels
 };

@@ -41,23 +41,30 @@ export default function InterestInventoryResults({ results, testData, onBack }: 
     C: { name: 'Conventional (Organizers)', desc: 'You prefer structured, detail-oriented work', color: '#8B4513' },
   };
 
-  useEffect(() => {
-    const fetchCareerRecommendations = async () => {
-      try {
-        setLoadingCareers(true);
-        const careers = await psychometricService.getCareerRecommendations(hollandCode);
-        setCareerRecommendations(careers);
-      } catch (error) {
-        console.error('Error fetching career recommendations:', error);
-      } finally {
-        setLoadingCareers(false);
-      }
-    };
-
-    if (hollandCode) {
-      fetchCareerRecommendations();
+useEffect(() => {
+  const fetchCareerRecommendations = async () => {
+    try {
+      setLoadingCareers(true);
+      const careers = await psychometricService.getCareerRecommendations(hollandCode);
+      setCareerRecommendations(careers);
+    } catch (error) {
+      console.error('Error fetching career recommendations:', error);
+      // Show fallback recommendations
+      setCareerRecommendations({
+        hollandCode,
+        careers: ['General Career Exploration', 'Skills Development', 'Professional Networking'],
+        industries: ['Technology', 'Healthcare', 'Education'],
+        totalRecommendations: 3
+      });
+    } finally {
+      setLoadingCareers(false);
     }
-  }, [hollandCode]);
+  };
+
+  if (hollandCode) {
+    fetchCareerRecommendations();
+  }
+}, [hollandCode]);
 
   const getScorePercentage = (score: number) => {
     return total > 0 ? Math.round((score / total) * 100) : 0;

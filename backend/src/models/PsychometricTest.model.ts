@@ -1,4 +1,4 @@
-// backend/src/models/PsychometricTest.model.ts - Fixed and Improved Model
+// backend/src/models/PsychometricTest.model.ts - Production-Ready Model
 import { Schema, model, Document, Types } from 'mongoose';
 
 // RIASEC Scores Interface (Section A)
@@ -111,21 +111,21 @@ export interface IPsychometricTest extends Document {
   getNextSection(): string | null;
 }
 
-// Schema Definitions
+// Optimized Schema Definitions
 const riasecScoresSchema = new Schema<IRiasecScores>({
-  R: { type: Number, default: 0, min: 0 },
-  I: { type: Number, default: 0, min: 0 },
-  A: { type: Number, default: 0, min: 0 },
-  S: { type: Number, default: 0, min: 0 },
-  E: { type: Number, default: 0, min: 0 },
-  C: { type: Number, default: 0, min: 0 },
+  R: { type: Number, default: 0, min: 0, max: 54 },
+  I: { type: Number, default: 0, min: 0, max: 54 },
+  A: { type: Number, default: 0, min: 0, max: 54 },
+  S: { type: Number, default: 0, min: 0, max: 54 },
+  E: { type: Number, default: 0, min: 0, max: 54 },
+  C: { type: Number, default: 0, min: 0, max: 54 },
 }, { _id: false });
 
 const brainScoresSchema = new Schema<IBrainScores>({
-  L1: { type: Number, default: 0, min: 0 },
-  L2: { type: Number, default: 0, min: 0 },
-  R1: { type: Number, default: 0, min: 0 },
-  R2: { type: Number, default: 0, min: 0 },
+  L1: { type: Number, default: 0, min: 0, max: 40 },
+  L2: { type: Number, default: 0, min: 0, max: 40 },
+  R1: { type: Number, default: 0, min: 0, max: 40 },
+  R2: { type: Number, default: 0, min: 0, max: 40 },
 }, { _id: false });
 
 const stepsScoresSchema = new Schema<IStepsScores>({
@@ -137,35 +137,118 @@ const stepsScoresSchema = new Schema<IStepsScores>({
 }, { _id: false });
 
 const personalInsightsSchema = new Schema<IPersonalInsights>({
-  whatYouLike: { type: String, required: true, maxlength: 500 },
-  whatYouAreGoodAt: { type: String, required: true, maxlength: 500 },
-  recentProjects: { type: String, required: true, maxlength: 500 },
-  characterStrengths: [{ type: String, maxlength: 100 }],
-  valuesInLife: [{ type: String, maxlength: 100 }],
+  whatYouLike: { 
+    type: String, 
+    required: true, 
+    minlength: 10,
+    maxlength: 500,
+    trim: true
+  },
+  whatYouAreGoodAt: { 
+    type: String, 
+    required: true, 
+    minlength: 10,
+    maxlength: 500,
+    trim: true
+  },
+  recentProjects: { 
+    type: String, 
+    required: true, 
+    minlength: 10,
+    maxlength: 500,
+    trim: true
+  },
+  characterStrengths: [{
+    type: String,
+    maxlength: 100,
+    trim: true
+  }],
+  valuesInLife: [{
+    type: String,
+    maxlength: 100,
+    trim: true
+  }],
 }, { _id: false });
 
 const testResultSchema = new Schema<ITestResult>({
-  sectionId: { type: String, required: true },
-  sectionName: { type: String, required: true },
-  completedAt: { type: Date, required: true },
-  timeSpent: { type: Number, required: true, min: 0 },
-  responses: { type: Schema.Types.Mixed, required: true },
-  scores: { type: Schema.Types.Mixed, required: true },
-  interpretation: { type: String, required: true, maxlength: 2000 },
-  recommendations: [{ type: String, maxlength: 200 }],
+  sectionId: { 
+    type: String, 
+    required: true,
+    enum: ['riasec', 'brainProfile', 'employability']
+  },
+  sectionName: { 
+    type: String, 
+    required: true,
+    maxlength: 100
+  },
+  completedAt: { 
+    type: Date, 
+    required: true,
+    default: Date.now
+  },
+  timeSpent: { 
+    type: Number, 
+    required: true, 
+    min: 0,
+    max: 7200 // 2 hours max
+  },
+  responses: { 
+    type: Schema.Types.Mixed, 
+    required: true 
+  },
+  scores: { 
+    type: Schema.Types.Mixed, 
+    required: true 
+  },
+  interpretation: { 
+    type: String, 
+    required: true,
+    maxlength: 3000
+  },
+  recommendations: [{
+    type: String,
+    maxlength: 300
+  }],
 }, { _id: false });
 
 const assessmentResultsSchema = new Schema<IAssessmentResults>({
-  hollandCode: { type: String, required: true, maxlength: 3 },
-  dominantBrainQuadrants: [{ type: String, enum: ['L1', 'L2', 'R1', 'R2'] }],
-  employabilityQuotient: { type: Number, required: true, min: 0, max: 10 },
-  overallInterpretation: { type: String, required: true, maxlength: 3000 },
-  careerRecommendations: [{ type: String, maxlength: 100 }],
-  learningStyleRecommendations: [{ type: String, maxlength: 200 }],
-  skillDevelopmentAreas: [{ type: String, maxlength: 100 }],
+  hollandCode: { 
+    type: String, 
+    required: true, 
+    minlength: 1,
+    maxlength: 6,
+    match: /^[RIASEC]+$/
+  },
+  dominantBrainQuadrants: [{
+    type: String,
+    enum: ['L1', 'L2', 'R1', 'R2']
+  }],
+  employabilityQuotient: { 
+    type: Number, 
+    required: true, 
+    min: 0, 
+    max: 10 
+  },
+  overallInterpretation: { 
+    type: String, 
+    required: true,
+    maxlength: 5000
+  },
+  careerRecommendations: [{
+    type: String,
+    maxlength: 150
+  }],
+  learningStyleRecommendations: [{
+    type: String,
+    maxlength: 300
+  }],
+  skillDevelopmentAreas: [{
+    type: String,
+    maxlength: 150
+  }],
 }, { _id: false });
 
-// Main Schema
+// Main Schema with Performance Optimizations
 const psychometricTestSchema = new Schema<IPsychometricTest>({
   userId: { 
     type: Schema.Types.ObjectId, 
@@ -178,6 +261,7 @@ const psychometricTestSchema = new Schema<IPsychometricTest>({
     type: String, 
     required: true, 
     unique: true,
+    index: true,
     default: () => `PSY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` 
   },
   
@@ -191,17 +275,20 @@ const psychometricTestSchema = new Schema<IPsychometricTest>({
   startedAt: { 
     type: Date, 
     default: Date.now,
-    required: true 
+    required: true,
+    index: true
   },
   
   completedAt: { 
-    type: Date 
+    type: Date,
+    index: true
   },
   
   totalTimeSpent: { 
     type: Number, 
     default: 0, 
-    min: 0 
+    min: 0,
+    max: 14400 // 4 hours max
   },
   
   sectionsCompleted: {
@@ -229,20 +316,32 @@ const psychometricTestSchema = new Schema<IPsychometricTest>({
   },
   
   progressData: {
-    currentQuestionIndex: { type: Number, default: 0 },
-    partialResponses: { type: Schema.Types.Mixed, default: {} }
+    currentQuestionIndex: { 
+      type: Number, 
+      default: 0,
+      min: 0
+    },
+    partialResponses: { 
+      type: Schema.Types.Mixed, 
+      default: {} 
+    }
   }
   
 }, {
   timestamps: true,
-  versionKey: false
+  versionKey: false,
+  // Optimize for read operations
+  read: 'primaryPreferred',
+  // Optimize write operations
+  writeConcern: { w: 'majority', j: true }
 });
 
-// Indexes for performance
+// Compound Indexes for Performance
 psychometricTestSchema.index({ userId: 1, status: 1 });
-psychometricTestSchema.index({ testId: 1 });
-psychometricTestSchema.index({ createdAt: -1 });
-psychometricTestSchema.index({ completedAt: -1 });
+psychometricTestSchema.index({ userId: 1, createdAt: -1 });
+psychometricTestSchema.index({ testId: 1, userId: 1 });
+psychometricTestSchema.index({ status: 1, completedAt: -1 });
+psychometricTestSchema.index({ 'overallResults.hollandCode': 1 });
 
 // Virtual for completion percentage
 psychometricTestSchema.virtual('completionPercentage').get(function() {
@@ -344,7 +443,7 @@ psychometricTestSchema.methods.generateOverallInterpretation = function(
   else if (employabilityQuotient >= 6) employabilityLevel = 'good';
   else if (employabilityQuotient >= 4) employabilityLevel = 'moderate';
   
-  return `Based on your assessment, you have a ${primaryInterest} personality with ${primaryBrain} thinking preferences. Your Holland Code ${hollandCode} suggests you thrive in environments that match these characteristics. Your employability skills are at a ${employabilityLevel} level (${employabilityQuotient}/10), indicating ${employabilityQuotient >= 7 ? 'strong job readiness' : 'areas for professional development'}.`;
+  return `Your assessment reveals a ${primaryInterest} personality with ${primaryBrain} thinking preferences. Your Holland Code ${hollandCode} indicates strong alignment with these characteristics. Your employability skills are at a ${employabilityLevel} level (${employabilityQuotient}/10), suggesting ${employabilityQuotient >= 7 ? 'strong job readiness' : 'opportunities for professional development'}.`;
 };
 
 // Helper method for generating career recommendations
@@ -441,7 +540,7 @@ psychometricTestSchema.statics.findCompletedByUser = function(userId: Types.Obje
     .exec();
 };
 
-// Pre-save middleware
+// Pre-save middleware for auto-completion and validation
 psychometricTestSchema.pre('save', function(next) {
   // Auto-complete test if all sections are done
   if (this.isComplete() && this.status === 'in_progress') {
@@ -450,15 +549,70 @@ psychometricTestSchema.pre('save', function(next) {
     
     // Calculate overall results if not already done
     if (!this.overallResults) {
-      this.overallResults = this.calculateOverallResults();
+      try {
+        this.overallResults = this.calculateOverallResults();
+      } catch (error) {
+        console.error('Error calculating overall results:', error);
+      }
     }
+  }
+  
+  // Validate time spent
+  if (this.totalTimeSpent < 0) {
+    this.totalTimeSpent = 0;
   }
   
   next();
 });
 
+// Post-save middleware for logging
+psychometricTestSchema.post('save', function(doc) {
+  const completionPercentage = Math.round((Object.values(doc.sectionsCompleted).filter(Boolean).length / 4) * 100);
+  console.log(`📋 Test saved: ${doc.testId} - Status: ${doc.status} - Completion: ${completionPercentage}%`);
+});
+
+// Static methods for analytics
+psychometricTestSchema.statics.getCompletionStats = async function() {
+  return await this.aggregate([
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
+        avgTimeSpent: { $avg: '$totalTimeSpent' }
+      }
+    }
+  ]);
+};
+
+psychometricTestSchema.statics.getHollandCodeDistribution = async function() {
+  return await this.aggregate([
+    {
+      $match: { 
+        status: 'completed',
+        'overallResults.hollandCode': { $exists: true }
+      }
+    },
+    {
+      $group: {
+        _id: '$overallResults.hollandCode',
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } }
+  ]);
+};
+
+// TTL Index for abandoned tests (cleanup after 30 days)
+psychometricTestSchema.index(
+  { createdAt: 1 }, 
+  { 
+    expireAfterSeconds: 30 * 24 * 60 * 60, // 30 days
+    partialFilterExpression: { status: 'abandoned' }
+  }
+);
+
 // Export the model
 export const PsychometricTest = model<IPsychometricTest>('PsychometricTest', psychometricTestSchema);
 export default PsychometricTest;
 
-console.log('PsychometriccTest model registered.')
+console.log('✅ PsychometricTest model registered with optimizations');
