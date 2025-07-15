@@ -1,23 +1,22 @@
-// frontend/components/tests/EmployabilityTest.tsx - Employability Test Component
+// frontend/components/tests/EmployabilityTest.tsx - Improved Component
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
   Animated,
   Modal,
   Dimensions,
+  StatusBar,
+  StyleSheet
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { EmployabilityQuestion } from '@/data/employabilityQuestions';
 
-const { width } = Dimensions.get('window');
-const isTablet = width > 768;
-const isSmallScreen = width < 375;
+const { width, height } = Dimensions.get('window');
 
 interface Props {
   questions: EmployabilityQuestion[];
@@ -41,9 +40,9 @@ export default function EmployabilityTest({
   onBack,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
   const [showQuestionPalette, setShowQuestionPalette] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
 
   const currentQuestion = questions[currentQuestionIndex];
   const answeredCount = Object.keys(answers).length;
@@ -57,22 +56,40 @@ export default function EmployabilityTest({
     'Speaking': '#DC2626',
   };
 
+  // Initialize selected answer when question changes
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: progressPercentage,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [progressPercentage]);
+    const existingAnswer = answers[currentQuestion.id];
+    setSelectedAnswer(existingAnswer !== undefined ? existingAnswer : null);
+  }, [currentQuestion, answers]);
 
-  const handleAnswer = (score: number) => {
-    // Animate question transition
+  useEffect(() => {
+    StatusBar.setBarStyle('light-content');
+  }, []);
+
+  const handleAnswerSelect = (score: number) => {
+    setSelectedAnswer(score);
+    // Animate selection
     Animated.sequence([
-      Animated.timing(slideAnim, { toValue: -50, duration: 150, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 10, duration: 100, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
     ]).start();
+  };
 
-    onAnswer(currentQuestion.id, score);
+  const handleSaveAndNext = () => {
+    if (selectedAnswer !== null) {
+      onAnswer(currentQuestion.id, selectedAnswer);
+      
+      // Move to next question if not the last one
+      if (currentQuestionIndex < questions.length - 1) {
+        setTimeout(() => {
+          setCurrentQuestionIndex(currentQuestionIndex + 1);
+        }, 300);
+      }
+    }
+  };
+
+  const canSaveAndNext = () => {
+    return selectedAnswer !== null;
   };
 
   const getScoreColor = (score: number) => {
@@ -86,151 +103,182 @@ export default function EmployabilityTest({
   };
 
   const renderQuestionPalette = () => (
-    <Modal
-      visible={showQuestionPalette}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => setShowQuestionPalette(false)}
-    >
-      <SafeAreaView style={styles.paletteContainer}>
-        <View style={styles.paletteHeader}>
-          <Text style={styles.paletteTitle}>Question Navigator</Text>
+    <View style={styles.questionGridOverlay}>
+      <TouchableOpacity 
+        style={styles.gridBackdrop}
+        onPress={() => setShowQuestionPalette(false)}
+        activeOpacity={1}
+      />
+      <Animated.View style={styles.questionGridContainer}>
+        <View style={styles.gridHeader}>
+          <Text style={styles.gridTitle}>Question Navigator</Text>
           <TouchableOpacity
             onPress={() => setShowQuestionPalette(false)}
-            style={styles.paletteCloseButton}
+            style={styles.gridCloseButton}
           >
             <MaterialIcons name="close" size={24} color="#2A2A2A" />
           </TouchableOpacity>
         </View>
         
-        <ScrollView style={styles.paletteContent} contentContainerStyle={styles.paletteGrid}>
-          {questions.map((question, index) => {
-            const isAnswered = answers.hasOwnProperty(question.id);
-            const categoryColor = categoryColors[question.category];
-            
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.paletteQuestionItem,
-                  { borderColor: categoryColor },
-                  isAnswered && { backgroundColor: categoryColor },
-                  index === currentQuestionIndex && styles.paletteCurrent,
-                ]}
-                onPress={() => {
-                  onNavigateToQuestion(index);
-                  setShowQuestionPalette(false);
-                }}
-              >
-                <Text style={[
-                  styles.paletteQuestionText,
-                  isAnswered && styles.paletteQuestionTextAnswered,
-                  index === currentQuestionIndex && styles.paletteQuestionTextCurrent,
-                ]}>
-                  {index + 1}
-                </Text>
-                <Text style={[
-                  styles.paletteCategoryText,
-                  isAnswered && { color: '#FFFFFF' },
-                  index === currentQuestionIndex && { color: categoryColor },
-                ]}>
-                  {question.category}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        
-        <View style={styles.paletteLegend}>
-          {Object.entries(categoryColors).map(([category, color]) => (
-            <View key={category} style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: color }]} />
-              <Text style={styles.legendText}>{category}</Text>
+        <ScrollView 
+          style={styles.gridContent} 
+          contentContainerStyle={styles.gridScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.questionsGrid}>
+            {questions.map((question, index) => {
+              const isAnswered = answers.hasOwnProperty(question.id);
+              const categoryColor = categoryColors[question.category];
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.gridQuestionItem,
+                    { borderColor: categoryColor },
+                    isAnswered && { backgroundColor: categoryColor },
+                    index === currentQuestionIndex && styles.gridCurrent,
+                  ]}
+                  onPress={() => {
+                    onNavigateToQuestion(index);
+                    setShowQuestionPalette(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.gridQuestionText,
+                    isAnswered && styles.gridQuestionTextAnswered,
+                    index === currentQuestionIndex && styles.gridQuestionTextCurrent,
+                  ]}>
+                    {index + 1}
+                  </Text>
+                  <Text style={[
+                    styles.paletteCategoryText,
+                    isAnswered && { color: '#FFFFFF' },
+                    index === currentQuestionIndex && { color: categoryColor },
+                  ]}>
+                    {question.category}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          
+          <View style={styles.gridLegend}>
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#10B981' }]} />
+                <Text style={styles.legendText}>Answered</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: '#059669', borderWidth: 2, borderColor: '#10B981' }]} />
+                <Text style={styles.legendText}>Current</Text>
+              </View>
             </View>
-          ))}
-        </View>
-      </SafeAreaView>
-    </Modal>
+          </View>
+        </ScrollView>
+      </Animated.View>
+    </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Responsive Fixed Header */}
-      <View style={styles.testHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <MaterialIcons name="close" size={24} color="#2A2A2A" />
-        </TouchableOpacity>
-        
-        <View style={styles.testHeaderContent}>
-          <Text style={styles.testTitle}>Employability Test</Text>
-          <View style={styles.progressContainer}>
-            <Text style={styles.progressText}>
-              {answeredCount} of {questions.length} completed ({Math.round(progressPercentage)}%)
-            </Text>
-            <View style={styles.progressBar}>
-              <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: progressAnim.interpolate({
-                      inputRange: [0, 100],
-                      outputRange: ['0%', '100%'],
-                    }),
-                  },
-                ]}
-              />
-            </View>
+      {/* Modern Mobile-First Header */}
+      <LinearGradient colors={['#059669', '#10B981']} style={styles.testHeader}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          
+          <View style={styles.headerCenter}>
+            <Text style={styles.testTitle}>Employability Test</Text>
+            <Text style={styles.headerSubtitle}>Question {currentQuestionIndex + 1} of {questions.length}</Text>
           </View>
-        </View>
 
-        <View style={styles.headerActions}>
           <TouchableOpacity
             onPress={() => setShowQuestionPalette(true)}
             style={styles.questionToggleButton}
           >
-            <Text style={styles.currentQuestionNumber}>{currentQuestionIndex + 1}/{questions.length}</Text>
-            <MaterialIcons name="grid-view" size={20} color="#059669" />
+            <MaterialIcons name="apps" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Question Content */}
-      <Animated.View style={[styles.questionContainer, { transform: [{ translateX: slideAnim }] }]}>
-        <ScrollView style={styles.questionScrollView} contentContainerStyle={styles.questionContent}>
-          <View style={styles.questionCard}>
+        {/* Progress Bar */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressInfo}>
+            <Text style={styles.progressText}>{answeredCount} completed</Text>
+            <Text style={styles.progressPercent}>{Math.round(progressPercentage)}%</Text>
+          </View>
+          <View style={styles.progressBar}>
+            <Animated.View
+              style={[
+                styles.progressFill,
+                { width: `${progressPercentage}%` }
+              ]}
+            />
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Main Content */}
+      <View style={styles.questionContainer}>
+        <ScrollView 
+          style={styles.questionScrollView} 
+          contentContainerStyle={styles.questionContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Modern Question Card */}
+          <Animated.View style={[styles.questionCard, { transform: [{ translateX: slideAnim }] }]}>
+            {/* Question Header */}
             <View style={styles.questionHeader}>
               <View style={styles.questionNumberContainer}>
-                <Text style={styles.questionNumber}>Question {currentQuestionIndex + 1}</Text>
+                <View style={styles.questionNumberBadge}>
+                  <Text style={styles.questionNumberText}>Q{currentQuestionIndex + 1}</Text>
+                </View>
                 <View style={[styles.categoryBadge, { backgroundColor: categoryColors[currentQuestion.category] }]}>
                   <Text style={styles.categoryBadgeText}>{currentQuestion.category}</Text>
                 </View>
               </View>
+              
               <TouchableOpacity 
-                style={styles.hintButton}
+                style={[
+                  styles.hintButton,
+                  showHint && styles.hintButtonActive
+                ]}
                 onPress={() => setShowHint(!showHint)}
               >
                 <MaterialIcons 
                   name={showHint ? "help" : "help-outline"} 
-                  size={24} 
+                  size={20} 
                   color={showHint ? "#F59E0B" : "#8B7355"} 
                 />
+                <Text style={[
+                  styles.hintButtonText,
+                  showHint && styles.hintButtonTextActive
+                ]}>
+                  {showHint ? 'Hide' : 'Hint'}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+            {/* Question Text */}
+            <View style={styles.questionTextContainer}>
+              <Text style={styles.questionText}>{currentQuestion.question}</Text>
+            </View>
 
-            {/* Hint Section */}
+            {/* Modern Hint Section */}
             {showHint && (
               <View style={styles.hintContainer}>
-                <View style={styles.hintHeader}>
+                <View style={styles.hintIcon}>
                   <MaterialIcons name="lightbulb" size={20} color="#F59E0B" />
-                  <Text style={styles.hintTitle}>Hint</Text>
                 </View>
-                <Text style={styles.hintText}>{currentQuestion.hint}</Text>
+                <View style={styles.hintContent}>
+                  <Text style={styles.hintTitle}>Hint</Text>
+                  <Text style={styles.hintText}>{currentQuestion.hint}</Text>
+                </View>
               </View>
             )}
 
-            {/* Rating Scale */}
+            {/* Improved Rating Scale */}
             <View style={styles.ratingContainer}>
               <Text style={styles.ratingTitle}>Rate yourself (1 = Poor, 5 = Excellent)</Text>
               <View style={styles.ratingOptions}>
@@ -239,94 +287,137 @@ export default function EmployabilityTest({
                     key={score}
                     style={[
                       styles.ratingOption,
-                      answers[currentQuestion.id] === score && styles.ratingOptionSelected,
+                      selectedAnswer === score && styles.ratingOptionSelected,
                       { borderColor: getScoreColor(score) }
                     ]}
-                    onPress={() => handleAnswer(score)}
+                    onPress={() => handleAnswerSelect(score)}
                     activeOpacity={0.8}
                   >
-                    <View style={[
-                      styles.ratingNumber,
-                      answers[currentQuestion.id] === score && { backgroundColor: getScoreColor(score) }
-                    ]}>
-                      <Text style={[
-                        styles.ratingNumberText,
-                        answers[currentQuestion.id] === score && styles.ratingNumberTextSelected
-                      ]}>
-                        {score}
-                      </Text>
-                    </View>
-                    <Text style={[
-                      styles.ratingLabel,
-                      answers[currentQuestion.id] === score && { color: getScoreColor(score) }
-                    ]}>
-                      {getScoreLabel(score)}
-                    </Text>
+                    <LinearGradient
+                      colors={selectedAnswer === score ? 
+                        [getScoreColor(score), getScoreColor(score)] : 
+                        ['#FFFFFF', '#F8FAFC']
+                      }
+                      style={styles.ratingGradient}
+                    >
+                      <View style={styles.ratingIconContainer}>
+                        <View style={[
+                          styles.ratingNumber,
+                          { backgroundColor: selectedAnswer === score ? '#FFFFFF' : getScoreColor(score) }
+                        ]}>
+                          <Text style={[
+                            styles.ratingNumberText,
+                            { color: selectedAnswer === score ? getScoreColor(score) : '#FFFFFF' }
+                          ]}>
+                            {score}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.ratingContent}>
+                        <Text style={[
+                          styles.ratingLabel,
+                          { color: selectedAnswer === score ? '#FFFFFF' : '#2A2A2A' }
+                        ]}>
+                          {getScoreLabel(score)}
+                        </Text>
+                      </View>
+
+                      {selectedAnswer === score && (
+                        <View style={styles.selectedIndicator}>
+                          <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
+                        </View>
+                      )}
+                    </LinearGradient>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
 
-            {/* Navigation Buttons */}
-            <View style={styles.navigationButtons}>
-              <TouchableOpacity
-                style={[styles.navButton, currentQuestionIndex === 0 && styles.navButtonDisabled]}
-                onPress={() => currentQuestionIndex > 0 && setCurrentQuestionIndex(currentQuestionIndex - 1)}
-                disabled={currentQuestionIndex === 0}
-              >
-                <MaterialIcons name="arrow-back" size={20} color={currentQuestionIndex === 0 ? "#D1C4B8" : "#059669"} />
-                <Text style={[styles.navButtonText, currentQuestionIndex === 0 && styles.navButtonTextDisabled]}>
-                  Previous
-                </Text>
-              </TouchableOpacity>
+            {/* Instruction Text */}
+            <Text style={styles.instructionText}>
+              Select your rating and tap "Save & Next" to continue
+            </Text>
+          </Animated.View>
+        </ScrollView>
 
-              <TouchableOpacity
-                style={[styles.navButton, currentQuestionIndex === questions.length - 1 && styles.navButtonDisabled]}
-                onPress={() => currentQuestionIndex < questions.length - 1 && setCurrentQuestionIndex(currentQuestionIndex + 1)}
-                disabled={currentQuestionIndex === questions.length - 1}
-              >
-                <Text style={[styles.navButtonText, currentQuestionIndex === questions.length - 1 && styles.navButtonTextDisabled]}>
-                  Next
-                </Text>
-                <MaterialIcons name="arrow-forward" size={20} color={currentQuestionIndex === questions.length - 1 ? "#D1C4B8" : "#059669"} />
-              </TouchableOpacity>
-            </View>
+        {/* Bottom Navigation - Fixed */}
+        <View style={styles.bottomNavigation}>
+          <View style={styles.navigationRow}>
+            {/* Previous Button */}
+            <TouchableOpacity
+              style={[
+                styles.navButton,
+                styles.previousButton,
+                currentQuestionIndex === 0 && styles.navButtonDisabled
+              ]}
+              onPress={() => currentQuestionIndex > 0 && setCurrentQuestionIndex(currentQuestionIndex - 1)}
+              disabled={currentQuestionIndex === 0}
+            >
+              <MaterialIcons 
+                name="arrow-back" 
+                size={20} 
+                color={currentQuestionIndex === 0 ? "#D1C4B8" : "#059669"} 
+              />
+              <Text style={[
+                styles.navButtonText,
+                currentQuestionIndex === 0 && styles.navButtonTextDisabled
+              ]}>
+                Previous
+              </Text>
+            </TouchableOpacity>
 
-            {/* Submit Button */}
-            {answeredCount === questions.length && (
-              <TouchableOpacity style={styles.submitButton} onPress={onSubmit}>
-                <LinearGradient colors={['#059669', '#10B981']} style={styles.submitButtonGradient}>
-                  <Text style={styles.submitButtonText}>Submit Test</Text>
+            {/* Save & Next / Submit Button */}
+            {currentQuestionIndex === questions.length - 1 && answeredCount === questions.length ? (
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={onSubmit}
+              >
+                <LinearGradient colors={['#059669', '#10B981']} style={styles.submitGradient}>
                   <MaterialIcons name="check" size={20} color="#FFFFFF" />
+                  <Text style={styles.submitButtonText}>Submit Test</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.saveNextButton,
+                  !canSaveAndNext() && styles.saveNextButtonDisabled
+                ]}
+                onPress={handleSaveAndNext}
+                disabled={!canSaveAndNext()}
+              >
+                <LinearGradient 
+                  colors={canSaveAndNext() ? ['#059669', '#10B981'] : ['#D1C4B8', '#D1C4B8']} 
+                  style={styles.saveNextGradient}
+                >
+                  <Text style={styles.saveNextButtonText}>
+                    {currentQuestionIndex === questions.length - 1 ? 'Save Answer' : 'Save & Next'}
+                  </Text>
+                  {currentQuestionIndex < questions.length - 1 && (
+                    <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             )}
-
-            {/* Progress indicator for incomplete test */}
-            {answeredCount < questions.length && (
-              <View style={styles.progressIndicator}>
-                <Text style={styles.progressIndicatorText}>
-                  {questions.length - answeredCount} questions remaining
-                </Text>
-                <View style={styles.progressIndicatorBar}>
-                  <View 
-                    style={[
-                      styles.progressIndicatorFill, 
-                      { width: `${progressPercentage}%` }
-                    ]} 
-                  />
-                </View>
-              </View>
-            )}
           </View>
-        </ScrollView>
-      </Animated.View>
 
-      {/* Question Palette Modal */}
-      {renderQuestionPalette()}
+          {/* Progress Info */}
+          <View style={styles.bottomProgressInfo}>
+            <Text style={styles.bottomProgressText}>
+              {questions.length - answeredCount} questions remaining
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Question Grid Overlay - Bottom Modal */}
+      {showQuestionPalette && renderQuestionPalette()}
     </SafeAreaView>
   );
 }
+
+// Add these improved styles to your EmployabilityTest.tsx StyleSheet:
 
 const styles = StyleSheet.create({
   container: {
@@ -334,72 +425,77 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDF4',
   },
   
-  // Responsive Fixed Header
+  // Modern Mobile-First Header
   testHeader: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 20,
-    paddingBottom: isTablet ? 20 : 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 75,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   backButton: {
-    padding: isTablet ? 12 : 8,
-    marginRight: isTablet ? 16 : 12,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  testHeaderContent: {
+  headerCenter: {
+    alignItems: 'center',
     flex: 1,
-    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
   testTitle: {
-    fontSize: isTablet ? 22 : 18,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#2A2A2A',
-    marginBottom: 4,
+    color: '#FFFFFF',
   },
-  progressContainer: {
-    flex: 1,
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 2,
+  },
+  questionToggleButton: {
+    padding: 12,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  
+  // Progress Section
+  progressSection: {
+    marginTop: 8,
+  },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   progressText: {
-    fontSize: isTablet ? 14 : 12,
-    color: '#8B7355',
-    marginBottom: 6,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  progressPercent: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   progressBar: {
     height: 4,
-    backgroundColor: '#E8DDD1',
+    backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#059669',
+    backgroundColor: '#FFFFFF',
     borderRadius: 2,
   },
-  headerActions: {
-    alignItems: 'flex-end',
-  },
-  questionToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    gap: 8,
-  },
-  currentQuestionNumber: {
-    fontSize: isTablet ? 16 : 14,
-    fontWeight: 'bold',
-    color: '#059669',
-  },
 
-  // Question Container
+  // Main Content
   questionContainer: {
     flex: 1,
   },
@@ -407,30 +503,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   questionContent: {
-    padding: isTablet ? 32 : 20,
+    padding: 20,
+    paddingBottom: 120,
   },
+
+  // Modern Question Card
   questionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 32 : 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
+  
+  // Question Header
   questionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   questionNumberContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  questionNumber: {
-    fontSize: isTablet ? 18 : 16,
+  questionNumberBadge: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  questionNumberText: {
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#059669',
+    color: '#FFFFFF',
   },
   categoryBadge: {
     paddingHorizontal: 12,
@@ -438,251 +548,353 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   categoryBadgeText: {
-    fontSize: isTablet ? 12 : 10,
+    fontSize: 10,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   hintButton: {
-    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  hintButtonActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  hintButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B7355',
+    marginLeft: 4,
+  },
+  hintButtonTextActive: {
+    color: '#F59E0B',
+  },
+
+  // Question Text
+  questionTextContainer: {
+    marginBottom: 32,
   },
   questionText: {
-    fontSize: isTablet ? 22 : 18,
+    fontSize: 20,
+    lineHeight: 28,
     color: '#2A2A2A',
-    lineHeight: isTablet ? 30 : 26,
-    marginBottom: 20,
+    textAlign: 'center',
     fontWeight: '500',
   },
 
-  // Hint Section
+  // Modern Hint Section
   hintContainer: {
     backgroundColor: '#FFFBEB',
     borderRadius: 12,
-    padding: isTablet ? 20 : 16,
+    padding: 16,
     marginBottom: 24,
     borderWidth: 1,
     borderColor: '#FED7AA',
-  },
-  hintHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  hintIcon: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  hintContent: {
+    flex: 1,
   },
   hintTitle: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#F59E0B',
-    marginLeft: 8,
+    marginBottom: 4,
   },
   hintText: {
-    fontSize: isTablet ? 15 : 14,
+    fontSize: 14,
     color: '#92400E',
-    lineHeight: isTablet ? 22 : 20,
+    lineHeight: 20,
   },
 
-  // Rating Container
+  // Improved Rating Container - Like Interest Test
   ratingContainer: {
-    marginBottom: 32,
-  },
-  ratingTitle: {
-    fontSize: isTablet ? 18 : 16,
-    fontWeight: '600',
-    color: '#2A2A2A',
-    marginBottom: 20,
+  marginBottom: 24,
+},
+ratingTitle: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#2A2A2A',
+  marginBottom: 16, // Reduced from 20
+  textAlign: 'center',
+},
+ratingOptions: {
+  gap: 8, // Reduced from 12
+},
+ratingOption: {
+  borderRadius: 12, // Reduced from 16
+  overflow: 'hidden',
+  borderWidth: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 }, // Reduced shadow
+  shadowOpacity: 0.08, // Reduced shadow
+  shadowRadius: 4, // Reduced shadow
+  elevation: 2, // Reduced elevation
+},
+ratingOptionSelected: {
+  transform: [{ scale: 0.98 }],
+  shadowOpacity: 0.15, // Reduced shadow
+  shadowRadius: 8, // Reduced shadow
+  elevation: 4, // Reduced elevation
+},
+ratingGradient: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  padding: 12, // Reduced from 16
+  minHeight: 56, // Reduced from 70
+  position: 'relative',
+},
+ratingIconContainer: {
+  marginRight: 12, // Reduced from 16
+},
+ratingNumber: {
+  width: 36, // Reduced from 48
+  height: 36, // Reduced from 48
+  borderRadius: 18, // Reduced accordingly
+  alignItems: 'center',
+  justifyContent: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 }, // Reduced shadow
+  shadowOpacity: 0.08,
+  shadowRadius: 2,
+  elevation: 1,
+},
+ratingNumberText: {
+  fontSize: 16, // Reduced from 18
+  fontWeight: 'bold',
+},
+ratingContent: {
+  flex: 1,
+},
+ratingLabel: {
+  fontSize: 14, // Reduced from 16
+  fontWeight: '600',
+},
+selectedIndicator: {
+  position: 'absolute',
+  top: 8, // Reduced from 12
+  right: 8, // Reduced from 12
+},
+  // Instruction
+  instructionText: {
+    fontSize: 14,
+    color: '#8B7355',
     textAlign: 'center',
-  },
-  ratingOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: isTablet ? 12 : 8,
-  },
-  ratingOption: {
-    flex: 1,
-    alignItems: 'center',
-    padding: isTablet ? 20 : 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    backgroundColor: '#FFFFFF',
-    minHeight: isTablet ? 120 : 100,
-    justifyContent: 'center',
-  },
-  ratingOptionSelected: {
-    backgroundColor: '#F8FAFC',
-    transform: [{ scale: 0.98 }],
-  },
-  ratingNumber: {
-    width: isTablet ? 48 : 40,
-    height: isTablet ? 48 : 40,
-    borderRadius: isTablet ? 24 : 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    marginBottom: 12,
-  },
-  ratingNumberText: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#64748B',
-  },
-  ratingNumberTextSelected: {
-    color: '#FFFFFF',
-  },
-  ratingLabel: {
-    fontSize: isTablet ? 14 : 12,
-    fontWeight: '600',
-    color: '#64748B',
-    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 16,
   },
 
-  // Navigation
-  navigationButtons: {
+  // Bottom Navigation
+  bottomNavigation: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DDD1',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 20,
+  },
+  navigationRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    alignItems: 'center',
+    gap: 12,
   },
   navButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: isTablet ? 14 : 12,
-    paddingHorizontal: isTablet ? 24 : 20,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: '#F0FDF4',
     borderWidth: 1,
     borderColor: '#BBF7D0',
+  },
+  previousButton: {
+    flex: 0,
   },
   navButtonDisabled: {
     opacity: 0.5,
   },
   navButtonText: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: 14,
     fontWeight: '600',
     color: '#059669',
-    marginHorizontal: 8,
+    marginLeft: 6,
   },
   navButtonTextDisabled: {
     color: '#D1C4B8',
   },
-
-  // Submit Button
-  submitButton: {
+  saveNextButton: {
+    flex: 1,
     borderRadius: 12,
     overflow: 'hidden',
   },
-  submitButtonGradient: {
+  saveNextButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveNextGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: isTablet ? 18 : 16,
-    paddingHorizontal: 32,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  saveNextButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  submitButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  submitGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     gap: 8,
   },
   submitButtonText: {
-    fontSize: isTablet ? 18 : 16,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
-
-  // Progress Indicator
-  progressIndicator: {
+  bottomProgressInfo: {
     alignItems: 'center',
-    padding: isTablet ? 20 : 16,
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
+    marginTop: 8,
   },
-  progressIndicatorText: {
-    fontSize: isTablet ? 16 : 14,
+  bottomProgressText: {
+    fontSize: 12,
     color: '#8B7355',
-    marginBottom: 8,
-  },
-  progressIndicatorBar: {
-    width: '100%',
-    height: 6,
-    backgroundColor: '#E8DDD1',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressIndicatorFill: {
-    height: '100%',
-    backgroundColor: '#059669',
-    borderRadius: 3,
   },
 
-  // Question Palette Modal
-  paletteContainer: {
-    flex: 1,
-    backgroundColor: '#F0FDF4',
+  // Question Grid Overlay - Bottom Modal Style
+  questionGridOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    zIndex: 1000,
   },
-  paletteHeader: {
+  gridBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  questionGridContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    minHeight: height * 0.6,
+    maxHeight: height * 0.8,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  gridHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  paletteTitle: {
-    fontSize: 20,
+  gridTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#2A2A2A',
   },
-  paletteCloseButton: {
+  gridCloseButton: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#F0FDF4',
   },
-  paletteContent: {
+  gridContent: {
     flex: 1,
-    padding: 20,
   },
-  paletteGrid: {
+  gridScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  questionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    marginBottom: 32,
+    justifyContent: 'space-between',
   },
-  paletteQuestionItem: {
-    width: isTablet ? 80 : 70,
-    height: isTablet ? 80 : 70,
-    borderRadius: isTablet ? 40 : 35,
+  gridQuestionItem: {
+    width: (width - 84) / 6,
+    height: (width - 84) / 6,
+    borderRadius: ((width - 84) / 6) / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F0FDF4',
     borderWidth: 2,
     borderColor: '#E8DDD1',
+    position: 'relative',
   },
-  paletteCurrent: {
+  gridCurrent: {
     borderWidth: 3,
     borderColor: '#059669',
   },
-  paletteQuestionText: {
-    fontSize: isTablet ? 16 : 14,
+  gridQuestionText: {
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#8B7355',
   },
-  paletteQuestionTextAnswered: {
+  gridQuestionTextAnswered: {
     color: '#FFFFFF',
   },
-  paletteQuestionTextCurrent: {
+  gridQuestionTextCurrent: {
     color: '#059669',
   },
   paletteCategoryText: {
-    fontSize: isTablet ? 12 : 10,
-    fontWeight: '600',
+    fontSize: 8,
     color: '#8B7355',
     marginTop: 2,
   },
-  paletteLegend: {
+
+  // Legend
+  gridLegend: {
+    gap: 8,
+  },
+  legendRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E8DDD1',
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   legendColor: {
     width: 16,

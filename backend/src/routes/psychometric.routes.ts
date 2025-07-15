@@ -1,7 +1,9 @@
 // backend/src/routes/psychometric.routes.ts - Production-Ready Routes
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { body, param, query, validationResult } from 'express-validator';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { body, param, query, validationResult } = require('express-validator');
 import withAuth from '../middleware/auth.middleware';
 import { PsychometricTestService } from '../services/psychometricTestService';
 import { IUser } from '../models/User.model';

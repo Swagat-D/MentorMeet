@@ -350,39 +350,56 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F0FDF4',
+    paddingTop: 0,
   },
   
   // Fixed Header
   resultsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 20,
-    paddingBottom: isTablet ? 20 : 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 75,
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerContent: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  resultsTitle: {
-    fontSize: isTablet ? 24 : 20,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-  },
-  homeButton: {
-    padding: 8,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: isTablet ? 32 : 20,
+  paddingTop: isTablet ? 20 : 45, 
+  paddingBottom: isTablet ? 20 : 16,
+  backgroundColor: '#FFFFFF',
+  borderBottomWidth: 1,
+  borderBottomColor: '#BBF7D0',
+  minHeight: isTablet ? 85 : 95,
+  elevation: 2,
+  shadowColor: '#059669',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 8,
+},
+backButton: {
+  padding: 8,
+  borderRadius: 20,
+  backgroundColor: '#F0FDF4',
+  borderWidth: 1,
+  borderColor: '#BBF7D0',
+},
+headerContent: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+resultsTitle: {
+  fontSize: isTablet ? 24 : 18,
+  fontWeight: 'bold',
+  color: '#2A2A2A',
+  textAlign: 'center',
+},
+homeButton: {
+  padding: 8,
+  borderRadius: 20,
+  backgroundColor: '#F0FDF4',
+  borderWidth: 1,
+  borderColor: '#BBF7D0',
+},
   resultsContainer: {
     flex: 1,
-    padding: isTablet ? 32 : 20,
+    padding: isTablet ? 32 : 16,
+    paddingTop: isTablet ? 32 : 20,
   },
 
   // Employability Quotient Card

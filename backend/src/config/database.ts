@@ -10,45 +10,20 @@ const retryDelay = 5000; // 5 seconds
 
 // Optimized connection options for production
 const mongooseOptions = {
-  ...dbConfig.options,
-  dbName: 'mentormatch',
-  
-  // Write Concern for data consistency
+  dbName: process.env.DB_NAME || 'mentormeet',
   w: 'majority' as const,
   journal: true,
-  
-  // Connection Pool Optimization
-  maxPoolSize: 50, // Maximum number of connections in pool
-  minPoolSize: 5,  // Minimum number of connections in pool
-  maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
-  
-  // Performance Optimizations
-  bufferMaxEntries: 0, // Disable mongoose buffering
-  bufferCommands: false, // Disable command buffering
-  
-  // Timeout Settings
-  serverSelectionTimeoutMS: 10000, // How long to try selecting a server
-  socketTimeoutMS: 45000, // How long a send or receive on a socket can take
-  connectTimeoutMS: 10000, // How long to wait for initial connection
-  
-  // Heartbeat and Monitoring
-  heartbeatFrequencyMS: 10000, // How often to check server status
-  
-  // Compression for network efficiency
-  compressors: ['zstd', 'zlib', 'snappy'] as ('zstd' | 'zlib' | 'snappy' | 'none')[],
-  
-  // Read Preference
-  readPreference: 'primaryPreferred' as const,
-  
-  // SSL/TLS
-  ssl: appConfig.isProduction,
-  
-  // Auto-retry writes
+  maxPoolSize: 10,
+  minPoolSize: 5,
+  maxIdleTimeMS: 30000,
+  bufferCommands: false,
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  compressors: ['zlib' as 'zlib'],
   retryWrites: true,
   retryReads: true,
-  
-  // Application name for monitoring
-  appName: 'MentorMatch-API',
+  readPreference: 'primary' as const,
+  appName: 'MentorMeet'
 };
 
 /**

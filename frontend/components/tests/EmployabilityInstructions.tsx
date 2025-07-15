@@ -220,12 +220,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 20,
-    paddingBottom: isTablet ? 20 : 16,
+    paddingTop: isTablet ? 20 : 45,
+    paddingBottom: isTablet ? 20 : 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 75,
+    minHeight: isTablet ? 85 : 95,
   },
   backButton: {
     padding: isTablet ? 12 : 8,
@@ -234,16 +234,18 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: isTablet ? 24 : 20,
+    fontSize: isTablet ? 24 : 18,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: isTablet ? 16 : 13,
     color: '#8B7355',
+    lineHeight: isTablet ? 20 : 16,
   },
   
   scrollView: {

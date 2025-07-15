@@ -193,6 +193,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F3F0FF',
+    paddingTop: 0,
   },
   
   // Responsive Fixed Header
@@ -200,59 +201,134 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 20, // Fixed header alignment
-    paddingBottom: isTablet ? 20 : 16,
+    paddingTop: isTablet ? 20 : 45, // Fixed header alignment
+    paddingBottom: isTablet ? 20 : 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 75,
+    minHeight: isTablet ? 85 : 95,
   },
   backButton: {
     padding: isTablet ? 12 : 8,
     marginRight: isTablet ? 16 : 12,
+    alignItems: 'flex-start',
   },
   headerContent: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: isTablet ? 24 : 20,
+    fontSize: isTablet ? 24 : 18,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: isTablet ? 16 : 13,
     color: '#8B7355',
+    lineHeight: isTablet ? 20 : 16,
   },
-  
   scrollView: {
     flex: 1,
   },
   instructionsContent: {
     padding: isTablet ? 32 : 20,
+    paddingTop: 0,
   },
+  sectionContainer: {
+  paddingHorizontal: isTablet ? 0 : 20, // Add horizontal padding for mobile
+  marginBottom: 24,
+},
   
   // Responsive Hero Section
   instructionsHero: {
     alignItems: 'center',
     padding: isTablet ? 40 : 32,
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 24,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
+  heroGradient: {
+  padding: isTablet ? 40 : 24, // Reduced padding for mobile
+  paddingVertical: isTablet ? 40 : 32,
+  position: 'relative',
+},
+heroContent: {
+  alignItems: 'center',
+  zIndex: 2,
+},
+heroIconContainer: {
+  width: isTablet ? 100 : 80,
+  height: isTablet ? 100 : 80,
+  borderRadius: isTablet ? 50 : 40,
+  backgroundColor: 'rgba(255,255,255,0.15)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 16,
+  borderWidth: 3,
+  borderColor: 'rgba(255,255,255,0.3)',
+  position: 'relative',
+},
+heroIconOverlay: {
+  position: 'absolute',
+  top: -10,
+  left: -10,
+  right: -10,
+  bottom: -10,
+  borderRadius: isTablet ? 60 : 50,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.1)',
+  borderStyle: 'dashed',
+},
   instructionsTitle: {
-    fontSize: isTablet ? 32 : isSmallScreen ? 24 : 28,
+    fontSize: isTablet ? 32 : isSmallScreen ? 22 : 26,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginTop: 16,
     marginBottom: 8,
-  },
-  instructionsSubtitle: {
-    fontSize: isTablet ? 18 : 16,
-    color: '#E8DDD1',
     textAlign: 'center',
   },
-  
+  instructionsSubtitle: {
+    fontSize: isTablet ? 18 : 15,
+    color: 'rgba(255,255,255,0.9)',
+  textAlign: 'center',
+  lineHeight: isTablet ? 26 : 22,
+  marginBottom: 20,
+  paddingHorizontal: isTablet ? 20 : 16,
+  },
+  heroFeatures: {
+  flexDirection: 'row',
+  justifyContent: 'space-around',
+  marginTop: 20,
+  paddingHorizontal: isTablet ? 40 : 20,
+},
+heroFeature: {
+  alignItems: 'center',
+  flex: 1,
+  maxWidth: isTablet ? 120 : 100,
+},
+heroFeatureIcon: {
+  width: isTablet ? 48 : 40,
+  height: isTablet ? 48 : 40,
+  borderRadius: isTablet ? 24 : 20,
+  backgroundColor: 'rgba(255,255,255,0.2)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 8,
+},
+heroFeatureText: {
+  fontSize: isTablet ? 12 : 10,
+  color: 'rgba(255,255,255,0.9)',
+  textAlign: 'center',
+  fontWeight: '600',
+},
+
   // Responsive Instructions Card
   instructionsCard: {
     backgroundColor: '#FFFFFF',
@@ -335,41 +411,58 @@ const styles = StyleSheet.create({
   // Responsive Brain Info
   brainInfo: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 24 : 20,
+    borderRadius: 20,
+    padding: isTablet ? 28 : 20,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
+  borderWidth: 1,
+  borderColor: '#E8DDD1',
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
   },
   brainTitle: {
-    fontSize: isTablet ? 20 : 18,
+    fontSize: isTablet ? 22 : 19,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 12,
+    textAlign: 'center',
   },
   brainDescription: {
     fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
-    lineHeight: isTablet ? 22 : 20,
-    marginBottom: 20,
+    lineHeight: isTablet ? 24 : 20,
+    marginBottom: 24,
+    textAlign: 'center'
   },
   brainQuadrants: {
-    gap: 16,
+    gap: 20,
   },
   brainQuadrant: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+  alignItems: 'flex-start',
+  backgroundColor: '#F8F9FA', // Light background for each quadrant
+  padding: isTablet ? 20 : 16,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: '#F3F0FF',
   },
   brainQuadrantIcon: {
-    width: isTablet ? 48 : 40,
-    height: isTablet ? 48 : 40,
-    borderRadius: isTablet ? 24 : 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
+    width: isTablet ? 52 : 44, // Slightly larger
+  height: isTablet ? 52 : 44,
+  borderRadius: isTablet ? 26 : 22,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 16,
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
   },
   brainQuadrantLetter: {
-    fontSize: isTablet ? 18 : 16,
+    fontSize: isTablet ? 20 : 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },

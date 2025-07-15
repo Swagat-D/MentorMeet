@@ -1,10 +1,11 @@
 {
   "name": "mentormatch-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend API for MentorMatch - Student-Mentor Learning Platform",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon",
+    "dev": "nodemon --exec tsx src/server.ts",
     "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
     "start:prod": "NODE_ENV=production node dist/server.js",

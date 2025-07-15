@@ -3,14 +3,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { connectDB, healthCheck } from './src/config/database.js';
-import { validateEnvironment } from './src/config/environment.js';
-import authRoutes from './routes/auth.routes';
-import { errorHandler, notFound } from './src/middleware/error.middleware.js';
-import { globalRateLimit } from './src/middleware/rateLimit.middleware.js';
-import corsOptions from './src/config/cors.js';
-import './models'
-import psychometricRoutes from './routes/psychometric.routes'
+import { connectDB, healthCheck } from './config/database.js';
+import { validateEnvironment } from './config/environment.js';
+import authRoutes from './routes/auth.routes.js';
+import { errorHandler, notFound } from './middleware/error.middleware.js';
+import { globalRateLimit } from './middleware/rateLimit.middleware.js';
+import corsOptions from './config/cors.js';
+import './models/index.js';
+import psychometricRoutes from './routes/psychometric.routes.js';
 
 const app = express();
 
@@ -51,7 +51,7 @@ app.get('/health', async (req, res) => {
       database: dbHealth,
       server: 'running',
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
@@ -89,16 +89,19 @@ app.use(errorHandler);
 async function getServerIP() {
   const { networkInterfaces } = await import('os');
   const nets = networkInterfaces();
-  const results = {};
+  const results: Record<string, string[]> = {};
 
   for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
-      if (net.family === 'IPv4' && !net.internal) {
-        if (!results[name]) {
-          results[name] = [];
+    const netArray = nets[name];
+    if (netArray) {
+      for (const net of netArray) {
+        // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+        if (net.family === 'IPv4' && !net.internal) {
+          if (!results[name]) {
+            results[name] = [];
+          }
+          results[name].push(net.address);
         }
-        results[name].push(net.address);
       }
     }
   }
@@ -117,7 +120,7 @@ const startServer = async () => {
     const PORT = process.env.PORT || 5000;
     const HOST = '0.0.0.0'; // Listen on all interfaces
     
-    const server = app.listen(PORT, HOST, async () => {
+    const server = app.listen(Number(PORT), HOST, async () => {
       const serverIP = await getServerIP();
       console.log('\n🚀 ========================================');
       console.log('🎓 MentorMatch API Server Started!');
@@ -135,7 +138,7 @@ const startServer = async () => {
     });
 
     // Graceful shutdown
-    const gracefulShutdown = (signal) => {
+    const gracefulShutdown = (signal: string) => {
       console.log(`\n📡 Received ${signal}. Gracefully shutting down...`);
       server.close(() => {
         console.log('🔌 Server closed');
@@ -146,7 +149,7 @@ const startServer = async () => {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }

@@ -260,6 +260,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F3EE',
+    paddingTop: 0,
   },
   
   // Responsive Fixed Header
@@ -267,12 +268,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 20, // Fixed - increased top padding
-    paddingBottom: isTablet ? 20 : 16,
+    paddingTop: isTablet ? 20 : 45,
+    paddingBottom: isTablet ? 20 : 18,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 75, // Increased min height
+    minHeight: isTablet ? 85 : 95, // Increased min height
   },
   backButton: {
     padding: isTablet ? 12 : 8,
@@ -281,15 +282,16 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'flex-start'
   },
   headerTitle: {
-    fontSize: isTablet ? 28 : isSmallScreen ? 20 : 24,
+    fontSize: isTablet ? 28 : isSmallScreen ? 18 : 22,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: isTablet ? 16 : 13,
     color: '#8B7355',
   },
   
@@ -298,29 +300,36 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 20,
+    paddingTop: 0,
   },
 
   // Responsive Hero Section
   heroSection: {
-    margin: isTablet ? 32 : 20,
+    margin: isTablet ? 32 : 16,
     borderRadius: 16,
     overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#8B4513',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   heroGradient: {
-    padding: isTablet ? 40 : 32,
+    padding: isTablet ? 40 : 24,
+    paddingVertical: isTablet ? 40 : 28,
   },
   heroContent: {
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   heroIconContainer: {
-    width: isTablet ? 100 : 80,
-    height: isTablet ? 100 : 80,
-    borderRadius: isTablet ? 50 : 40,
+    width: isTablet ? 80 : 64,
+    height: isTablet ? 80 : 64,
+    borderRadius: isTablet ? 40 : 32,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.2)',
   },
@@ -328,17 +337,17 @@ const styles = StyleSheet.create({
     fontSize: isTablet ? 32 : isSmallScreen ? 24 : 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginTop: 16,
-    marginBottom: 12,
+    marginTop: 14,
+    marginBottom: 8,
     textAlign: 'center',
   },
   heroDescription: {
-    fontSize: isTablet ? 18 : 16,
+    fontSize: isTablet ? 18 : 14,
     color: '#E8DDD1',
     textAlign: 'center',
-    lineHeight: isTablet ? 26 : 24,
-    marginBottom: 24,
-    paddingHorizontal: isSmallScreen ? 0 : 20,
+    lineHeight: isTablet ? 26 : 20,
+    marginBottom: 20,
+    paddingHorizontal: isSmallScreen ? 8 : 16,
   },
   heroStats: {
     flexDirection: 'row',
@@ -348,7 +357,7 @@ const styles = StyleSheet.create({
   },
   statItem: {
     alignItems: 'center',
-    minWidth: isTablet ? 80 : 60,
+    minWidth: isTablet ? 80 : 55,
   },
   statNumber: {
     fontSize: isTablet ? 28 : 24,
