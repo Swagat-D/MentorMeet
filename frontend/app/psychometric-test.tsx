@@ -1,4 +1,4 @@
-// app/psychometric-test.tsx - Main Psychometric Test Landing Page
+// frontend/app/psychometric-test.tsx - Responsive Psychometric Test Landing Page
 import React from 'react';
 import {
   View,
@@ -15,7 +15,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const isTablet = width > 768;
+const isSmallScreen = width < 375;
 
 interface TestSection {
   id: string;
@@ -48,8 +50,8 @@ const testSections: TestSection[] = [
   {
     id: 'brain',
     title: 'Brain Profile Test',
-    subtitle: 'Section B - Career Preference (Brain Test)',
-    description: 'Understand your brain\'s dominant quadrants: L1 (Analyst), L2 (Organizer), R1 (Strategist), R2 (Socializer) through ranking exercises.',
+    subtitle: 'Section B - Career Preference Test',
+    description: 'Understand your brain\'s dominant quadrants through ranking exercises: L1 (Analyst), L2 (Organizer), R1 (Strategist), R2 (Socializer).',
     icon: 'psychology',
     imageUrl: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=300&h=200&fit=crop',
     questionCount: 10,
@@ -62,7 +64,7 @@ const testSections: TestSection[] = [
     id: 'employability',
     title: 'Employability Test',
     subtitle: 'Section C - STEPS Framework',
-    description: 'Assess your job readiness across STEPS dimensions: Self-management, Teamwork, Enterprising, Problem-solving, Speaking & Listening.',
+    description: 'Assess your job readiness across STEPS: Self-management, Teamwork, Enterprising, Problem-solving, Speaking & Listening.',
     icon: 'work',
     imageUrl: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=300&h=200&fit=crop',
     questionCount: 25,
@@ -109,7 +111,7 @@ export default function PsychometricTest() {
           style={styles.imageOverlay}
         />
         <View style={[styles.iconContainer, { backgroundColor: section.color }]}>
-          <MaterialIcons name={section.icon as any} size={32} color="#FFFFFF" />
+          <MaterialIcons name={section.icon as any} size={isTablet ? 40 : 32} color="#FFFFFF" />
         </View>
       </View>
 
@@ -145,7 +147,7 @@ export default function PsychometricTest() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Responsive Fixed Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={24} color="#2A2A2A" />
@@ -161,7 +163,7 @@ export default function PsychometricTest() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero Section */}
+        {/* Responsive Hero Section */}
         <View style={styles.heroSection}>
           <LinearGradient
             colors={['#8B4513', '#A0522D']}
@@ -169,7 +171,7 @@ export default function PsychometricTest() {
           >
             <View style={styles.heroContent}>
               <View style={styles.heroIconContainer}>
-                <MaterialIcons name="psychology" size={60} color="#FFFFFF" />
+                <MaterialIcons name="psychology" size={isTablet ? 80 : 60} color="#FFFFFF" />
               </View>
               <Text style={styles.heroTitle}>Complete Career Assessment</Text>
               <Text style={styles.heroDescription}>
@@ -188,15 +190,15 @@ export default function PsychometricTest() {
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>3</Text>
-                  <Text style={styles.statLabel}>Assessments</Text>
+                  <Text style={styles.statNumber}>4</Text>
+                  <Text style={styles.statLabel}>Sections</Text>
                 </View>
               </View>
             </View>
           </LinearGradient>
         </View>
 
-        {/* Instructions */}
+        {/* Responsive Instructions */}
         <View style={styles.instructionsSection}>
           <Text style={styles.instructionsTitle}>How It Works</Text>
           <View style={styles.instructionsList}>
@@ -217,7 +219,7 @@ export default function PsychometricTest() {
           </View>
         </View>
 
-        {/* Test Sections */}
+        {/* Responsive Test Sections */}
         <View style={styles.testsSection}>
           <Text style={styles.sectionTitle}>Choose Your Assessment</Text>
           <Text style={styles.sectionSubtitle}>
@@ -227,7 +229,7 @@ export default function PsychometricTest() {
           {testSections.map((section, index) => renderTestCard(section, index))}
         </View>
 
-        {/* Benefits Section */}
+        {/* Responsive Benefits Section */}
         <View style={styles.benefitsSection}>
           <Text style={styles.benefitsTitle}>What You'll Discover</Text>
           <View style={styles.benefitsGrid}>
@@ -259,32 +261,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F3EE',
   },
+  
+  // Responsive Fixed Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: isTablet ? 32 : 20,
+    paddingTop: isTablet ? 20 : 20, // Fixed - increased top padding
+    paddingBottom: isTablet ? 20 : 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
+    minHeight: isTablet ? 85 : 75, // Increased min height
   },
   backButton: {
-    padding: 8,
-    marginRight: 12,
+    padding: isTablet ? 12 : 8,
+    marginRight: isTablet ? 16 : 12,
   },
   headerContent: {
     flex: 1,
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: isTablet ? 28 : isSmallScreen ? 20 : 24,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
   },
+  
   scrollView: {
     flex: 1,
   },
@@ -292,23 +300,23 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
 
-  // Hero Section
+  // Responsive Hero Section
   heroSection: {
-    margin: 20,
+    margin: isTablet ? 32 : 20,
     borderRadius: 16,
     overflow: 'hidden',
   },
   heroGradient: {
-    padding: 32,
+    padding: isTablet ? 40 : 32,
   },
   heroContent: {
     alignItems: 'center',
     paddingVertical: 8,
   },
   heroIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: isTablet ? 100 : 80,
+    height: isTablet ? 100 : 80,
+    borderRadius: isTablet ? 50 : 40,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -317,7 +325,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
   },
   heroTitle: {
-    fontSize: 28,
+    fontSize: isTablet ? 32 : isSmallScreen ? 24 : 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginTop: 16,
@@ -325,43 +333,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   heroDescription: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     color: '#E8DDD1',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: isTablet ? 26 : 24,
     marginBottom: 24,
+    paddingHorizontal: isSmallScreen ? 0 : 20,
   },
   heroStats: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   statItem: {
     alignItems: 'center',
+    minWidth: isTablet ? 80 : 60,
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: isTablet ? 28 : 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: isTablet ? 14 : 12,
     color: '#E8DDD1',
     marginTop: 4,
+    textAlign: 'center',
   },
   statDivider: {
     width: 1,
     height: 40,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    marginHorizontal: 24,
+    marginHorizontal: isTablet ? 30 : 24,
   },
 
-  // Instructions
+  // Responsive Instructions
   instructionsSection: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isTablet ? 32 : 20,
     marginBottom: 24,
   },
   instructionsTitle: {
-    fontSize: 22,
+    fontSize: isTablet ? 26 : 22,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 16,
@@ -373,51 +386,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    padding: isTablet ? 20 : 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E8DDD1',
   },
   instructionStep: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: isTablet ? 36 : 32,
+    height: isTablet ? 36 : 32,
+    borderRadius: isTablet ? 18 : 16,
     backgroundColor: '#8B4513',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
   },
   instructionStepText: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   instructionText: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     color: '#2A2A2A',
     marginLeft: 12,
     flex: 1,
+    lineHeight: isTablet ? 24 : 20,
   },
 
-  // Tests Section
+  // Responsive Tests Section
   testsSection: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isTablet ? 32 : 20,
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: isTablet ? 28 : 24,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 8,
   },
   sectionSubtitle: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     color: '#8B7355',
     marginBottom: 24,
-    lineHeight: 22,
+    lineHeight: isTablet ? 26 : 22,
   },
   
-  // Test Cards
+  // Responsive Test Cards
   testCard: {
     borderRadius: 16,
     marginBottom: 24,
@@ -427,7 +441,7 @@ const styles = StyleSheet.create({
   },
   cardImageContainer: {
     position: 'relative',
-    height: 180,
+    height: isTablet ? 220 : 180,
   },
   cardImage: {
     width: '100%',
@@ -444,32 +458,32 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: isTablet ? 64 : 56,
+    height: isTablet ? 64 : 56,
+    borderRadius: isTablet ? 32 : 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardContent: {
-    padding: 20,
+    padding: isTablet ? 24 : 20,
   },
   cardHeader: {
     marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 22,
+    fontSize: isTablet ? 24 : 22,
     fontWeight: 'bold',
     marginBottom: 4,
   },
   cardSubtitle: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
     fontWeight: '500',
   },
   cardDescription: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     color: '#2A2A2A',
-    lineHeight: 24,
+    lineHeight: isTablet ? 26 : 24,
     marginBottom: 16,
   },
   cardMeta: {
@@ -482,7 +496,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metaText: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
     marginLeft: 6,
   },
@@ -490,24 +504,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: isTablet ? 16 : 14,
     paddingHorizontal: 24,
     borderRadius: 12,
     gap: 8,
   },
   startButtonText: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
 
-  // Benefits Section
+  // Responsive Benefits Section
   benefitsSection: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isTablet ? 32 : 20,
     marginBottom: 32,
   },
   benefitsTitle: {
-    fontSize: 24,
+    fontSize: isTablet ? 28 : 24,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 20,
@@ -520,35 +534,37 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   benefitCard: {
-    width: (width - 56) / 2,
+    width: isTablet ? (width - 96) / 4 - 12 : (width - 56) / 2,
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    padding: isTablet ? 24 : 20,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E8DDD1',
+    minHeight: isTablet ? 160 : 140,
+    justifyContent: 'center',
   },
   benefitIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: isTablet ? 64 : 56,
+    height: isTablet ? 64 : 56,
+    borderRadius: isTablet ? 32 : 28,
     backgroundColor: '#F8F3EE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   benefitTitle: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     fontWeight: '600',
     color: '#2A2A2A',
     marginBottom: 8,
     textAlign: 'center',
   },
   benefitDesc: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: isTablet ? 22 : 20,
   },
   bottomPadding: {
     height: 20,
