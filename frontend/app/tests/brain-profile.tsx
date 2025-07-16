@@ -15,6 +15,7 @@ import BrainProfileInstructions from '@/components/tests/BrainProfileInstruction
 import BrainProfileTest from '@/components/tests/BrainProfileTest';
 import BrainProfileResults from '@/components/tests/BrainProfileResults';
 import { brainProfileQuestions, calculateBrainProfileScores } from '@/data/brainProfileQuestions';
+import psychometricService from '@/services/psychometricService';
 
 type ScreenType = 'instructions' | 'test' | 'results' | 'submitting';
 
@@ -56,40 +57,28 @@ export default function BrainProfile() {
   };
 
   const submitTest = async () => {
-    try {
-      setSubmitting(true);
-      setCurrentScreen('submitting');
-
-      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
-      
-      console.log('🧠 Starting Brain Profile submission...');
-      console.log(`📊 Total responses: ${Object.keys(answers).length}`);
-      
-      // Calculate local results
-      const localResults = calculateLocalResults();
-      setResults(localResults);
-      
-      // Here you would submit to backend
-      // await psychometricService.submitBrainProfileResults(answers, timeSpent);
-      
-      setCurrentScreen('results');
-      console.log('✅ Brain Profile test completed successfully');
-
-    } catch (error: any) {
-      console.error('❌ Error submitting Brain Profile test:', error);
-      
-      Alert.alert(
-        'Submission Failed',
-        error.message || 'Failed to submit test. Please try again.',
-        [
-          { text: 'Retry', onPress: () => submitTest() },
-          { text: 'Cancel', onPress: () => setCurrentScreen('test') }
-        ]
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  try {
+    setSubmitting(true);
+    setCurrentScreen('submitting');
+    const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+    
+    // Submit to backend
+    const testResult = await psychometricService.submitBrainProfileResults(answers, timeSpent);
+    
+    // Calculate local results
+    const localResults = calculateBrainProfileScores(
+      Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, value]))
+    );
+    setResults(localResults);
+    
+    setCurrentScreen('results');
+  } catch (error: any) {
+    Alert.alert('Submission Failed', error.message);
+    setCurrentScreen('test');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleBack = () => {
     if (currentScreen === 'test' && Object.keys(answers).length > 0) {

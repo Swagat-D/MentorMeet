@@ -1,6 +1,7 @@
 // frontend/services/api.ts - Enhanced API Service with Dynamic Discovery and Better Error Handling
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetworkDiscoveryService from './networkDiscovery';
+import NetInfo from '@react-native-community/netinfo';
 
 // API Configuration - Now dynamic with better caching
 class ApiConfig {
@@ -24,6 +25,36 @@ class ApiConfig {
     return await this._initPromise;
   }
 
+  public static async getAuthToken(): Promise<string | null> {
+    try {
+      const token = await AsyncStorage.getItem('access_token');
+      if (!token) {
+        console.warn('⚠️ No auth token found');
+      }
+      return token;
+    } catch (error) {
+      console.error('❌ Error getting auth token:', error);
+      return null;
+    }
+  }
+
+  static async checkHealth(): Promise<{ healthy: boolean; details?: any }> {
+    try {
+      const endpoints = await ApiEndpoints.getEndpoints();
+      const url = endpoints.HEALTH;
+      const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      const response = await res.json();
+      return {
+        healthy: response.status === 'healthy',
+        details: response
+      };
+    } catch (error) {
+      console.error('❌ Health check failed:', error);
+      return { healthy: false, details: error };
+    }
+  }
+
+
   private static async initializeBaseUrl(): Promise<string> {
     try {
       console.log('🚀 Initializing API configuration...');
@@ -38,6 +69,227 @@ class ApiConfig {
       throw error;
     }
   }
+
+  static async makeAuthenticatedPsychometricRequest(
+  endpoint: string, 
+  options: any = {}
+): Promise<any> {
+  try {
+    // Get auth token
+    const token = await this.getAuthToken();
+    if (!token) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+
+    // Resolve endpoint URL
+    const url = await this.resolveEndpointUrl(endpoint);
+    
+    // Enhanced headers for psychometric requests
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'X-Client-Type': 'mobile',
+      'X-API-Version': 'v1',
+      ...options.headers,
+    };
+
+    console.log(`🧠 Psychometric API Request: ${options.method || 'GET'} ${url}`);
+    console.log(`🔑 Using auth token: ${token.substring(0, 20)}...`);
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      timeout: 45000, // 45 second timeout for psychometric requests
+    });
+
+    console.log(`📡 Psychometric API Response: ${response.status} ${response.statusText}`);
+
+    // Get response text for better error handling
+    const responseText = await response.text();
+    console.log(`📄 Response preview: ${responseText.substring(0, 200)}...`);
+
+    if (!response.ok) {
+      // Handle specific error cases
+      if (response.status === 401) {
+        // Clear invalid token
+        await AsyncStorage.removeItem('access_token');
+        throw new Error('Session expired. Please log in again.');
+      } else if (response.status === 403) {
+        throw new Error('Access denied. Please check your permissions.');
+      } else if (response.status === 404) {
+        throw new Error('Endpoint not found. Please check the server configuration.');
+      } else if (response.status === 500) {
+        throw new Error('Server error. Please try again later.');
+      }
+
+      // Try to parse error response
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(responseText);
+        errorMessage = errorData.message || errorMessage;
+      } catch (parseError) {
+        // Use the raw response if JSON parsing fails
+        errorMessage = responseText.substring(0, 200) || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    // Parse successful response
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse response as JSON:', parseError);
+      throw new Error('Invalid response format from server');
+    }
+
+    // Check for API-level errors
+    if (data.success === false) {
+      throw new Error(data.message || 'Request failed');
+    }
+
+    return data;
+
+  } catch (error: any) {
+    console.error(`❌ Psychometric API Error for ${endpoint}:`, error);
+    
+    // Transform network errors for better UX
+    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+      throw new Error('Request timeout. Please check your connection and try again.');
+    } else if (error.message?.includes('Network request failed') || 
+               error.message?.includes('fetch')) {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw error;
+  }
+}
+
+static async getPsychometricTest(): Promise<any> {
+  return await this.makeAuthenticatedPsychometricRequest('PSYCHOMETRIC_USER_TEST', {
+    method: 'GET'
+  });
+}
+
+static async submitPsychometricSection(
+  sectionType: string, 
+  data: any
+): Promise<any> {
+  const endpointMap = {
+    'riasec': 'PSYCHOMETRIC_RIASEC',
+    'brainProfile': 'PSYCHOMETRIC_BRAIN_PROFILE', 
+    'employability': 'PSYCHOMETRIC_EMPLOYABILITY',
+    'personalInsights': 'PSYCHOMETRIC_PERSONAL_INSIGHTS'
+  };
+  
+  const endpoint = endpointMap[sectionType as keyof typeof endpointMap];
+  if (!endpoint) {
+    throw new Error(`Unknown section type: ${sectionType}`);
+  }
+  
+  return await this.makeAuthenticatedPsychometricRequest(endpoint, {
+    method: 'POST',
+    body: data
+  });
+}
+
+static async savePsychometricProgress(data: any): Promise<any> {
+  return await this.makeAuthenticatedPsychometricRequest('PSYCHOMETRIC_SAVE_PROGRESS', {
+    method: 'POST',
+    body: data
+  });
+}
+
+static async diagnosePsychometricConnection(): Promise<{
+  success: boolean;
+  message: string;
+  details: any;
+}> {
+  try {
+    console.log('🔍 Diagnosing psychometric connection...');
+    
+    const results = {
+      networkConnectivity: false,
+      authToken: false,
+      backendReachable: false,
+      psychometricService: false,
+      userAuthenticated: false
+    };
+    
+    const details: any = {};
+
+    // 1. Check network connectivity
+    try {
+      const netInfo = await NetInfo.fetch();
+      results.networkConnectivity = (netInfo.isConnected ?? false) && (netInfo.isInternetReachable ?? false);
+      details.network = netInfo;
+    } catch (error) {
+      details.networkError = error;
+    }
+
+    // 2. Check auth token
+    try {
+      const token = await this.getAuthToken();
+      results.authToken = !!token;
+      details.tokenLength = token?.length || 0;
+    } catch (error) {
+      details.authError = error;
+    }
+
+    // 3. Check backend health
+    try {
+      const health = await this.checkHealth();
+      results.backendReachable = health.healthy;
+      details.backendHealth = health;
+    } catch (error) {
+      details.backendError = error;
+    }
+
+    // 4. Check psychometric service
+    try {
+      const endpoints = await ApiEndpoints.getEndpoints();
+      const testResponse = await fetch(endpoints.PSYCHOMETRIC_TEST, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      results.psychometricService = testResponse.ok;
+      details.psychometricStatus = testResponse.status;
+    } catch (error) {
+      details.psychometricError = error;
+    }
+
+    // 5. Check user authentication with psychometric service
+    if (results.authToken && results.psychometricService) {
+      try {
+        const testData = await this.getPsychometricTest();
+        results.userAuthenticated = !!testData;
+        details.testAccess = testData;
+      } catch (error) {
+        details.authTestError = error;
+      }
+    }
+
+    const allPassed = Object.values(results).every(Boolean);
+    
+    return {
+      success: allPassed,
+      message: allPassed 
+        ? 'All psychometric connection checks passed' 
+        : 'Some psychometric connection checks failed',
+      details: { results, ...details }
+    };
+
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Connection diagnosis failed: ${error.message}`,
+      details: { error: error.message }
+    };
+  }
+}
 
   static async refreshBaseUrl(): Promise<string> {
     console.log('🔄 Refreshing API base URL...');
@@ -65,6 +317,17 @@ class ApiConfig {
     this._baseUrl = '';
     this._initialized = false;
     this._initPromise = null;
+  }
+
+  // Add this method to resolve endpoint keys to URLs
+  static async resolveEndpointUrl(endpoint: string): Promise<string> {
+    // If it's already a full URL, return as is
+    if (endpoint.startsWith('http')) {
+      return endpoint;
+    }
+    // If it's an endpoint key, resolve it
+    const endpoints = await ApiEndpoints.getEndpoints();
+    return endpoints[endpoint] || endpoint;
   }
 }
 
@@ -123,6 +386,20 @@ export class ApiEndpoints {
       MENTORS_EXPERTISE: `${baseUrl}${apiVersion}/mentors/expertise`,
       MENTORS_ACTIVITY: `${baseUrl}${apiVersion}/mentors/activity`,
       MENTORS_STATS: `${baseUrl}${apiVersion}/mentors/stats/overview`,
+
+      // Psychometric endpoints
+      PSYCHOMETRIC_BASE: `${baseUrl}${apiVersion}/psychometric`,
+      PSYCHOMETRIC_TEST: `${baseUrl}${apiVersion}/psychometric/test`,
+      PSYCHOMETRIC_USER_TEST: `${baseUrl}${apiVersion}/psychometric/user-test`,
+      PSYCHOMETRIC_RIASEC: `${baseUrl}${apiVersion}/psychometric/riasec`,
+      PSYCHOMETRIC_BRAIN_PROFILE: `${baseUrl}${apiVersion}/psychometric/brain-profile`,
+      PSYCHOMETRIC_EMPLOYABILITY: `${baseUrl}${apiVersion}/psychometric/employability`,
+      PSYCHOMETRIC_PERSONAL_INSIGHTS: `${baseUrl}${apiVersion}/psychometric/personal-insights`,
+      PSYCHOMETRIC_RESULTS: `${baseUrl}${apiVersion}/psychometric/results`,
+      PSYCHOMETRIC_HISTORY: `${baseUrl}${apiVersion}/psychometric/history`,
+      PSYCHOMETRIC_SAVE_PROGRESS: `${baseUrl}${apiVersion}/psychometric/save-progress`,
+      PSYCHOMETRIC_VALIDATE: `${baseUrl}${apiVersion}/psychometric/validate-section`,
+      PSYCHOMETRIC_CAREER_REC: `${baseUrl}${apiVersion}/psychometric/career-recommendations`,
     };
 
     return this._cachedEndpoints;
@@ -152,6 +429,45 @@ export class ApiService {
   private static retryCount = 0;
   private static maxRetries = 3;
   private static retryDelay = 1000; // 1 second base delay
+
+  static async diagnosePsychometricConnection(): Promise<{
+    success: boolean;
+    message: string;
+    details: any;
+  }> {
+    const results = { networkConnectivity: false, serverReachable: false };
+    const details: any = {};
+
+    try {
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      results.networkConnectivity = (netInfo.isConnected ?? false) && (netInfo.isInternetReachable ?? false);
+      details.network = netInfo;
+
+      // Check server health
+      const healthCheck = await this.checkHealth();
+      results.serverReachable = healthCheck.healthy;
+      details.healthCheck = healthCheck;
+
+      // Check auth token
+      const token = await this.getAuthToken();
+      details.hasToken = !!token;
+
+      return {
+        success: results.networkConnectivity && results.serverReachable,
+        message: results.networkConnectivity ? 
+          (results.serverReachable ? 'Connection healthy' : 'Server unreachable') : 
+          'No network connection',
+        details
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Connection diagnostic failed',
+        details: { error }
+      };
+    }
+  }
 
   public static async getAuthToken(): Promise<string | null> {
     try {

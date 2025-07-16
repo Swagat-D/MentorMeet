@@ -10,7 +10,7 @@ const retryDelay = 5000; // 5 seconds
 
 // Optimized connection options for production
 const mongooseOptions = {
-  dbName: process.env.DB_NAME || 'mentormeet',
+  dbName: process.env.DB_NAME || 'mentormatch',
   w: 'majority' as const,
   journal: true,
   maxPoolSize: 10,
@@ -23,7 +23,7 @@ const mongooseOptions = {
   retryWrites: true,
   retryReads: true,
   readPreference: 'primary' as const,
-  appName: 'MentorMeet'
+  appName: 'MentorMatch'
 };
 
 /**

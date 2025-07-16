@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
+import psychometricService from '@/services/psychometricService';
 import EmployabilityInstructions from '@/components/tests/EmployabilityInstructions';
 import EmployabilityTest from '@/components/tests/EmployabilityTest';
 import EmployabilityResults from '@/components/tests/EmployabilityResults';
@@ -58,40 +59,29 @@ export default function Employability() {
   };
 
   const submitTest = async () => {
-    try {
-      setSubmitting(true);
-      setCurrentScreen('submitting');
-
-      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
-      
-      console.log('💼 Starting Employability submission...');
-      console.log(`📊 Total responses: ${Object.keys(answers).length}`);
-      
-      // Calculate local results
-      const localResults = calculateLocalResults();
-      setResults(localResults);
-      
-      // Here you would submit to backend
-      // await psychometricService.submitEmployabilityResults(answers, timeSpent);
-      
-      setCurrentScreen('results');
-      console.log('✅ Employability test completed successfully');
-
-    } catch (error: any) {
-      console.error('❌ Error submitting Employability test:', error);
-      
-      Alert.alert(
-        'Submission Failed',
-        error.message || 'Failed to submit test. Please try again.',
-        [
-          { text: 'Retry', onPress: () => submitTest() },
-          { text: 'Cancel', onPress: () => setCurrentScreen('test') }
-        ]
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  try {
+    setSubmitting(true);
+    setCurrentScreen('submitting');
+    const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+    
+    // Submit to backend
+    const testResult = await psychometricService.submitEmployabilityResults(answers, timeSpent);
+    
+    // Calculate local results
+    const scores = calculateEmployabilityScores(
+      Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, value]))
+    );
+    const employabilityQuotient = getEmployabilityQuotient(scores);
+    setResults({ scores, employabilityQuotient });
+    
+    setCurrentScreen('results');
+  } catch (error: any) {
+    Alert.alert('Submission Failed', error.message);
+    setCurrentScreen('test');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleBack = () => {
     if (currentScreen === 'test' && Object.keys(answers).length > 0) {

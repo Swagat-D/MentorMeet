@@ -11,10 +11,13 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import psychometricService from '@/services/psychometricService';
+
 
 const { width } = Dimensions.get('window');
 const isTablet = width > 768;
@@ -99,21 +102,31 @@ export default function PersonalInsights() {
   };
 
   const handleSubmit = async () => {
-    try {
-      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
-      
-      console.log('📝 Submitting Personal Insights:', insights);
-      
-      // Here you would submit to backend
-      // await psychometricService.submitPersonalInsights(insights, timeSpent);
-      
-      // Navigate to results or back to main test page
+  try {
+    const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+    
+    // Submit to backend
+    const testResult = await psychometricService.submitPersonalInsights(insights, timeSpent);
+    
+    console.log('✅ Personal Insights saved to database');
+    
+    // Check if test is complete
+    if (testResult.isComplete) {
+      Alert.alert(
+        'Assessment Complete!', 
+        'You have completed all sections. View your comprehensive results.',
+        [
+          { text: 'View Results', onPress: () => router.push('/psychometric-test') }
+        ]
+      );
+    } else {
       router.push('/psychometric-test');
-      
-    } catch (error) {
-      console.error('❌ Error submitting Personal Insights:', error);
     }
-  };
+    
+  } catch (error: any) {
+    Alert.alert('Submission Failed', error.message);
+  }
+};
 
   const renderTextInput = (key: keyof PersonalInsights, placeholder: string, hint: string) => (
     <View style={styles.inputSection}>

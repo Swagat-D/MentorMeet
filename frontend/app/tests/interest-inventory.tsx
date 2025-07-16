@@ -1,4 +1,3 @@
-// frontend/app/tests/interest-inventory.tsx - Production-Ready Interest Inventory
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -19,6 +18,7 @@ import InterestInventoryTest from '@/components/tests/InterestInventoryTest';
 import InterestInventoryResults from '@/components/tests/InterestInventoryResults';
 import { questions } from '@/data/riasecQuestions';
 import psychometricService, { RiasecScores, PsychometricTest } from '@/services/psychometricService';
+import { ApiService } from '@/services/api';
 
 type ScreenType = 'instructions' | 'test' | 'results' | 'submitting' | 'loading';
 type AnswerStatus = 'unanswered' | 'yes' | 'no' | 'review';
@@ -105,56 +105,88 @@ export default function InterestInventory() {
   };
 
   const autoSaveProgress = async () => {
-    try {
-      await psychometricService.saveProgress(
-        'riasec',
-        testState.answers,
-        testState.currentQuestionIndex
-      );
-      console.log('💾 Auto-save completed');
-    } catch (error) {
-      console.warn('⚠️ Auto-save failed:', error);
-      // Don't show error to user for auto-save failures
+  try {
+    if (Object.keys(testState.answers).length === 0) {
+      return; // Nothing to save
     }
-  };
+    
+    console.log(`💾 Auto-saving progress: ${Object.keys(testState.answers).length} answers`);
+    
+    await psychometricService.saveProgress(
+      'riasec',
+      testState.answers,
+      testState.currentQuestionIndex
+    );
+    
+    console.log('✅ Auto-save completed successfully');
+  } catch (error) {
+    console.warn('⚠️ Auto-save failed (non-blocking):', error);
+    // Don't show error to user for auto-save failures
+  }
+};
 
   const loadTestData = async () => {
-    try {
-      setError(null);
-      console.log('📋 Loading test data...');
-      
-      const test = await psychometricService.getOrCreateTest();
-      setTestData(test);
-      
-      // Check if RIASEC section is already completed
-      if (test.sectionsCompleted.riasec && test.riasecResult) {
-        console.log('✅ RIASEC already completed, showing results');
-        setResults(test.riasecResult.scores as RiasecScores);
-        setCurrentScreen('results');
-        return;
-      }
-      
-      // Load saved progress if any
-      if (test.progressData?.partialResponses?.riasec) {
-        console.log('📥 Loading saved progress...');
-        const savedAnswers = test.progressData.partialResponses.riasec as { [key: number]: boolean};
-        const savedIndex = test.progressData.currentQuestionIndex || 0;
-        
-        setTestState(prev => ({
-          ...prev,
-          answers: savedAnswers,
-          currentQuestionIndex: Math.min(savedIndex, questions.length - 1)
-        }));
-      }
-      
-      setCurrentScreen('instructions');
-      
-    } catch (error: any) {
-      console.error('❌ Error loading test data:', error);
-      setError(error.message || 'Failed to load test. Please try again.');
-      setCurrentScreen('instructions');
+  try {
+    setError(null);
+    console.log('📋 Loading psychometric test data...');
+    
+    // First, run connection diagnostics
+    const diagnostics = await ApiService.diagnosePsychometricConnection();
+    console.log('🔍 Connection diagnostics:', diagnostics);
+    
+    if (!diagnostics.success) {
+      console.error('❌ Connection diagnostics failed:', diagnostics.details);
+      throw new Error(`Connection issue: ${diagnostics.message}`);
     }
-  };
+    
+    // Initialize the psychometric service
+    const initResult = await psychometricService.initialize();
+    if (!initResult.success) {
+      throw new Error(`Service initialization failed: ${initResult.message}`);
+    }
+    
+    // Get or create test
+    const test = await psychometricService.getOrCreateTest();
+    setTestData(test);
+    
+    console.log('📊 Test data loaded:', {
+      testId: test.testId,
+      status: test.status,
+      completion: test.completionPercentage,
+      riasecCompleted: test.sectionsCompleted.riasec
+    });
+    
+    // Check if RIASEC section is already completed
+    if (test.sectionsCompleted.riasec && test.riasecResult) {
+      console.log('✅ RIASEC already completed, showing results');
+      setResults(test.riasecResult.scores as RiasecScores);
+      setCurrentScreen('results');
+      return;
+    }
+    
+    // Load saved progress if any
+    if (test.progressData?.partialResponses?.riasec) {
+      console.log('📥 Loading saved progress...');
+      const savedAnswers = test.progressData.partialResponses.riasec as { [key: number]: boolean};
+      const savedIndex = test.progressData.currentQuestionIndex || 0;
+      
+      setTestState(prev => ({
+        ...prev,
+        answers: savedAnswers,
+        currentQuestionIndex: Math.min(savedIndex, questions.length - 1)
+      }));
+      
+      console.log(`📍 Restored progress: ${Object.keys(savedAnswers).length} answers, question ${savedIndex}`);
+    }
+    
+    setCurrentScreen('instructions');
+    
+  } catch (error: any) {
+    console.error('❌ Error loading test data:', error);
+    setError(error.message || 'Failed to load test. Please try again.');
+    setCurrentScreen('instructions');
+  }
+};
 
   const handleAnswer = (answer: boolean) => {
     const currentQuestion = questions[testState.currentQuestionIndex];
@@ -195,26 +227,28 @@ export default function InterestInventory() {
   };
 
   const submitTest = async () => {
+  try {
+    setSubmitting(true);
+    setCurrentScreen('submitting');
+    setError(null);
+
+    const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+    
+    console.log('📝 Starting RIASEC submission process...');
+    console.log(`📊 Submitting ${Object.keys(testState.answers).length} responses`);
+    console.log(`⏱️ Time spent: ${timeSpent} minutes`);
+    
+    // Validate before submission
+    const validation = psychometricService.validateRiasecResponses(testState.answers);
+    if (!validation.isValid) {
+      throw new Error(`Please complete all questions: ${validation.validationErrors.join(', ')}`);
+    }
+
+    // Stop auto-save during submission
+    stopAutoSave();
+    
+    // Submit to backend with enhanced error handling
     try {
-      setSubmitting(true);
-      setCurrentScreen('submitting');
-      setError(null);
-
-      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
-      
-      console.log('📝 Starting submission process...');
-      console.log(`📊 Total responses: ${Object.keys(testState.answers).length}`);
-      
-      // Validate before submission
-      const validation = psychometricService.validateRiasecResponses(testState.answers);
-      if (!validation.isValid) {
-        throw new Error(`Please complete all questions: ${validation.validationErrors.join(', ')}`);
-      }
-
-      // Stop auto-save during submission
-      stopAutoSave();
-      
-      // Submit to backend
       const testResult = await psychometricService.submitRiasecResults(testState.answers, timeSpent);
       
       // Calculate local results for immediate display
@@ -223,52 +257,91 @@ export default function InterestInventory() {
       setTestData(testResult);
       setCurrentScreen('results');
 
-      console.log('✅ Test completed successfully');
+      console.log('✅ RIASEC test completed successfully');
+      console.log('📊 Results:', {
+        hollandCode: psychometricService.getHollandCode(localResults),
+        scores: localResults,
+        testStatus: testResult.status,
+        completion: testResult.completionPercentage
+      });
 
-    } catch (error: any) {
-      console.error('❌ Error submitting test:', error);
-      setError(error.message);
+    } catch (submitError: any) {
+      console.error('❌ Submission to backend failed:', submitError);
       
-      let errorMessage = error.message || 'Failed to submit test. Please try again.';
+      // Show user-friendly error messages
+      let errorMessage = 'Failed to submit test results.';
       
-      if (error.message.includes('Session expired') || error.message.includes('Authentication required')) {
+      if (submitError.message.includes('Session expired') || 
+          submitError.message.includes('Authentication required')) {
         errorMessage = 'Your session has expired. Please restart the app and log in again.';
-      } else if (error.message.includes('Network connection failed') || error.message.includes('No internet connection')) {
-        errorMessage = 'No internet connection. Please check your network and try again.';
-      } else if (error.message.includes('Validation failed')) {
-        errorMessage = `Please check your answers: ${error.message}`;
+      } else if (submitError.message.includes('Network') || 
+                 submitError.message.includes('timeout')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (submitError.message.includes('Validation failed')) {
+        errorMessage = `Please check your answers: ${submitError.message}`;
+      } else if (submitError.message.includes('Server error')) {
+        errorMessage = 'Server is temporarily unavailable. Please try again in a few moments.';
       }
       
-      Alert.alert(
-        'Submission Failed',
-        errorMessage,
-        [
-          { text: 'Retry', onPress: () => submitTest() },
-          { text: 'Cancel', onPress: () => setCurrentScreen('test') }
-        ]
-      );
-    } finally {
-      setSubmitting(false);
+      throw new Error(errorMessage);
     }
-  };
+
+  } catch (error: any) {
+    console.error('❌ Error in submission process:', error);
+    setError(error.message);
+    
+    Alert.alert(
+      'Submission Failed',
+      error.message,
+      [
+        { 
+          text: 'Retry', 
+          onPress: () => {
+            setError(null);
+            submitTest();
+          } 
+        },
+        { 
+          text: 'Save & Exit', 
+          onPress: () => {
+            autoSaveProgress();
+            setCurrentScreen('test');
+          } 
+        }
+      ]
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   const handleBack = () => {
-    if (currentScreen === 'test' && Object.keys(testState.answers).length > 0) {
-      Alert.alert(
-        'Exit Test',
-        'Your progress will be saved automatically. You can continue later from where you left off.',
-        [
-          { text: 'Continue Test', style: 'cancel' },
-          { text: 'Exit', style: 'destructive', onPress: () => {
-            autoSaveProgress();
+  if (currentScreen === 'test' && Object.keys(testState.answers).length > 0) {
+    Alert.alert(
+      'Exit Test',
+      'Your progress will be saved automatically. You can continue later from where you left off.',
+      [
+        { text: 'Continue Test', style: 'cancel' },
+        { 
+          text: 'Save & Exit', 
+          style: 'default', 
+          onPress: async () => {
+            await autoSaveProgress();
             router.back();
-          }}
-        ]
-      );
-    } else {
-      router.back();
-    }
-  };
+          }
+        },
+        { 
+          text: 'Exit Without Saving', 
+          style: 'destructive', 
+          onPress: () => router.back() 
+        }
+      ]
+    );
+  } else {
+    router.back();
+  }
+};
 
   const retryLoad = () => {
     setCurrentScreen('loading');
@@ -277,21 +350,42 @@ export default function InterestInventory() {
   };
 
   const renderError = () => (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorTitle}>Something went wrong</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <View style={styles.errorButtons}>
-          <TouchableOpacity style={styles.retryButton} onPress={retryLoad}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
+  <SafeAreaView style={styles.container}>
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorTitle}>Connection Issue</Text>
+      <Text style={styles.errorText}>{error}</Text>
+      
+      {/* Enhanced error actions */}
+      <View style={styles.errorButtons}>
+        <TouchableOpacity style={styles.retryButton} onPress={retryLoad}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.diagnosisButton} 
+          onPress={async () => {
+            try {
+              const diagnostics = await ApiService.diagnosePsychometricConnection();
+              Alert.alert(
+                'Connection Diagnosis', 
+                diagnostics.message,
+                [{ text: 'OK' }]
+              );
+            } catch (diagError) {
+              Alert.alert('Diagnosis Failed', 'Unable to run diagnostics');
+            }
+          }}
+        >
+          <Text style={styles.diagnosisButtonText}>Check Connection</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
-    </SafeAreaView>
-  );
+    </View>
+  </SafeAreaView>
+);
 
   const renderLoading = () => (
     <SafeAreaView style={styles.container}>
@@ -411,10 +505,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 32,
   },
-  errorButtons: {
-    flexDirection: 'row',
-    gap: 16,
-  },
   retryButton: {
     backgroundColor: '#8B4513',
     paddingHorizontal: 24,
@@ -470,5 +560,24 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#8B4513',
+  },
+  diagnosisButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  diagnosisButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  errorButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 24,
   },
 });
