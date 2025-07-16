@@ -79,6 +79,7 @@ export interface IUser extends Document {
   isActive: boolean;
   isOnboarded: boolean;
   onboardingStatus: OnboardingStatus;
+  isTestGiven: boolean;
   
   // Statistics for mentees
   stats: IUserStats;
@@ -241,6 +242,11 @@ const userSchema = new Schema<IUser>({
     enum: Object.values(OnboardingStatus),
     default: OnboardingStatus.NOT_STARTED
   },
+
+  isTestGiven: {  // ADD THIS ENTIRE BLOCK HERE
+    type: Boolean,
+    default: false,
+  },
   
   // User Statistics
   stats: {
@@ -289,6 +295,7 @@ userSchema.set('toJSON', {
   transform: function(_doc, ret: any) {
     delete ret._id;
     delete ret.password; // Never include password in JSON
+    ret.isTestGiven = ret.isTestGiven;
     return ret;
   }
 });

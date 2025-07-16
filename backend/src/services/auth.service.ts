@@ -779,6 +779,7 @@ class AuthService {
             goals: user.goals,
             isEmailVerified: user.isEmailVerified,
             isOnboarded: user.isOnboarded,
+            isTestGiven: user.isTestGiven,
             onboardingStatus: user.onboardingStatus,
             stats: user.stats,
             lastLoginAt: user.lastLoginAt,

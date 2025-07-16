@@ -347,6 +347,7 @@ export class PsychometricTestService {
       if (!test) return;
 
       const overallResults = test.calculateOverallResults();
+      await this.updateUserTestStatus(test.userId.toString());
       
       await PsychometricTest.findByIdAndUpdate(
         testId,
@@ -364,6 +365,20 @@ export class PsychometricTestService {
       console.error('❌ Error finalizing test:', error);
     }
   }
+
+  /**
+   * Update in user profile 
+   */
+
+  private static async updateUserTestStatus(userId: string): Promise<void> {
+  try {
+    const User = require('../models/User.model').default;
+    await User.findByIdAndUpdate(userId, { isTestGiven: true });
+    console.log('✅ User test status updated to true');
+  } catch (error) {
+    console.warn('⚠️ Failed to update user test status:', error);
+  }
+}
 
   /**
    * Check if test is complete

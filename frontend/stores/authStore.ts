@@ -23,6 +23,7 @@ export interface User {
   interests?: string[];
   isEmailVerified: boolean;
   isOnboarded: boolean;
+  isTestGiven: boolean;
   onboardingStatus?: string;
   stats?: any;
   lastLoginAt?: Date;
