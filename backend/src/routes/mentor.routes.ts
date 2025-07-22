@@ -1,11 +1,9 @@
-// backend/src/routes/mentor.routes.ts - Complete Mentor Routes Implementation
 import { Router, Request, Response } from 'express';
 import withAuth from '@/middleware/auth.middleware';
-import {IUser } from '@/models/User.model'
-import { Mentor } from '@/models/Mentor.model';
-import { Session } from '@/models/Session.model';
-import { Review } from '@/models/Review.model';
+import { IUser, UserRole } from '@/models/User.model'
+import User from '@/models/User.model';
 import { ObjectId } from 'mongodb';
+import mongoose, { PipelineStage } from 'mongoose';
 
 const router = Router();
 
@@ -16,13 +14,14 @@ export const searchMentors = async (req: Request, res: Response) => {
 
     const {
       expertise,
+      subjects,
       minPrice,
       maxPrice,
       minRating,
       minExperience,
       languages,
+      location,
       isOnline,
-      isVerified,
       sortBy = 'rating',
       sortOrder = 'desc',
       page = 1,
@@ -30,152 +29,203 @@ export const searchMentors = async (req: Request, res: Response) => {
       search
     } = req.query;
 
-    // Build filter object
-    const filter: any = { isActive: true };
+    // Build aggregation pipeline
+    const pipeline: any[] = [
+      // First, match users who are mentors
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true,
+          isEmailVerified: true
+        }
+      },
+      
+      // Join with mentorProfiles collection
+      {
+        $lookup: {
+          from: 'mentorProfiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      
+      // Only include users who have mentor profiles
+      {
+        $match: {
+          'mentorProfile.0': { $exists: true },
+          'mentorProfile.isProfileComplete': true,
+          'mentorProfile.applicationSubmitted': true
+        }
+      },
+      
+      // Unwind the mentor profile
+      {
+        $unwind: '$mentorProfile'
+      }
+    ];
+
+    // Add filters based on query parameters
+    const matchConditions: any = {};
 
     // Expertise filter
     if (expertise && typeof expertise === 'string') {
       const expertiseArray = expertise.split(',').map(e => e.trim());
-      filter.expertise = { $in: expertiseArray };
+      matchConditions['mentorProfile.expertise'] = { $in: expertiseArray };
+    }
+
+    // Subjects filter
+    if (subjects && typeof subjects === 'string') {
+      const subjectsArray = subjects.split(',').map(s => s.trim());
+      matchConditions['mentorProfile.subjects'] = { $in: subjectsArray };
     }
 
     // Price range filter
     if (minPrice || maxPrice) {
-      filter['pricing.hourlyRate'] = {};
-      if (minPrice) filter['pricing.hourlyRate'].$gte = parseFloat(minPrice as string);
-      if (maxPrice) filter['pricing.hourlyRate'].$lte = parseFloat(maxPrice as string);
-    }
-
-    // Rating filter
-    if (minRating) {
-      filter.rating = { $gte: parseFloat(minRating as string) };
-    }
-
-    // Experience filter
-    if (minExperience) {
-      filter.experience = { $gte: parseInt(minExperience as string) };
+      matchConditions['mentorProfile.pricing.hourlyRate'] = {};
+      if (minPrice) matchConditions['mentorProfile.pricing.hourlyRate'].$gte = parseFloat(minPrice as string);
+      if (maxPrice) matchConditions['mentorProfile.pricing.hourlyRate'].$lte = parseFloat(maxPrice as string);
     }
 
     // Languages filter
     if (languages && typeof languages === 'string') {
       const languageArray = languages.split(',').map(l => l.trim());
-      filter['languages.language'] = { $in: languageArray };
+      matchConditions['mentorProfile.languages'] = { $in: languageArray };
     }
 
-    // Online status filter
-    if (isOnline !== undefined) {
-      filter.isOnline = isOnline === 'true';
-    }
-
-    // Verified filter
-    if (isVerified !== undefined) {
-      filter.isVerified = isVerified === 'true';
+    // Location filter
+    if (location && typeof location === 'string') {
+      matchConditions['mentorProfile.location'] = { $regex: location, $options: 'i' };
     }
 
     // Text search
     if (search && typeof search === 'string') {
-      filter.$or = [
-        { displayName: { $regex: search, $options: 'i' } },
-        { bio: { $regex: search, $options: 'i' } },
-        { expertise: { $regex: search, $options: 'i' } },
-        { specialties: { $regex: search, $options: 'i' } }
+      matchConditions.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { 'mentorProfile.displayName': { $regex: search, $options: 'i' } },
+        { 'mentorProfile.bio': { $regex: search, $options: 'i' } },
+        { 'mentorProfile.expertise': { $regex: search, $options: 'i' } },
+        { 'mentorProfile.subjects': { $regex: search, $options: 'i' } }
       ];
     }
 
-    // Build sort object
-    const sort: any = {};
-    switch (sortBy) {
-      case 'rating':
-        sort.rating = sortOrder === 'asc' ? 1 : -1;
-        sort.totalReviews = -1; // Secondary sort
-        break;
-      case 'price':
-        sort['pricing.hourlyRate'] = sortOrder === 'asc' ? 1 : -1;
-        break;
-      case 'experience':
-        sort.experience = sortOrder === 'asc' ? 1 : -1;
-        break;
-      case 'popularity':
-        sort.totalStudents = sortOrder === 'asc' ? 1 : -1;
-        sort.totalSessions = -1; // Secondary sort
-        break;
-      case 'response_time':
-        sort.responseTime = sortOrder === 'asc' ? 1 : -1;
-        break;
-      default:
-        sort.rating = -1;
-        sort.totalReviews = -1;
+    // Add match conditions to pipeline
+    if (Object.keys(matchConditions).length > 0) {
+      pipeline.push({ $match: matchConditions });
     }
 
+    // Add project stage to format the response
+    pipeline.push({
+      $project: {
+        _id: 1,
+        name: 1,
+        email: 1,
+        avatar: 1,
+        isActive: 1,
+        createdAt: 1,
+        mentorProfile: {
+          _id: '$mentorProfile._id',
+          firstName: '$mentorProfile.firstName',
+          lastName: '$mentorProfile.lastName',
+          displayName: '$mentorProfile.displayName',
+          bio: '$mentorProfile.bio',
+          location: '$mentorProfile.location',
+          timezone: '$mentorProfile.timezone',
+          languages: '$mentorProfile.languages',
+          expertise: '$mentorProfile.expertise',
+          subjects: '$mentorProfile.subjects',
+          teachingStyles: '$mentorProfile.teachingStyles',
+          specializations: '$mentorProfile.specializations',
+          pricing: '$mentorProfile.pricing',
+          weeklySchedule: '$mentorProfile.weeklySchedule',
+          isProfileComplete: '$mentorProfile.isProfileComplete',
+          profileStep: '$mentorProfile.profileStep',
+          // Add calculated fields (you might want to add these to the schema)
+          rating: { $ifNull: ['$mentorProfile.rating', 4.5] },
+          totalSessions: { $ifNull: ['$mentorProfile.totalSessions', 0] },
+          totalStudents: { $ifNull: ['$mentorProfile.totalStudents', 0] },
+          isOnline: { $ifNull: ['$mentorProfile.isOnline', false] },
+          isVerified: { $ifNull: ['$mentorProfile.isVerified', false] }
+        }
+      }
+    });
+
+    // Add sorting
+    const sortField: any = {};
+    switch (sortBy) {
+      case 'rating':
+        sortField['mentorProfile.rating'] = sortOrder === 'asc' ? 1 : -1;
+        break;
+      case 'price':
+        sortField['mentorProfile.pricing.hourlyRate'] = sortOrder === 'asc' ? 1 : -1;
+        break;
+      case 'experience':
+        sortField['mentorProfile.experience'] = sortOrder === 'asc' ? 1 : -1;
+        break;
+      case 'popularity':
+        sortField['mentorProfile.totalStudents'] = sortOrder === 'asc' ? 1 : -1;
+        break;
+      default:
+        sortField['mentorProfile.rating'] = -1;
+    }
+    pipeline.push({ $sort: sortField });
+
+    // Add pagination
     const pageNum = Math.max(1, parseInt(page as string));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit as string)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Execute query with population
-    const [mentors, total] = await Promise.all([
-      Mentor.find(filter)
-        .populate('userId', 'name email avatar')
-        .sort(sort)
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
-      Mentor.countDocuments(filter)
+    // Count total documents
+    const countPipeline = [...pipeline, { $count: "total" }];
+    
+    // Add pagination to main pipeline
+    pipeline.push({ $skip: skip }, { $limit: limitNum });
+
+    // Execute both queries
+    const [mentorsResult, countResult] = await Promise.all([
+      User.aggregate(pipeline),
+      User.aggregate(countPipeline)
     ]);
 
-    // Get filter options for frontend
-    const [availableExpertise, priceRange, availableLanguages] = await Promise.all([
-      Mentor.distinct('expertise', { isActive: true }),
-      Mentor.aggregate([
-        { $match: { isActive: true } },
-        {
-          $group: {
-            _id: null,
-            min: { $min: '$pricing.hourlyRate' },
-            max: { $max: '$pricing.hourlyRate' }
-          }
-        }
-      ]),
-      Mentor.distinct('languages.language', { isActive: true })
-    ]);
+    const total = countResult[0]?.total || 0;
+
+    // Format the response
+    const mentors = mentorsResult.map((mentor: any) => ({
+      _id: mentor._id,
+      userId: mentor._id,
+      displayName: mentor.mentorProfile.displayName || mentor.name,
+      firstName: mentor.mentorProfile.firstName,
+      lastName: mentor.mentorProfile.lastName,
+      email: mentor.email,
+      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      bio: mentor.mentorProfile.bio,
+      expertise: mentor.mentorProfile.expertise || [],
+      subjects: mentor.mentorProfile.subjects || [],
+      location: mentor.mentorProfile.location,
+      languages: mentor.mentorProfile.languages || [],
+      pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
+      rating: mentor.mentorProfile.rating || 4.5,
+      totalSessions: mentor.mentorProfile.totalSessions || 0,
+      totalStudents: mentor.mentorProfile.totalStudents || 0,
+      isOnline: mentor.mentorProfile.isOnline || false,
+      isVerified: mentor.mentorProfile.isVerified || false,
+      teachingStyles: mentor.mentorProfile.teachingStyles || [],
+      specializations: mentor.mentorProfile.specializations || [],
+      weeklySchedule: mentor.mentorProfile.weeklySchedule,
+      createdAt: mentor.createdAt,
+      updatedAt: mentor.mentorProfile.updatedAt
+    }));
+
+    // Get filter options
+    const filterOptions = await getFilterOptions();
 
     const result = {
-      mentors: mentors.map((mentor: any) => ({
-        _id: mentor._id,
-        userId: mentor.userId,
-        displayName: mentor.displayName,
-        firstName: mentor.firstName,
-        lastName: mentor.lastName,
-        email: mentor.email,
-        profileImage: mentor.profileImage,
-        bio: mentor.bio,
-        expertise: mentor.expertise,
-        experience: mentor.experience,
-        education: mentor.education,
-        languages: mentor.languages,
-        pricing: mentor.pricing,
-        rating: mentor.rating,
-        totalSessions: mentor.totalSessions,
-        totalStudents: mentor.totalStudents,
-        completionRate: mentor.completionRate,
-        responseTime: mentor.responseTime,
-        isOnline: mentor.isOnline,
-        lastSeen: mentor.lastSeen,
-        isVerified: mentor.isVerified,
-        status: mentor.status,
-        specialties: mentor.specialties,
-        teachingStyle: mentor.teachingStyle,
-        createdAt: mentor.createdAt,
-        updatedAt: mentor.updatedAt
-      })),
+      mentors,
       total,
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(total / limitNum),
-      filters: {
-        availableExpertise,
-        priceRange: priceRange[0] || { min: 0, max: 1000 },
-        availableLanguages
-      }
+      filters: filterOptions
     };
 
     console.log(`✅ Found ${mentors.length} mentors out of ${total} total`);
@@ -201,36 +251,93 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
     
     console.log('⭐ Fetching featured mentors, limit:', limit);
 
-    const mentors = await Mentor.find({
-      isActive: true,
-      isVerified: true,
-      rating: { $gte: 4.5 }
-    })
-    .populate('userId', 'name email avatar')
-    .sort({ 
-      rating: -1, 
-      totalReviews: -1, 
-      totalStudents: -1 
-    })
-    .limit(limit)
-    .lean();
+    // Aggregation pipeline for featured mentors
+    const pipeline: PipelineStage[] = [
+      // Match mentor users
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true,
+          isEmailVerified: true
+        }
+      },
+      
+      // Join with mentor profiles
+      {
+        $lookup: {
+          from: 'mentorprofiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      
+      // Filter for complete profiles
+      {
+        $match: {
+          'mentorProfile.0': { $exists: true },
+          'mentorProfile.isProfileComplete': true,
+          'mentorProfile.applicationSubmitted': true
+        }
+      },
+      
+      { $unwind: { path: '$mentorProfile' } },
+      
+      // Project required fields
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          email: 1,
+          avatar: 1,
+          mentorProfile: {
+            firstName: 1,
+            lastName: 1,
+            displayName: 1,
+            bio: 1,
+            expertise: 1,
+            subjects: 1,
+            pricing: 1,
+            location: 1,
+            rating: { $ifNull: ['$rating', 4.5] },
+            totalSessions: { $ifNull: ['$totalSessions', 0] },
+            totalStudents: { $ifNull: ['$totalStudents', 0] },
+            isOnline: { $ifNull: ['$isOnline', false] },
+            isVerified: { $ifNull: ['$isVerified', true] }
+          }
+        }
+      },
+      
+      // Sort by rating and sessions
+      {
+        $sort: {
+          'mentorProfile.rating': -1,
+          'mentorProfile.totalSessions': -1,
+          'mentorProfile.totalStudents': -1
+        }
+      },
+      
+      { $limit: limit }
+    ];
 
-    const formattedMentors = mentors.map((mentor: any) => ({
+    const mentorsResult = await User.aggregate(pipeline);
+
+    const formattedMentors = mentorsResult.map((mentor: any) => ({
       _id: mentor._id,
-      userId: mentor.userId,
-      displayName: mentor.displayName,
-      firstName: mentor.firstName,
-      lastName: mentor.lastName,
-      profileImage: mentor.profileImage,
-      expertise: mentor.expertise,
-      experience: mentor.experience,
-      pricing: mentor.pricing,
-      rating: mentor.rating,
-      totalSessions: mentor.totalSessions,
-      totalStudents: mentor.totalStudents,
-      isOnline: mentor.isOnline,
-      isVerified: mentor.isVerified,
-      specialties: mentor.specialties
+      userId: mentor._id,
+      displayName: mentor.mentorProfile.displayName || mentor.name,
+      firstName: mentor.mentorProfile.firstName,
+      lastName: mentor.mentorProfile.lastName,
+      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      expertise: mentor.mentorProfile.expertise || [],
+      subjects: mentor.mentorProfile.subjects || [],
+      pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
+      rating: mentor.mentorProfile.rating || 4.5,
+      totalSessions: mentor.mentorProfile.totalSessions || 0,
+      totalStudents: mentor.mentorProfile.totalStudents || 0,
+      isOnline: mentor.mentorProfile.isOnline || false,
+      isVerified: mentor.mentorProfile.isVerified || true,
+      location: mentor.mentorProfile.location
     }));
 
     console.log(`✅ Returning ${formattedMentors.length} featured mentors`);
@@ -256,35 +363,53 @@ export const getTrendingExpertise = async (req: Request, res: Response) => {
     
     console.log('📈 Fetching trending expertise, limit:', limit);
 
-    // Get expertise areas with most active mentors and recent sessions
-    const trendingExpertise = await Mentor.aggregate([
-      { $match: { isActive: true } },
-      { $unwind: '$expertise' },
+    const pipeline: PipelineStage[] = [
       {
-        $group: {
-          _id: '$expertise',
-          mentorCount: { $sum: 1 },
-          avgRating: { $avg: '$rating' },
-          totalSessions: { $sum: '$totalSessions' }
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true,
+          isEmailVerified: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'mentorprofiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
         }
       },
       {
         $match: {
-          mentorCount: { $gte: 2 }, // At least 2 mentors
-          avgRating: { $gte: 4.0 }   // Good average rating
+          'mentorProfile.0': { $exists: true },
+          'mentorProfile.isProfileComplete': true
+        }
+      },
+      { $unwind: { path: '$mentorProfile' } },
+      { $unwind: { path: '$mentorProfile.expertise' } },
+      {
+        $group: {
+          _id: '$mentorProfile.expertise',
+          mentorCount: { $sum: 1 },
+          avgRating: { $avg: { $ifNull: ['$mentorProfile.rating', 4.5] } }
+        }
+      },
+      {
+        $match: {
+          mentorCount: { $gte: 1 }
         }
       },
       {
         $sort: {
-          totalSessions: -1,
           mentorCount: -1,
           avgRating: -1
         }
       },
       { $limit: limit },
       { $project: { _id: 1 } }
-    ]);
+    ];
 
+    const trendingExpertise = await User.aggregate(pipeline);
     const subjects = trendingExpertise.map((item: { _id: string }) => item._id);
 
     console.log(`✅ Returning ${subjects.length} trending expertise areas`);
@@ -303,33 +428,6 @@ export const getTrendingExpertise = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/v1/mentors/expertise - Get all available expertise areas
-export const getAllExpertise = async (req: Request, res: Response) => {
-  try {
-    console.log('📚 Fetching all expertise areas...');
-
-    const expertise = await Mentor.distinct('expertise', { isActive: true });
-    
-    // Sort alphabetically
-    expertise.sort((a, b) => a.localeCompare(b));
-
-    console.log(`✅ Returning ${expertise.length} expertise areas`);
-
-    return res.json({
-      success: true,
-      data: expertise
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error fetching expertise areas:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch expertise areas'
-    });
-  }
-};
-
-// GET /api/v1/mentors/:mentorId - Get mentor by ID
 export const getMentorById = async (req: Request, res: Response) => {
   try {
     const { mentorId } = req.params;
@@ -344,36 +442,82 @@ export const getMentorById = async (req: Request, res: Response) => {
       });
     }
 
-    const mentor = await Mentor.findById(mentorId)
-      .populate('userId', 'name email avatar')
-      .lean();
+    const mentorResult = await User.aggregate([
+      {
+        $match: {
+          _id: new ObjectId(mentorId),
+          role: UserRole.MENTOR,
+          isActive: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'mentorprofiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      {
+        $match: {
+          'mentorProfile.0': { $exists: true }
+        }
+      },
+      { $unwind: '$mentorProfile' },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          email: 1,
+          avatar: 1,
+          createdAt: 1,
+          mentorProfile: 1
+        }
+      }
+    ]);
 
-    if (!mentor || !mentor.isActive) {
+    if (!mentorResult.length) {
       return res.status(404).json({
         success: false,
         message: 'Mentor not found'
       });
     }
 
-    // Get recent reviews
-    const reviews = await Review.find({ mentorId: new ObjectId(mentorId) })
-      .populate('studentId', 'name avatar')
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean();
-
+    const mentor = mentorResult[0];
+    
     const mentorData = {
-      ...mentor,
-      reviews: reviews.map((review: any) => ({
-        studentId: review.studentId,
-        studentName: (review.studentId as any)?.name || 'Anonymous',
-        rating: review.rating,
-        comment: review.comment,
-        createdAt: review.createdAt
-      }))
+      _id: mentor._id,
+      userId: mentor._id,
+      name: mentor.name,
+      email: mentor.email,
+      displayName: mentor.mentorProfile.displayName,
+      firstName: mentor.mentorProfile.firstName,
+      lastName: mentor.mentorProfile.lastName,
+      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      bio: mentor.mentorProfile.bio,
+      location: mentor.mentorProfile.location,
+      timezone: mentor.mentorProfile.timezone,
+      languages: mentor.mentorProfile.languages || [],
+      expertise: mentor.mentorProfile.expertise || [],
+      subjects: mentor.mentorProfile.subjects || [],
+      teachingStyles: mentor.mentorProfile.teachingStyles || [],
+      specializations: mentor.mentorProfile.specializations || [],
+      pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
+      weeklySchedule: mentor.mentorProfile.weeklySchedule || {},
+      rating: mentor.mentorProfile.rating || 4.5,
+      totalSessions: mentor.mentorProfile.totalSessions || 0,
+      totalStudents: mentor.mentorProfile.totalStudents || 0,
+      totalReviews: mentor.mentorProfile.totalReviews || 0,
+      isOnline: mentor.mentorProfile.isOnline || false,
+      isVerified: mentor.mentorProfile.isVerified || false,
+      lastSeen: mentor.mentorProfile.lastSeen,
+      responseTime: mentor.mentorProfile.responseTime || 60,
+      socialLinks: mentor.mentorProfile.socialLinks || {},
+      createdAt: mentor.createdAt,
+      updatedAt: mentor.mentorProfile.updatedAt
     };
 
-    console.log('✅ Mentor fetched successfully:', mentor.displayName);
+    console.log('✅ Mentor fetched successfully:', mentorData.displayName);
 
     return res.json({
       success: true,
@@ -389,267 +533,43 @@ export const getMentorById = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/v1/mentors/:mentorId/availability - Get mentor availability
-export const getMentorAvailability = async (req: Request, res: Response) => {
+// GET /api/v1/mentors/expertise - Get all available expertise areas
+export const getAllExpertise = async (req: Request, res: Response) => {
   try {
-    const { mentorId } = req.params;
-    const { date } = req.query;
-    
-    console.log('📅 Fetching mentor availability:', { mentorId, date });
+    console.log('📚 Fetching all expertise areas...');
 
-    // Validate mentor ID format
-    if (!ObjectId.isValid(mentorId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid mentor ID format'
-      });
-    }
-
-    const mentor = await Mentor.findById(mentorId);
-    if (!mentor || !mentor.isActive) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mentor not found'
-      });
-    }
-
-    // Get mentor's schedule
-    const schedule = mentor.availability?.schedule || [];
-    
-    // If specific date requested, filter for that day
-    let availableSlots = schedule;
-    if (date && typeof date === 'string') {
-      const targetDate = new Date(date);
-      const dayName = targetDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      availableSlots = schedule.filter((slot: { day: string }) => slot.day.toLowerCase() === dayName);
-    }
-
-    // Get existing sessions for the date to exclude booked slots
-    let bookedSessions: any[] = [];
-    if (date) {
-      const startOfDay = new Date(date as string);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date as string);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      bookedSessions = await Session.find({
-        mentorId: new ObjectId(mentorId),
-        scheduledTime: { $gte: startOfDay, $lte: endOfDay },
-        status: { $in: ['scheduled', 'confirmed', 'in-progress'] }
-      }).lean();
-    }
-
-    const availability = {
-      mentorId,
-      timezone: mentor.availability?.timezone || 'UTC',
-      isOnline: mentor.isOnline,
-      status: mentor.status,
-      schedule: availableSlots,
-      bookedSlots: bookedSessions.map(session => ({
-        start: session.scheduledTime,
-        end: new Date(session.scheduledTime.getTime() + session.duration * 60000),
-        sessionId: session._id
-      })),
-      available: mentor.isOnline && mentor.status === 'active' && availableSlots.length > 0
-    };
-
-    console.log('✅ Mentor availability fetched successfully');
-
-    return res.json({
-      success: true,
-      data: availability
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error fetching mentor availability:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch mentor availability'
-    });
-  }
-};
-
-// GET /api/v1/mentors/:mentorId/reviews - Get mentor reviews
-export const getMentorReviews = async (req: Request, res: Response) => {
-  try {
-    const { mentorId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
-    const skip = (page - 1) * limit;
-
-    console.log('⭐ Fetching mentor reviews:', { mentorId, page, limit });
-
-    // Validate mentor ID format
-    if (!ObjectId.isValid(mentorId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid mentor ID format'
-      });
-    }
-
-    const [reviews, total] = await Promise.all([
-      Review.find({ mentorId: new ObjectId(mentorId) })
-        .populate('studentId', 'name avatar')
-        .populate('sessionId', 'subject scheduledTime')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Review.countDocuments({ mentorId: new ObjectId(mentorId) })
+    const expertise = await User.aggregate([
+      { $match: { role: UserRole.MENTOR, isActive: true } },
+      {
+        $lookup: {
+          from: 'mentorprofiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      { $match: { 'mentorProfile.0': { $exists: true } } },
+      { $unwind: '$mentorProfile' },
+      { $unwind: '$mentorProfile.expertise' },
+      { $group: { _id: '$mentorProfile.expertise' } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 1 } }
     ]);
+    
+    const expertiseList = expertise.map((item: any) => item._id);
 
-    const formattedReviews = reviews.map((review: any) => ({
-      _id: review._id,
-      studentName: (review.studentId as any)?.name || 'Anonymous',
-      studentAvatar: (review.studentId as any)?.avatar,
-      rating: review.rating,
-      comment: review.comment,
-      subject: (review.sessionId as any)?.subject,
-      sessionDate: (review.sessionId as any)?.scheduledTime,
-      createdAt: review.createdAt
-    }));
-
-    const result = {
-      reviews: formattedReviews,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
-    };
-
-    console.log(`✅ Returning ${reviews.length} reviews out of ${total} total`);
+    console.log(`✅ Returning ${expertiseList.length} expertise areas`);
 
     return res.json({
       success: true,
-      data: result
+      data: expertiseList
     });
 
   } catch (error: any) {
-    console.error('❌ Error fetching mentor reviews:', error);
+    console.error('❌ Error fetching expertise areas:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to fetch mentor reviews'
-    });
-  }
-};
-
-// POST /api/v1/mentors/activity - Track mentor activity (for real-time updates)
-export const trackMentorActivity = async (req: Request, res: Response) => {
-  try {
-    const { mentorIds } = req.body;
-    
-    console.log('🔄 Tracking mentor activity for IDs:', mentorIds);
-
-    if (!Array.isArray(mentorIds) || mentorIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid mentor IDs array'
-      });
-    }
-
-    // Validate all mentor IDs
-    const validMentorIds = mentorIds.filter(id => ObjectId.isValid(id));
-
-    const mentors = await Mentor.find({
-      _id: { $in: validMentorIds.map(id => new ObjectId(id)) },
-      isActive: true
-    })
-    .select('_id isOnline lastSeen status')
-    .lean();
-
-    const activityMap: { [key: string]: boolean } = {};
-    
-    mentors.forEach((mentor: any) => {
-      // Consider mentor online if they're marked online and last seen within 5 minutes
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const isRecentlyActive = mentor.lastSeen && new Date(mentor.lastSeen) > fiveMinutesAgo;
-      
-      activityMap[mentor._id.toString()] = mentor.isOnline && isRecentlyActive;
-    });
-
-    // Fill in false for any mentors not found
-    validMentorIds.forEach(id => {
-      if (!(id in activityMap)) {
-        activityMap[id] = false;
-      }
-    });
-
-    console.log('✅ Mentor activity tracking completed');
-
-    return res.json({
-      success: true,
-      data: activityMap
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error tracking mentor activity:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to track mentor activity'
-    });
-  }
-};
-
-// PUT /api/v1/mentors/:mentorId/status - Update mentor online status (for mentors)
-export const updateMentorStatus = async (req: Request, res: Response) => {
-  try {
-    const { mentorId } = req.params;
-    const { isOnline, status } = req.body;
-    const user = (req as any).user as IUser;
-    const userId = req.user!._id;
-
-    console.log('🔄 Updating mentor status:', { mentorId, isOnline, status, userId });
-
-    // Validate mentor ID format
-    if (!ObjectId.isValid(mentorId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid mentor ID format'
-      });
-    }
-
-    // Find mentor and verify ownership
-    const mentor = await Mentor.findById(mentorId);
-    if (!mentor) {
-      return res.status(404).json({
-        success: false,
-        message: 'Mentor not found'
-      });
-    }
-
-    // Check if user owns this mentor profile
-    if (mentor.userId.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized to update this mentor profile'
-      });
-    }
-
-    // Update status
-    const updateData: any = { lastSeen: new Date() };
-    
-    if (typeof isOnline === 'boolean') {
-      updateData.isOnline = isOnline;
-    }
-    
-    if (status && ['active', 'inactive', 'busy', 'away'].includes(status)) {
-      updateData.status = status;
-    }
-
-    await Mentor.findByIdAndUpdate(mentorId, updateData);
-
-    console.log('✅ Mentor status updated successfully');
-
-    return res.json({
-      success: true,
-      message: 'Mentor status updated successfully'
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error updating mentor status:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to update mentor status'
+      message: error.message || 'Failed to fetch expertise areas'
     });
   }
 };
@@ -664,30 +584,121 @@ export const getMentorStats = async (req: Request, res: Response) => {
       activeMentors,
       onlineMentors,
       verifiedMentors,
-      totalSessions,
       avgRating
     ] = await Promise.all([
-      Mentor.countDocuments({ isActive: true }),
-      Mentor.countDocuments({ isActive: true, status: 'active' }),
-      Mentor.countDocuments({ isActive: true, isOnline: true }),
-      Mentor.countDocuments({ isActive: true, isVerified: true }),
-      Session.countDocuments({ status: 'completed' }),
-      Mentor.aggregate([
-        { $match: { isActive: true, rating: { $gt: 0 } } },
-        { $group: { _id: null, avgRating: { $avg: '$rating' } } }
+      // Total mentors with complete profiles
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        {
+          $match: {
+            'mentorProfile.0': { $exists: true },
+            'mentorProfile.isProfileComplete': true
+          }
+        },
+        { $count: "total" }
+      ]),
+      
+      // Active mentors (those who submitted applications)
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        {
+          $match: {
+            'mentorProfile.0': { $exists: true },
+            'mentorProfile.applicationSubmitted': true
+          }
+        },
+        { $count: "total" }
+      ]),
+      
+      // Online mentors
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        {
+          $match: {
+            'mentorProfile.0': { $exists: true },
+            'mentorProfile.isOnline': true
+          }
+        },
+        { $count: "total" }
+      ]),
+      
+      // Verified mentors
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        {
+          $match: {
+            'mentorProfile.0': { $exists: true },
+            'mentorProfile.isVerified': true
+          }
+        },
+        { $count: "total" }
+      ]),
+      
+      // Average rating
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        { $match: { 'mentorProfile.0': { $exists: true } } },
+        { $unwind: '$mentorProfile' },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: { $ifNull: ['$mentorProfile.rating', 4.5] } }
+          }
+        }
       ])
     ]);
 
     const stats = {
-      totalMentors,
-      activeMentors,
-      onlineMentors,
-      verifiedMentors,
-      totalSessions,
-      averageRating: avgRating[0]?.avgRating || 0,
+      totalMentors: totalMentors[0]?.total || 0,
+      activeMentors: activeMentors[0]?.total || 0,
+      onlineMentors: onlineMentors[0]?.total || 0,
+      verifiedMentors: verifiedMentors[0]?.total || 0,
+      averageRating: avgRating[0]?.avgRating || 4.5,
       platformHealth: {
-        mentorAvailability: onlineMentors / Math.max(activeMentors, 1) * 100,
-        verificationRate: verifiedMentors / Math.max(totalMentors, 1) * 100
+        mentorAvailability: onlineMentors[0]?.total > 0 ? 
+          (onlineMentors[0].total / Math.max(activeMentors[0]?.total || 1, 1)) * 100 : 0,
+        verificationRate: verifiedMentors[0]?.total > 0 ? 
+          (verifiedMentors[0].total / Math.max(totalMentors[0]?.total || 1, 1)) * 100 : 0
       }
     };
 
@@ -706,6 +717,103 @@ export const getMentorStats = async (req: Request, res: Response) => {
     });
   }
 };
+// Helper function to get filter options
+async function getFilterOptions() {
+  try {
+    const [expertiseResult, subjectsResult, languagesResult, priceResult] = await Promise.all([
+      // Get all expertise
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        { $match: { 'mentorProfile.0': { $exists: true } } },
+        { $unwind: '$mentorProfile' },
+        { $unwind: '$mentorProfile.expertise' },
+        { $group: { _id: '$mentorProfile.expertise' } },
+        { $sort: { _id: 1 } }
+      ]),
+      
+      // Get all subjects
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        { $match: { 'mentorProfile.0': { $exists: true } } },
+        { $unwind: '$mentorProfile' },
+        { $unwind: '$mentorProfile.subjects' },
+        { $group: { _id: '$mentorProfile.subjects' } },
+        { $sort: { _id: 1 } }
+      ]),
+      
+      // Get all languages
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        { $match: { 'mentorProfile.0': { $exists: true } } },
+        { $unwind: '$mentorProfile' },
+        { $unwind: '$mentorProfile.languages' },
+        { $group: { _id: '$mentorProfile.languages' } },
+        { $sort: { _id: 1 } }
+      ]),
+      
+      // Get price range
+      User.aggregate([
+        { $match: { role: UserRole.MENTOR, isActive: true } },
+        {
+          $lookup: {
+            from: 'mentorprofiles',
+            localField: '_id',
+            foreignField: 'userId',
+            as: 'mentorProfile'
+          }
+        },
+        { $match: { 'mentorProfile.0': { $exists: true } } },
+        { $unwind: '$mentorProfile' },
+        {
+          $group: {
+            _id: null,
+            min: { $min: '$mentorProfile.pricing.hourlyRate' },
+            max: { $max: '$mentorProfile.pricing.hourlyRate' }
+          }
+        }
+      ])
+    ]);
+
+    return {
+      availableExpertise: expertiseResult.map((item: any) => item._id),
+      availableSubjects: subjectsResult.map((item: any) => item._id),
+      availableLanguages: languagesResult.map((item: any) => item._id),
+      priceRange: priceResult[0] || { min: 10, max: 200 }
+    };
+  } catch (error) {
+    console.error('Error getting filter options:', error);
+    return {
+      availableExpertise: [],
+      availableSubjects: [],
+      availableLanguages: [],
+      priceRange: { min: 10, max: 200 }
+    };
+  }
+}
 
 // Route definitions
 router.get('/search', searchMentors);
@@ -714,9 +822,5 @@ router.get('/trending-expertise', getTrendingExpertise);
 router.get('/expertise', getAllExpertise);
 router.get('/stats/overview', getMentorStats);
 router.get('/:mentorId', getMentorById);
-router.get('/:mentorId/availability', getMentorAvailability);
-router.get('/:mentorId/reviews', getMentorReviews);
-router.post('/activity', withAuth.authenticate, trackMentorActivity);
-router.put('/:mentorId/status', withAuth.authenticate, updateMentorStatus);
 
 export default router;

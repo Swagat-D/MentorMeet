@@ -11,6 +11,7 @@ import { globalRateLimit } from './middleware/rateLimit.middleware.js';
 import corsOptions from './config/cors.js';
 import './models/index.js';
 import psychometricRoutes from './routes/psychometric.routes.js';
+import mentorRoutes from './routes/mentor.routes.js'
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/v1/auth', authRoutes);
 
 app.use('/api/v1/psychometric', psychometricRoutes);
 console.log('📝 Psychometric routes registered at /api/v1/psychometric');
+
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -340,6 +340,27 @@ export const createIndexes = async (): Promise<void> => {
     } catch (error) {
       console.log('📝 Psychometric test collection indexes will be created when collection exists');
     }
+
+    // MentorProfile indexes
+  try {
+    indexPromises.push(
+      mongoose.connection.collection('mentorprofiles').createIndex({ userId: 1 }, { unique: true, background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ expertise: 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ subjects: 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ 'pricing.hourlyRate': 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ rating: -1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ isProfileComplete: 1, applicationSubmitted: 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ location: 'text', bio: 'text', displayName: 'text' }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ languages: 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ isOnline: 1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ totalSessions: -1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ totalStudents: -1 }, { background: true }),
+      mongoose.connection.collection('mentorprofiles').createIndex({ createdAt: -1 }, { background: true })
+    );
+    console.log('📋 MentorProfile indexes queued');
+  } catch (error) {
+    console.log('📝 MentorProfile collection indexes will be created when collection exists');
+  }
     
     // Wait for all indexes to be created
     await Promise.allSettled(indexPromises);

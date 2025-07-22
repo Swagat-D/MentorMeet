@@ -676,71 +676,77 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Featured Mentors - Enhanced with database integration */}
-        {featuredMentors.length > 0 && (
-          <View style={styles.mentorsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Featured Mentors ({featuredMentors.length})</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
-                <Text style={styles.sectionLink}>View All</Text>
-              </TouchableOpacity>
+{/* Featured Mentors - Updated mapping */}
+{featuredMentors.length > 0 && (
+  <View style={styles.mentorsSection}>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>Featured Mentors ({featuredMentors.length})</Text>
+      <TouchableOpacity onPress={() => router.push('/(tabs)/search')}>
+        <Text style={styles.sectionLink}>View All</Text>
+      </TouchableOpacity>
+    </View>
+    
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.mentorsScroll}
+    >
+      {featuredMentors.map((mentor, index) => (
+        <TouchableOpacity 
+          key={mentor._id || mentor.userId || index} 
+          style={styles.mentorCard}
+          onPress={() => router.push(`/mentor/${mentor._id || mentor.userId}`)}
+        >
+          <Image 
+            source={{ 
+              uri: mentor.profileImage || 
+                   `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.displayName || mentor.firstName || 'Mentor')}&background=8B4513&color=fff&size=200`
+            }} 
+            style={styles.mentorAvatar}
+            onError={() => console.log(`Failed to load avatar for ${mentor.displayName}`)}
+          />
+          
+          <Text style={styles.mentorName} numberOfLines={2}>
+            {mentor.displayName || `${mentor.firstName || ''} ${mentor.lastName || ''}`.trim() || 'Anonymous Mentor'}
+          </Text>
+          <Text style={styles.mentorExpertise} numberOfLines={2}>
+            {mentor.expertise?.slice(0, 2).join(', ') || 
+             mentor.subjects?.slice(0, 2).join(', ') || 
+             'General Teaching'}
+          </Text>
+          
+          <View style={styles.mentorMeta}>
+            <View style={styles.mentorRating}>
+              <MaterialIcons name="star" size={14} color="#F59E0B" />
+              <Text style={styles.mentorRatingText}>
+                {mentor.rating?.toFixed(1) || '4.5'}
+              </Text>
             </View>
             
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.mentorsScroll}
-            >
-              {featuredMentors.map((mentor, index) => (
-                <TouchableOpacity 
-                  key={mentor._id || index} 
-                  style={styles.mentorCard}
-                  onPress={() => router.push(`/mentor/${mentor._id}`)}
-                >
-                  <Image 
-                    source={{ 
-                      uri: mentor.profileImage || 
-                           `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.displayName || mentor.firstName || 'Mentor')}&background=8B4513&color=fff&size=200`
-                    }} 
-                    style={styles.mentorAvatar}
-                    onError={() => console.log(`Failed to load avatar for ${mentor.displayName}`)}
-                  />
-                  
-                  <Text style={styles.mentorName} numberOfLines={2}>
-                    {mentor.displayName || `${mentor.firstName || ''} ${mentor.lastName || ''}`.trim() || 'Anonymous Mentor'}
-                  </Text>
-                  <Text style={styles.mentorExpertise} numberOfLines={2}>
-                    {mentor.expertise?.slice(0, 2).join(', ') || 
-                     mentor.specialties?.slice(0, 2).join(', ') || 
-                     'General Teaching'}
-                  </Text>
-                  
-                  <View style={styles.mentorMeta}>
-                    <View style={styles.mentorRating}>
-                      <MaterialIcons name="star" size={14} color="#F59E0B" />
-                      <Text style={styles.mentorRatingText}>
-                        {mentor.rating?.toFixed(1) || '5.0'}
-                      </Text>
-                    </View>
-                    
-                    {mentor.pricing?.hourlyRate && (
-                      <Text style={styles.mentorPrice}>
-                        ${mentor.pricing.hourlyRate}/hr
-                      </Text>
-                    )}
-                  </View>
-                  
-                  {mentor.isOnline && (
-                    <View style={styles.onlineIndicator}>
-                      <View style={styles.onlineDot} />
-                      <Text style={styles.onlineText}>Online</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {mentor.pricing?.hourlyRate && (
+              <Text style={styles.mentorPrice}>
+                ${mentor.pricing.hourlyRate}/hr
+              </Text>
+            )}
           </View>
-        )}
+          
+          {mentor.isOnline && (
+            <View style={styles.onlineIndicator}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.onlineText}>Online</Text>
+            </View>
+          )}
+          
+          {mentor.location && (
+            <Text style={styles.mentorLocation} numberOfLines={1}>
+              📍 {mentor.location}
+            </Text>
+          )}
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </View>
+)}
 
         {/* Show message if no mentors found */}
         {featuredMentors.length === 0 && !loading && (
@@ -1114,6 +1120,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+
+  mentorLocation: {
+    fontSize: 12,
+    color: '#8B7355',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 4,
   },
 
   // Empty States

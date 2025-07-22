@@ -104,6 +104,47 @@ export interface Mentor {
   };
 }
 
+export interface MentorFromDatabase {
+  _id: string;
+  userId: string;
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  profileImage: string;
+  bio?: string;
+  location?: string;
+  timezone?: string;
+  languages: string[];
+  expertise: string[];
+  subjects: string[];
+  teachingStyles: string[];
+  specializations: string[];
+  pricing: {
+    hourlyRate: number;
+    currency: string;
+    packages?: Array<{
+      name: string;
+      sessions: number;
+      price: number;
+      description: string;
+    }>;
+  };
+  weeklySchedule: any;
+  rating: number;
+  totalSessions: number;
+  totalStudents: number;
+  isOnline: boolean;
+  isVerified: boolean;
+  socialLinks: {
+    linkedin?: string;
+    twitter?: string;
+    website?: string;
+    github?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Session {
   id: string;
   mentor: {

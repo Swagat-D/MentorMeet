@@ -1,33 +1,18 @@
 // frontend/services/mentorService.ts - Complete Mentor Service Implementation
 import ApiService from './api';
-
 export interface MentorProfile {
   _id: string;
   userId: string;
   displayName: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string;
   profileImage: string;
   bio?: string;
   expertise: string[];
-  experience: number;
-  education: Array<{
-    institution: string;
-    degree: string;
-    field: string;
-    graduationYear: number;
-  }>;
-  certifications: Array<{
-    name: string;
-    issuer: string;
-    issueDate: string;
-    expiryDate?: string;
-  }>;
-  languages: Array<{
-    language: string;
-    proficiency: 'basic' | 'intermediate' | 'advanced' | 'native';
-  }>;
+  subjects: string[];
+  location?: string;
+  languages: string[];
   pricing: {
     hourlyRate: number;
     currency: string;
@@ -38,38 +23,22 @@ export interface MentorProfile {
       description: string;
     }>;
   };
-  availability: {
-    timezone: string;
-    schedule: Array<{
-      day: string;
-      startTime: string;
-      endTime: string;
-    }>;
-  };
   rating: number;
   totalSessions: number;
   totalStudents: number;
-  completionRate: number;
-  responseTime: number; // in minutes
   isOnline: boolean;
-  lastSeen: string;
   isVerified: boolean;
-  status: 'active' | 'inactive' | 'busy' | 'away';
-  specialties: string[];
-  teachingStyle: string[];
-  reviews: Array<{
-    studentId: string;
-    studentName: string;
-    rating: number;
-    comment: string;
-    createdAt: string;
-  }>;
+  teachingStyles: string[];
+  specializations: string[];
+  weeklySchedule?: any;
   createdAt: string;
   updatedAt: string;
+  lastSeen?: string;
 }
 
 export interface MentorSearchFilters {
   expertise?: string[];
+  subjects?: string[]; 
   priceRange?: {
     min: number;
     max: number;
@@ -81,12 +50,14 @@ export interface MentorSearchFilters {
     days?: string[];
     timeSlots?: string[];
   };
+  location?: string;    
   isOnline?: boolean;
   isVerified?: boolean;
   sortBy?: 'rating' | 'price' | 'experience' | 'popularity' | 'response_time';
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+  search?: string;     
 }
 
 export interface MentorSearchResult {
