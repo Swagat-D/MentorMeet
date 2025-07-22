@@ -51,6 +51,7 @@ export interface IUserStats {
 // Main User Interface
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
+  id: string;
   email: string;
   name: string;
   password: string;
