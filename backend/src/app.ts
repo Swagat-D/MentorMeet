@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import { connectDB, healthCheck } from './config/database.js';
 import { validateEnvironment } from './config/environment.js';
 import authRoutes from './routes/auth.routes.js';
@@ -11,7 +10,6 @@ import { globalRateLimit } from './middleware/rateLimit.middleware.js';
 import corsOptions from './config/cors.js';
 import './models/index.js';
 import psychometricRoutes from './routes/psychometric.routes.js';
-import mentorRoutes from './routes/mentor.routes.js'
 
 const app = express();
 

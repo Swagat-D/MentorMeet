@@ -1,13 +1,12 @@
-// backend/src/routes/student.routes.ts - Fixed and Enhanced Student Routes
 import { Router, Request, Response } from 'express';
-import withAuth from '@/middleware/auth.middleware';
-import { IUser } from '@/models/User.model'
-import { Session } from '@/models/Session.model';
-import { IFavoriteSubject, StudentProgress } from '@/models/StudentProgress.model';
-import { Achievement } from '@/models/Achievement.model';
-import { LearningInsight, ILearningInsight } from '@/models/LearningInsight.model';
+import withAuth from '../middleware/auth.middleware.js';
+import { IUser } from '../models/User.model.js';
+import { Session } from '../models/Session.model.js';
+import { IFavoriteSubject, StudentProgress } from '../models/StudentProgress.model.js';
+import { Achievement } from '../models/Achievement.model.js';
+import { LearningInsight, ILearningInsight } from '../models/LearningInsight.model.js';
+import { getWeekStart, calculateCurrentStreak } from '../utils/dateHelpers.js';
 import { ObjectId } from 'mongodb';
-import { getWeekStart, calculateCurrentStreak } from '@/utils/dateHelpers';
 
 const router = Router();
 

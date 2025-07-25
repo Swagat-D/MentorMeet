@@ -26,7 +26,7 @@
     "emitDecoratorMetadata": true,
     "allowImportingTsExtensions": false,
     "noEmit": false,
-    "baseUrl": ".",
+    "baseUrl": "./src",
     "paths": {
       "@/*": ["src/*"],
       "@/config/*": ["src/config/*"],

@@ -6,13 +6,13 @@ import compression from 'compression';
 import { networkInterfaces } from 'os';
 import { connectDB, healthCheck } from './config/database';
 import { validateEnvironment } from './config/environment';
-import authRoutes from './routes/auth.routes';
-import { errorHandler, notFound } from './middleware/error.middleware';
-import { globalRateLimit } from './middleware/rateLimit.middleware';
-import studentRoutes from './routes/student.routes';
-import mentorRoutes from './routes/mentor.routes';
-import './models'
-import psychometricRoutes from './routes/psychometric.routes';
+import authRoutes from './routes/auth.routes.js';
+import { errorHandler, notFound } from './middleware/error.middleware.js';
+import { globalRateLimit } from './middleware/rateLimit.middleware.js';
+import studentRoutes from './routes/student.routes.js';
+import mentorRoutes from './routes/mentor.routes.js';
+import './models/index.js'
+import psychometricRoutes from './routes/psychometric.routes.js';
 const app = express();
 
 // Validate environment variables first

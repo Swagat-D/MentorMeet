@@ -28,6 +28,7 @@ class NetworkDiscoveryService {
   private static readonly PRIORITY_IPS = [
     '192.168.8.1',      // VMware Network Adapter VMnet1 (your primary)
     '192.168.137.210',  // Wi-Fi (your actual IP)
+    '192.168.250.210',
     '192.168.220.1',    // VMware Network Adapter VMnet8
     '192.168.1.1',      // Common router
     '192.168.0.1',      // Common router

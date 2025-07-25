@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { getWeekStart } from '@/utils/dateHelpers';
+import { getWeekStart } from '../utils/dateHelpers';
 
 export interface IFavoriteSubject {
   subject: string;

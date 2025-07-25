@@ -1,4 +1,3 @@
-// backend/src/services/psychometricTestService.ts - Production-Ready Service
 import { Types } from 'mongoose';
 import PsychometricTest, { 
   IPsychometricTest, 
@@ -8,6 +7,7 @@ import PsychometricTest, {
   IPersonalInsights,
   ITestResult 
 } from '../models/PsychometricTest.model';
+import User from '../models/User.model.js';
 
 export class PsychometricTestService {
   
@@ -372,7 +372,6 @@ export class PsychometricTestService {
 
   private static async updateUserTestStatus(userId: string): Promise<void> {
   try {
-    const User = require('../models/User.model').default;
     await User.findByIdAndUpdate(userId, { isTestGiven: true });
     console.log('✅ User test status updated to true');
   } catch (error) {

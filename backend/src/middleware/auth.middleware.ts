@@ -1,7 +1,7 @@
 // src/middleware/auth.middleware.ts - Authentication Middleware
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken, extractTokenFromHeader, JWTPayload } from '@/utils/jwt.utils';
-import User, { IUser, UserRole } from '@/models/User.model';
+import { verifyAccessToken, extractTokenFromHeader, JWTPayload } from '../utils/jwt.utils';
+import User, { IUser, UserRole } from '../models/User.model';
 
 // Extend Express Request type to include user
 declare global {

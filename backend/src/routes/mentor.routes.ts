@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import withAuth from '@/middleware/auth.middleware';
-import { IUser, UserRole } from '@/models/User.model'
-import User from '@/models/User.model';
+import withAuth from '../middleware/auth.middleware.js';
+import { IUser, UserRole } from '../models/User.model.js'
+import User from '../models/User.model.js';
 import { ObjectId } from 'mongodb';
 import mongoose, { PipelineStage } from 'mongoose';
 
