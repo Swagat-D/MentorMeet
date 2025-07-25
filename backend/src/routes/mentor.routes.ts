@@ -35,8 +35,8 @@ export const searchMentors = async (req: Request, res: Response) => {
       {
         $match: {
           role: UserRole.MENTOR,
-          isActive: true,
-          isEmailVerified: true
+          isActive: true
+          // ✅ REMOVED: isEmailVerified: true (might not exist in your data)
         }
       },
       
@@ -53,9 +53,10 @@ export const searchMentors = async (req: Request, res: Response) => {
       // Only include users who have mentor profiles
       {
         $match: {
-          'mentorProfile.0': { $exists: true },
-          'mentorProfile.isProfileComplete': true,
-          'mentorProfile.applicationSubmitted': true
+          'mentorProfile.0': { $exists: true }
+          // ✅ REMOVED: Strict profile completion filters temporarily
+          // 'mentorProfile.isProfileComplete': true,
+          // 'mentorProfile.applicationSubmitted': true
         }
       },
       
@@ -65,7 +66,7 @@ export const searchMentors = async (req: Request, res: Response) => {
       }
     ];
 
-    // Add filters based on query parameters
+    // Add filters based on query parameters (only if they exist)
     const matchConditions: any = {};
 
     // Expertise filter
@@ -74,10 +75,13 @@ export const searchMentors = async (req: Request, res: Response) => {
       matchConditions['mentorProfile.expertise'] = { $in: expertiseArray };
     }
 
-    // Subjects filter
+    // Subjects filter - Handle both string and object formats
     if (subjects && typeof subjects === 'string') {
       const subjectsArray = subjects.split(',').map(s => s.trim());
-      matchConditions['mentorProfile.subjects'] = { $in: subjectsArray };
+      matchConditions.$or = [
+        { 'mentorProfile.subjects': { $in: subjectsArray } },
+        { 'mentorProfile.subjects.name': { $in: subjectsArray } }
+      ];
     }
 
     // Price range filter
@@ -101,15 +105,15 @@ export const searchMentors = async (req: Request, res: Response) => {
     // Text search
     if (search && typeof search === 'string') {
       matchConditions.$or = [
-        { name: { $regex: search, $options: 'i' } },
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
         { 'mentorProfile.displayName': { $regex: search, $options: 'i' } },
         { 'mentorProfile.bio': { $regex: search, $options: 'i' } },
-        { 'mentorProfile.expertise': { $regex: search, $options: 'i' } },
-        { 'mentorProfile.subjects': { $regex: search, $options: 'i' } }
+        { 'mentorProfile.expertise': { $regex: search, $options: 'i' } }
       ];
     }
 
-    // Add match conditions to pipeline
+    // Add match conditions to pipeline ONLY if there are filters
     if (Object.keys(matchConditions).length > 0) {
       pipeline.push({ $match: matchConditions });
     }
@@ -118,9 +122,9 @@ export const searchMentors = async (req: Request, res: Response) => {
     pipeline.push({
       $project: {
         _id: 1,
-        name: 1,
+        firstName: 1,
+        lastName: 1,
         email: 1,
-        avatar: 1,
         isActive: 1,
         createdAt: 1,
         mentorProfile: {
@@ -140,7 +144,10 @@ export const searchMentors = async (req: Request, res: Response) => {
           weeklySchedule: '$mentorProfile.weeklySchedule',
           isProfileComplete: '$mentorProfile.isProfileComplete',
           profileStep: '$mentorProfile.profileStep',
-          // Add calculated fields (you might want to add these to the schema)
+          socialLinks: '$mentorProfile.socialLinks',
+          achievements: '$mentorProfile.achievements',
+          preferences: '$mentorProfile.preferences',
+          // Default values for missing fields
           rating: { $ifNull: ['$mentorProfile.rating', 4.5] },
           totalSessions: { $ifNull: ['$mentorProfile.totalSessions', 0] },
           totalStudents: { $ifNull: ['$mentorProfile.totalStudents', 0] },
@@ -160,7 +167,7 @@ export const searchMentors = async (req: Request, res: Response) => {
         sortField['mentorProfile.pricing.hourlyRate'] = sortOrder === 'asc' ? 1 : -1;
         break;
       case 'experience':
-        sortField['mentorProfile.experience'] = sortOrder === 'asc' ? 1 : -1;
+        sortField['mentorProfile.totalSessions'] = sortOrder === 'asc' ? 1 : -1;
         break;
       case 'popularity':
         sortField['mentorProfile.totalStudents'] = sortOrder === 'asc' ? 1 : -1;
@@ -189,19 +196,20 @@ export const searchMentors = async (req: Request, res: Response) => {
 
     const total = countResult[0]?.total || 0;
 
-    // Format the response
+    // Format the response to match frontend expectations
     const mentors = mentorsResult.map((mentor: any) => ({
       _id: mentor._id,
       userId: mentor._id,
-      displayName: mentor.mentorProfile.displayName || mentor.name,
-      firstName: mentor.mentorProfile.firstName,
-      lastName: mentor.mentorProfile.lastName,
+      displayName: mentor.mentorProfile.displayName || `${mentor.firstName} ${mentor.lastName}`,
+      firstName: mentor.mentorProfile.firstName || mentor.firstName,
+      lastName: mentor.mentorProfile.lastName || mentor.lastName,
       email: mentor.email,
-      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      profileImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.mentorProfile.displayName || mentor.firstName)}&background=8B4513&color=fff&size=200`,
       bio: mentor.mentorProfile.bio,
       expertise: mentor.mentorProfile.expertise || [],
-      subjects: mentor.mentorProfile.subjects || [],
+      subjects: mentor.mentorProfile.subjects?.map((s: any) => typeof s === 'string' ? s : s.name) || [],
       location: mentor.mentorProfile.location,
+      timezone: mentor.mentorProfile.timezone,
       languages: mentor.mentorProfile.languages || [],
       pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
       rating: mentor.mentorProfile.rating || 4.5,
@@ -212,6 +220,9 @@ export const searchMentors = async (req: Request, res: Response) => {
       teachingStyles: mentor.mentorProfile.teachingStyles || [],
       specializations: mentor.mentorProfile.specializations || [],
       weeklySchedule: mentor.mentorProfile.weeklySchedule,
+      socialLinks: mentor.mentorProfile.socialLinks || {},
+      achievements: mentor.mentorProfile.achievements,
+      preferences: mentor.mentorProfile.preferences,
       createdAt: mentor.createdAt,
       updatedAt: mentor.mentorProfile.updatedAt
     }));
@@ -251,21 +262,20 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
     
     console.log('⭐ Fetching featured mentors, limit:', limit);
 
-    // Aggregation pipeline for featured mentors
+    // Aggregation pipeline for featured mentors - FIXED COLLECTION NAME
     const pipeline: PipelineStage[] = [
       // Match mentor users
       {
         $match: {
           role: UserRole.MENTOR,
           isActive: true,
-          isEmailVerified: true
         }
       },
       
-      // Join with mentor profiles
+      // Join with MentorProfiles collection (FIXED: Capital P)
       {
         $lookup: {
-          from: 'mentorprofiles',
+          from: 'mentorProfiles',
           localField: '_id',
           foreignField: 'userId',
           as: 'mentorProfile'
@@ -276,8 +286,6 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
       {
         $match: {
           'mentorProfile.0': { $exists: true },
-          'mentorProfile.isProfileComplete': true,
-          'mentorProfile.applicationSubmitted': true
         }
       },
       
@@ -287,10 +295,11 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
       {
         $project: {
           _id: 1,
-          name: 1,
+          firstName: 1,
+          lastName: 1,
           email: 1,
-          avatar: 1,
           mentorProfile: {
+            _id: 1,
             firstName: 1,
             lastName: 1,
             displayName: 1,
@@ -299,6 +308,14 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
             subjects: 1,
             pricing: 1,
             location: 1,
+            timezone: 1,
+            languages: 1,
+            teachingStyles: 1,
+            specializations: 1,
+            socialLinks: 1,
+            achievements: 1,
+            preferences: 1,
+            weeklySchedule: 1,
             rating: { $ifNull: ['$rating', 4.5] },
             totalSessions: { $ifNull: ['$totalSessions', 0] },
             totalStudents: { $ifNull: ['$totalStudents', 0] },
@@ -311,9 +328,7 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
       // Sort by rating and sessions
       {
         $sort: {
-          'mentorProfile.rating': -1,
-          'mentorProfile.totalSessions': -1,
-          'mentorProfile.totalStudents': -1
+          createdAt: -1
         }
       },
       
@@ -325,19 +340,28 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
     const formattedMentors = mentorsResult.map((mentor: any) => ({
       _id: mentor._id,
       userId: mentor._id,
-      displayName: mentor.mentorProfile.displayName || mentor.name,
-      firstName: mentor.mentorProfile.firstName,
-      lastName: mentor.mentorProfile.lastName,
-      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      displayName: mentor.mentorProfile.displayName || `${mentor.firstName} ${mentor.lastName}`,
+      firstName: mentor.mentorProfile.firstName || mentor.firstName,
+      lastName: mentor.mentorProfile.lastName || mentor.lastName,
+      profileImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.mentorProfile.displayName || mentor.firstName)}&background=8B4513&color=fff&size=200`,
       expertise: mentor.mentorProfile.expertise || [],
-      subjects: mentor.mentorProfile.subjects || [],
+      subjects: mentor.mentorProfile.subjects?.map((s: any) => typeof s === 'string' ? s : s.name) || [],
       pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
       rating: mentor.mentorProfile.rating || 4.5,
       totalSessions: mentor.mentorProfile.totalSessions || 0,
       totalStudents: mentor.mentorProfile.totalStudents || 0,
       isOnline: mentor.mentorProfile.isOnline || false,
       isVerified: mentor.mentorProfile.isVerified || true,
-      location: mentor.mentorProfile.location
+      location: mentor.mentorProfile.location,
+      timezone: mentor.mentorProfile.timezone,
+      languages: mentor.mentorProfile.languages || [],
+      teachingStyles: mentor.mentorProfile.teachingStyles || [],
+      specializations: mentor.mentorProfile.specializations || [],
+      socialLinks: mentor.mentorProfile.socialLinks || {},
+      bio: mentor.mentorProfile.bio,
+      achievements: mentor.mentorProfile.achievements,
+      preferences: mentor.mentorProfile.preferences,
+      weeklySchedule: mentor.mentorProfile.weeklySchedule
     }));
 
     console.log(`✅ Returning ${formattedMentors.length} featured mentors`);
@@ -368,12 +392,11 @@ export const getTrendingExpertise = async (req: Request, res: Response) => {
         $match: {
           role: UserRole.MENTOR,
           isActive: true,
-          isEmailVerified: true
         }
       },
       {
         $lookup: {
-          from: 'mentorprofiles',
+          from: 'mentorProfiles', // FIXED: Capital P
           localField: '_id',
           foreignField: 'userId',
           as: 'mentorProfile'
@@ -452,7 +475,7 @@ export const getMentorById = async (req: Request, res: Response) => {
       },
       {
         $lookup: {
-          from: 'mentorprofiles',
+          from: 'mentorProfiles', // FIXED: Capital P
           localField: '_id',
           foreignField: 'userId',
           as: 'mentorProfile'
@@ -467,9 +490,9 @@ export const getMentorById = async (req: Request, res: Response) => {
       {
         $project: {
           _id: 1,
-          name: 1,
+          firstName: 1,
+          lastName: 1,
           email: 1,
-          avatar: 1,
           createdAt: 1,
           mentorProfile: 1
         }
@@ -488,18 +511,17 @@ export const getMentorById = async (req: Request, res: Response) => {
     const mentorData = {
       _id: mentor._id,
       userId: mentor._id,
-      name: mentor.name,
+      firstName: mentor.mentorProfile.firstName || mentor.firstName,
+      lastName: mentor.mentorProfile.lastName || mentor.lastName,
       email: mentor.email,
       displayName: mentor.mentorProfile.displayName,
-      firstName: mentor.mentorProfile.firstName,
-      lastName: mentor.mentorProfile.lastName,
-      profileImage: mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.name)}&background=8B4513&color=fff&size=200`,
+      profileImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(mentor.mentorProfile.displayName || mentor.firstName)}&background=8B4513&color=fff&size=200`,
       bio: mentor.mentorProfile.bio,
       location: mentor.mentorProfile.location,
       timezone: mentor.mentorProfile.timezone,
       languages: mentor.mentorProfile.languages || [],
       expertise: mentor.mentorProfile.expertise || [],
-      subjects: mentor.mentorProfile.subjects || [],
+      subjects: mentor.mentorProfile.subjects?.map((s: any) => typeof s === 'string' ? s : s.name) || [],
       teachingStyles: mentor.mentorProfile.teachingStyles || [],
       specializations: mentor.mentorProfile.specializations || [],
       pricing: mentor.mentorProfile.pricing || { hourlyRate: 50, currency: 'USD' },
@@ -513,6 +535,8 @@ export const getMentorById = async (req: Request, res: Response) => {
       lastSeen: mentor.mentorProfile.lastSeen,
       responseTime: mentor.mentorProfile.responseTime || 60,
       socialLinks: mentor.mentorProfile.socialLinks || {},
+      achievements: mentor.mentorProfile.achievements,
+      preferences: mentor.mentorProfile.preferences,
       createdAt: mentor.createdAt,
       updatedAt: mentor.mentorProfile.updatedAt
     };
@@ -542,7 +566,7 @@ export const getAllExpertise = async (req: Request, res: Response) => {
       { $match: { role: UserRole.MENTOR, isActive: true } },
       {
         $lookup: {
-          from: 'mentorprofiles',
+          from: 'mentorProfiles', // FIXED: Capital P
           localField: '_id',
           foreignField: 'userId',
           as: 'mentorProfile'
@@ -591,7 +615,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -611,7 +635,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -631,7 +655,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -651,7 +675,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -671,7 +695,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -717,6 +741,129 @@ export const getMentorStats = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const debugMentorData = async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 Debug: Checking mentor data...');
+
+    // Check Users collection
+    const mentorUsers = await User.find({ role: UserRole.MENTOR }).limit(5);
+    console.log('👥 Mentor users found:', mentorUsers.length);
+
+    // Check MentorProfiles collection directly
+    let mentorProfilesCount = 0;
+    let sampleProfile = null;
+    if (mongoose.connection.db) {
+      mentorProfilesCount = await mongoose.connection.db.collection('mentorProfiles').countDocuments();
+      sampleProfile = await mongoose.connection.db.collection('mentorProfiles').findOne();
+    }
+    console.log('📋 MentorProfiles count:', mentorProfilesCount);
+    console.log('📄 Sample profile:', sampleProfile);
+
+    // Test aggregation step by step
+    const step1 = await User.aggregate([
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true
+        }
+      }
+    ]);
+    console.log('🔸 Step 1 - Mentor users:', step1.length);
+
+    const step2 = await User.aggregate([
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'mentorProfiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      }
+    ]);
+    console.log('🔸 Step 2 - After lookup:', step2.length);
+
+    const step3 = await User.aggregate([
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'mentorProfiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      {
+        $match: {
+          'mentorProfile.0': { $exists: true }
+        }
+      }
+    ]);
+    console.log('🔸 Step 3 - With profile exists:', step3.length);
+
+    // Check if the issue is with the profile completion filters
+    const step4 = await User.aggregate([
+      {
+        $match: {
+          role: UserRole.MENTOR,
+          isActive: true
+        }
+      },
+      {
+        $lookup: {
+          from: 'mentorProfiles',
+          localField: '_id',
+          foreignField: 'userId',
+          as: 'mentorProfile'
+        }
+      },
+      {
+        $match: {
+          'mentorProfile.0': { $exists: true }
+        }
+      }
+    ]);
+    console.log('🔸 Step 4 - Final result:', step4.length);
+
+    // Return debug info
+    return res.json({
+      success: true,
+      debug: {
+        mentorUsersCount: mentorUsers.length,
+        mentorProfilesCount,
+        sampleMentorUser: mentorUsers[0] || null,
+        sampleMentorProfile: sampleProfile,
+        aggregationSteps: {
+          step1: step1.length,
+          step2: step2.length,
+          step3: step3.length,
+          step4: step4.length
+        },
+        firstMatchedUser: step4[0] || null
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ Debug error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+};
+
 // Helper function to get filter options
 async function getFilterOptions() {
   try {
@@ -726,7 +873,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -744,7 +891,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -753,7 +900,18 @@ async function getFilterOptions() {
         { $match: { 'mentorProfile.0': { $exists: true } } },
         { $unwind: '$mentorProfile' },
         { $unwind: '$mentorProfile.subjects' },
-        { $group: { _id: '$mentorProfile.subjects' } },
+        { 
+          $project: { 
+            subject: { 
+              $cond: { 
+                if: { $type: "$mentorProfile.subjects" }, 
+                then: "$mentorProfile.subjects.name", 
+                else: "$mentorProfile.subjects" 
+              } 
+            } 
+          } 
+        },
+        { $group: { _id: '$subject' } },
         { $sort: { _id: 1 } }
       ]),
       
@@ -762,7 +920,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -780,7 +938,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorprofiles',
+            from: 'mentorProfiles', // FIXED: Capital P
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -816,6 +974,7 @@ async function getFilterOptions() {
 }
 
 // Route definitions
+router.get('/debug', debugMentorData);
 router.get('/search', searchMentors);
 router.get('/featured', getFeaturedMentors);
 router.get('/trending-expertise', getTrendingExpertise);

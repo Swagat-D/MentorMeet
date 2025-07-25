@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.routes.js';
 import { errorHandler, notFound } from './middleware/error.middleware.js';
 import { globalRateLimit } from './middleware/rateLimit.middleware.js';
 import corsOptions from './config/cors.js';
+import mentorRoutes from './routes/mentor.routes.js'
 import './models/index.js';
 import psychometricRoutes from './routes/psychometric.routes.js';
 
@@ -61,7 +62,7 @@ app.get('/health', async (req, res) => {
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
-
+app.use('/api/v1/mentors', mentorRoutes);
 app.use('/api/v1/psychometric', psychometricRoutes);
 console.log('📝 Psychometric routes registered at /api/v1/psychometric');
 

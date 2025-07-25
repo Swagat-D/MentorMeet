@@ -1,5 +1,6 @@
-// frontend/services/mentorService.ts - Complete Mentor Service Implementation
+// frontend/services/mentorService.ts - Updated for Real Database Integration
 import ApiService from './api';
+
 export interface MentorProfile {
   _id: string;
   userId: string;
@@ -9,13 +10,32 @@ export interface MentorProfile {
   email?: string;
   profileImage: string;
   bio?: string;
-  expertise: string[];
-  subjects: string[];
   location?: string;
+  timezone?: string;
   languages: string[];
+  achievements?: string;
+  socialLinks: {
+    linkedin?: string;
+    twitter?: string;
+    website?: string;
+    github?: string;
+  };
+  expertise: string[];
+  subjects: Array<{
+    name: string;
+    level: string;
+    experience: string;
+  }> | string[];
+  teachingStyles: string[];
+  specializations: string[];
   pricing: {
     hourlyRate: number;
     currency: string;
+    trialSessionEnabled?: boolean;
+    trialSessionRate?: number;
+    groupSessionEnabled?: boolean;
+    groupSessionRate?: number;
+    packageDiscounts?: boolean;
     packages?: Array<{
       name: string;
       sessions: number;
@@ -23,17 +43,36 @@ export interface MentorProfile {
       description: string;
     }>;
   };
+  preferences: {
+    sessionLength?: string;
+    advanceBooking?: string;
+    maxStudentsPerWeek?: number;
+    preferredSessionType?: string;
+    cancellationPolicy?: string;
+  };
+  weeklySchedule: {
+    [key: string]: Array<{
+      startTime: string;
+      endTime: string;
+      isAvailable: boolean;
+    }>;
+  };
+  isProfileComplete: boolean;
+  applicationSubmitted: boolean;
+  profileStep: string;
+  submittedAt?: string;
+  
+  // Calculated/default fields
   rating: number;
   totalSessions: number;
   totalStudents: number;
   isOnline: boolean;
   isVerified: boolean;
-  teachingStyles: string[];
-  specializations: string[];
-  weeklySchedule?: any;
+  lastSeen?: string;
+  responseTime?: number;
+  
   createdAt: string;
   updatedAt: string;
-  lastSeen?: string;
 }
 
 export interface MentorSearchFilters {
@@ -68,8 +107,9 @@ export interface MentorSearchResult {
   totalPages: number;
   filters: {
     availableExpertise: string[];
-    priceRange: { min: number; max: number };
+    availableSubjects: string[];
     availableLanguages: string[];
+    priceRange: { min: number; max: number };
   };
 }
 
@@ -101,6 +141,9 @@ class MentorService {
       if (filters.expertise?.length) {
         queryParams.append('expertise', filters.expertise.join(','));
       }
+      if (filters.subjects?.length) {
+        queryParams.append('subjects', filters.subjects.join(','));
+      }
       if (filters.priceRange) {
         queryParams.append('minPrice', filters.priceRange.min.toString());
         queryParams.append('maxPrice', filters.priceRange.max.toString());
@@ -113,6 +156,9 @@ class MentorService {
       }
       if (filters.languages?.length) {
         queryParams.append('languages', filters.languages.join(','));
+      }
+      if (filters.location) {
+        queryParams.append('location', filters.location);
       }
       if (filters.isOnline !== undefined) {
         queryParams.append('isOnline', filters.isOnline.toString());
@@ -131,6 +177,9 @@ class MentorService {
       }
       if (filters.limit) {
         queryParams.append('limit', filters.limit.toString());
+      }
+      if (filters.search) {
+        queryParams.append('search', filters.search);
       }
 
       const url = `${baseUrl}/mentors/search?${queryParams.toString()}`;
@@ -167,20 +216,33 @@ class MentorService {
       const response = await ApiService.getUrl(url);
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch featured mentors');
+        console.log('❌ Featured mentors API failed, trying search fallback...');
+        // Fallback to search if featured endpoint fails
+        const searchResult = await this.searchMentors({ limit, sortBy: 'rating', sortOrder: 'desc' });
+        return searchResult.mentors.slice(0, limit);
       }
 
       // Update cache for featured mentors
-      response.data.forEach((mentor: MentorProfile) => {
-        this.updateMentorCache(mentor);
-      });
+      if (response.data && Array.isArray(response.data)) {
+        response.data.forEach((mentor: MentorProfile) => {
+          this.updateMentorCache(mentor);
+        });
+      }
 
-      console.log('✅ Featured mentors fetched successfully:', response.data.length);
+      console.log('✅ Featured mentors fetched successfully:', response.data?.length || 0);
       return response.data || [];
 
     } catch (error: any) {
       console.error('❌ Error fetching featured mentors:', error);
-      return this.getDefaultFeaturedMentors();
+      // Try search as fallback
+      try {
+        console.log('🔄 Attempting search fallback for featured mentors...');
+        const searchResult = await this.searchMentors({ limit, sortBy: 'rating', sortOrder: 'desc' });
+        return searchResult.mentors.slice(0, limit);
+      } catch (fallbackError) {
+        console.error('❌ Fallback also failed:', fallbackError);
+        return [];
+      }
     }
   }
 
@@ -234,15 +296,16 @@ class MentorService {
       const response = await ApiService.getUrl(url);
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch trending expertise');
+        console.log('❌ Trending expertise API failed, using defaults...');
+        return this.getDefaultTrendingSubjects().slice(0, limit);
       }
 
-      console.log('✅ Trending expertise fetched successfully:', response.data);
-      return response.data || [];
+      console.log('✅ Trending expertise fetched successfully:', response.data?.length || 0);
+      return response.data || this.getDefaultTrendingSubjects().slice(0, limit);
 
     } catch (error: any) {
       console.error('❌ Error fetching trending expertise:', error);
-      return this.getDefaultTrendingSubjects();
+      return this.getDefaultTrendingSubjects().slice(0, limit);
     }
   }
 
@@ -253,51 +316,26 @@ class MentorService {
     try {
       console.log('📅 Fetching mentor availability:', { mentorId, date });
 
-      const endpoints = await import('./api').then(m => m.ApiEndpoints.getEndpoints());
-      const baseUrl = (await endpoints).GET_PROFILE.replace('/auth/me', '');
-      
-      const url = date 
-        ? `${baseUrl}/mentors/${mentorId}/availability?date=${date}`
-        : `${baseUrl}/mentors/${mentorId}/availability`;
-        
-      const response = await ApiService.getUrl(url);
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch mentor availability');
+      const mentor = await this.getMentorById(mentorId);
+      if (!mentor) {
+        throw new Error('Mentor not found');
       }
 
+      // For now, return the weekly schedule from the mentor profile
+      // In the future, this could be enhanced with actual booking data
+      const availability = {
+        mentorId,
+        weeklySchedule: mentor.weeklySchedule || {},
+        timezone: mentor.timezone || 'UTC',
+        preferences: mentor.preferences || {}
+      };
+
       console.log('✅ Mentor availability fetched successfully');
-      return response.data;
+      return availability;
 
     } catch (error: any) {
       console.error('❌ Error fetching mentor availability:', error);
-      return { available: false, slots: [] };
-    }
-  }
-
-  /**
-   * Get mentor reviews
-   */
-  async getMentorReviews(mentorId: string, page: number = 1, limit: number = 10): Promise<any> {
-    try {
-      console.log('⭐ Fetching mentor reviews:', { mentorId, page, limit });
-
-      const endpoints = await import('./api').then(m => m.ApiEndpoints.getEndpoints());
-      const baseUrl = (await endpoints).GET_PROFILE.replace('/auth/me', '');
-      
-      const url = `${baseUrl}/mentors/${mentorId}/reviews?page=${page}&limit=${limit}`;
-      const response = await ApiService.getUrl(url);
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch mentor reviews');
-      }
-
-      console.log('✅ Mentor reviews fetched successfully');
-      return response.data;
-
-    } catch (error: any) {
-      console.error('❌ Error fetching mentor reviews:', error);
-      return { reviews: [], total: 0, page, limit, totalPages: 0 };
+      return { available: false, slots: [], weeklySchedule: {} };
     }
   }
 
@@ -315,11 +353,12 @@ class MentorService {
       const response = await ApiService.getUrl(url);
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch expertise areas');
+        console.log('❌ Expertise API failed, using defaults...');
+        return this.getDefaultExpertiseAreas();
       }
 
-      console.log('✅ Expertise areas fetched successfully:', response.data.length);
-      return response.data || [];
+      console.log('✅ Expertise areas fetched successfully:', response.data?.length || 0);
+      return response.data || this.getDefaultExpertiseAreas();
 
     } catch (error: any) {
       console.error('❌ Error fetching expertise areas:', error);
@@ -328,22 +367,34 @@ class MentorService {
   }
 
   /**
-   * Update mentor online status (for real-time updates)
+   * Get mentor statistics
    */
-  async updateMentorOnlineStatus(mentorId: string, isOnline: boolean): Promise<void> {
+  async getMentorStats(): Promise<any> {
     try {
-      // Update cache if mentor exists
-      const cacheKey = mentorId;
-      const cached = this.mentorCache.get(cacheKey);
-      if (cached) {
-        cached.data.isOnline = isOnline;
-        cached.data.lastSeen = new Date().toISOString();
-        this.mentorCache.set(cacheKey, cached);
+      console.log('📊 Fetching mentor statistics...');
+
+      const endpoints = await import('./api').then(m => m.ApiEndpoints.getEndpoints());
+      const baseUrl = (await endpoints).GET_PROFILE.replace('/auth/me', '');
+      
+      const url = `${baseUrl}/mentors/stats/overview`;
+      const response = await ApiService.getUrl(url);
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to fetch mentor statistics');
       }
 
-      console.log(`🔄 Updated mentor ${mentorId} online status: ${isOnline}`);
+      console.log('✅ Mentor statistics fetched successfully');
+      return response.data;
+
     } catch (error: any) {
-      console.error('❌ Error updating mentor online status:', error);
+      console.error('❌ Error fetching mentor statistics:', error);
+      return {
+        totalMentors: 0,
+        activeMentors: 0,
+        onlineMentors: 0,
+        verifiedMentors: 0,
+        averageRating: 4.5
+      };
     }
   }
 
@@ -382,69 +433,90 @@ class MentorService {
       totalPages: 0,
       filters: {
         availableExpertise: this.getDefaultExpertiseAreas(),
+        availableSubjects: this.getDefaultSubjects(),
         priceRange: { min: 10, max: 200 },
-        availableLanguages: ['English', 'Spanish', 'French', 'German', 'Chinese']
+        availableLanguages: ['English', 'Hindi', 'Bengali', 'Spanish', 'French']
       }
     };
-  }
-
-  private getDefaultFeaturedMentors(): MentorProfile[] {
-    return [];
   }
 
   private getDefaultTrendingSubjects(): string[] {
     return [
       'Mathematics',
+      'Algebra',
       'Programming',
       'Data Science',
       'English',
       'Physics',
       'Business',
-      'Design',
-      'Music'
+      'Design'
     ];
   }
 
   private getDefaultExpertiseAreas(): string[] {
     return [
       'Mathematics',
+      'Algebra',
       'Science',
       'Programming',
       'Languages',
       'Business',
       'Art & Design',
       'Music',
-      'Sports & Fitness',
       'Test Preparation',
       'Career Guidance'
     ];
   }
 
+  private getDefaultSubjects(): string[] {
+    return [
+      'Mathematics',
+      'Algebra',
+      'Calculus',
+      'Physics',
+      'Chemistry',
+      'English',
+      'Programming',
+      'Data Science'
+    ];
+  }
+
   /**
-   * Real-time mentor tracking
+   * Helper function to normalize subject data
    */
-  async trackMentorActivity(mentorIds: string[]): Promise<Map<string, boolean>> {
-    try {
-      const endpoints = await import('./api').then(m => m.ApiEndpoints.getEndpoints());
-      const baseUrl = (await endpoints).GET_PROFILE.replace('/auth/me', '');
-      
-      const url = `${baseUrl}/mentors/activity`;
-      const response = await ApiService.postUrl(url, { mentorIds });
+  private normalizeSubjects(subjects: any[]): string[] {
+    if (!subjects || !Array.isArray(subjects)) return [];
+    
+    return subjects.map(subject => {
+      if (typeof subject === 'string') return subject;
+      if (subject && subject.name) return subject.name;
+      return 'General';
+    });
+  }
 
-      if (!response.success) {
-        throw new Error('Failed to track mentor activity');
-      }
-
-      const activityMap = new Map<string, boolean>();
-      Object.entries(response.data).forEach(([id, isOnline]) => {
-        activityMap.set(id, isOnline as boolean);
-      });
-
-      return activityMap;
-    } catch (error: any) {
-      console.error('❌ Error tracking mentor activity:', error);
-      return new Map();
-    }
+  /**
+   * Format mentor data for consistent frontend usage
+   */
+  private formatMentorData(mentorData: any): MentorProfile {
+    return {
+      ...mentorData,
+      subjects: this.normalizeSubjects(mentorData.subjects),
+      profileImage: mentorData.profileImage || 
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(mentorData.displayName || mentorData.firstName)}&background=8B4513&color=fff&size=200`,
+      rating: mentorData.rating || 4.5,
+      totalSessions: mentorData.totalSessions || 0,
+      totalStudents: mentorData.totalStudents || 0,
+      isOnline: mentorData.isOnline || false,
+      isVerified: mentorData.isVerified || false,
+      responseTime: mentorData.responseTime || 60,
+      languages: mentorData.languages || ['English'],
+      expertise: mentorData.expertise || [],
+      teachingStyles: mentorData.teachingStyles || [],
+      specializations: mentorData.specializations || [],
+      socialLinks: mentorData.socialLinks || {},
+      preferences: mentorData.preferences || {},
+      weeklySchedule: mentorData.weeklySchedule || {}
+    };
   }
 }
 
