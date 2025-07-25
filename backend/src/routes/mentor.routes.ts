@@ -29,18 +29,14 @@ export const searchMentors = async (req: Request, res: Response) => {
       search
     } = req.query;
 
-    // Build aggregation pipeline
     const pipeline: any[] = [
-      // First, match users who are mentors
       {
         $match: {
           role: UserRole.MENTOR,
           isActive: true
-          // ✅ REMOVED: isEmailVerified: true (might not exist in your data)
         }
       },
       
-      // Join with mentorProfiles collection
       {
         $lookup: {
           from: 'mentorProfiles',
@@ -50,32 +46,24 @@ export const searchMentors = async (req: Request, res: Response) => {
         }
       },
       
-      // Only include users who have mentor profiles
       {
         $match: {
           'mentorProfile.0': { $exists: true }
-          // ✅ REMOVED: Strict profile completion filters temporarily
-          // 'mentorProfile.isProfileComplete': true,
-          // 'mentorProfile.applicationSubmitted': true
         }
       },
       
-      // Unwind the mentor profile
       {
         $unwind: '$mentorProfile'
       }
     ];
 
-    // Add filters based on query parameters (only if they exist)
     const matchConditions: any = {};
 
-    // Expertise filter
     if (expertise && typeof expertise === 'string') {
       const expertiseArray = expertise.split(',').map(e => e.trim());
       matchConditions['mentorProfile.expertise'] = { $in: expertiseArray };
     }
 
-    // Subjects filter - Handle both string and object formats
     if (subjects && typeof subjects === 'string') {
       const subjectsArray = subjects.split(',').map(s => s.trim());
       matchConditions.$or = [
@@ -239,7 +227,6 @@ export const searchMentors = async (req: Request, res: Response) => {
       filters: filterOptions
     };
 
-    console.log(`✅ Found ${mentors.length} mentors out of ${total} total`);
     
     return res.json({
       success: true,
@@ -262,7 +249,6 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
     
     console.log('⭐ Fetching featured mentors, limit:', limit);
 
-    // Aggregation pipeline for featured mentors - FIXED COLLECTION NAME
     const pipeline: PipelineStage[] = [
       // Match mentor users
       {
@@ -272,7 +258,6 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
         }
       },
       
-      // Join with MentorProfiles collection (FIXED: Capital P)
       {
         $lookup: {
           from: 'mentorProfiles',
@@ -364,7 +349,6 @@ export const getFeaturedMentors = async (req: Request, res: Response) => {
       weeklySchedule: mentor.mentorProfile.weeklySchedule
     }));
 
-    console.log(`✅ Returning ${formattedMentors.length} featured mentors`);
 
     return res.json({
       success: true,
@@ -635,7 +619,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles', 
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -655,8 +639,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
-            localField: '_id',
+            from: 'mentorProfiles',
             foreignField: 'userId',
             as: 'mentorProfile'
           }
@@ -675,7 +658,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles',
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -695,7 +678,7 @@ export const getMentorStats = async (req: Request, res: Response) => {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles', 
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -726,7 +709,6 @@ export const getMentorStats = async (req: Request, res: Response) => {
       }
     };
 
-    console.log('✅ Platform statistics fetched successfully');
 
     return res.json({
       success: true,
@@ -873,7 +855,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles', 
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -891,7 +873,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles',
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -920,7 +902,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles', 
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
@@ -938,7 +920,7 @@ async function getFilterOptions() {
         { $match: { role: UserRole.MENTOR, isActive: true } },
         {
           $lookup: {
-            from: 'mentorProfiles', // FIXED: Capital P
+            from: 'mentorProfiles', 
             localField: '_id',
             foreignField: 'userId',
             as: 'mentorProfile'
