@@ -47,6 +47,12 @@ export interface IUserStats {
   weeklyGoalProgress: number;
   averageRating: number;
 }
+export interface GoogleTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiryDate: number;
+}
+
 
 // Main User Interface
 export interface IUser extends Document {
@@ -58,6 +64,7 @@ export interface IUser extends Document {
   role: UserRole;
   avatar?: string;
   phone?: string;
+  googleTokens?: GoogleTokens;
 
   // OAuth fields
   provider: 'email' | 'google';
@@ -140,6 +147,12 @@ const userSchema = new Schema<IUser>({
     type: String,
     enum: Object.values(UserRole),
     default: UserRole.MENTEE
+  },
+
+  googleTokens: {
+    accessToken: { type: String },
+    refreshToken: { type: String },
+    expiryDate: { type: Number }
   },
   
   avatar: {
@@ -271,7 +284,13 @@ const userSchema = new Schema<IUser>({
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
-  versionKey: false // Disable __v version key
+  versionKey: false, // Disable __v version key
+  toJSON: {
+    transform: function(doc, ret) {
+      delete ret.googleTokens;
+      return ret;
+    }
+  }
 });
 
 // Create indexes separately to avoid duplication warnings

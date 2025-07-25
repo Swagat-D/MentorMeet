@@ -16,6 +16,7 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from "react-native-safe-area-context";
 import mentorService, { MentorProfile } from "@/services/mentorService";
 import { useFavoritesStore } from "@/stores/favorites-store";
+import { useAuthStore } from "@/stores/authStore";
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +26,9 @@ export default function MentorProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { isFavorite, addFavorite, removeFavorite } = useFavoritesStore();
-  
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const { user } = useAuthStore();
+
   const isBookmarked = isFavorite(id || '');
 
   useEffect(() => {
@@ -84,24 +87,87 @@ export default function MentorProfileScreen() {
     }
   };
 
-  const handleBookSession = () => {
-    if (!mentor) return;
-    
+const handleBookSession = async () => {
+  if (!mentor) return;
+  
+  // Check if user is logged in
+  if (!user) {
     Alert.alert(
-      'Book Session',
-      `Book a session with ${mentor.displayName}?`,
+      'Login Required',
+      'Please log in to book a session with this mentor.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Book Now', 
-          onPress: () => {
-            // For now, show coming soon. In production, this would navigate to booking flow
-            Alert.alert('Coming Soon', 'Booking system will be available soon!');
-          }
+          text: 'Login', 
+          onPress: () => router.push('/auth/login')
         }
       ]
     );
-  };
+    return;
+  }
+
+  // Check if user is trying to book themselves
+  if (user.id === mentor._id) {
+    Alert.alert(
+      'Cannot Book',
+      'You cannot book a session with yourself.',
+      [{ text: 'OK' }]
+    );
+    return;
+  }
+
+  try {
+    setBookingLoading(true);
+    
+    // Navigate to booking flow
+    router.push({
+      pathname: '/booking/[mentorId]',
+      params: { mentorId: mentor._id }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Error initiating booking:', error);
+    Alert.alert(
+      'Booking Error',
+      'Unable to start booking process. Please try again.',
+      [{ text: 'OK' }]
+    );
+  } finally {
+    setBookingLoading(false);
+  }
+};
+
+const handleQuickMessage = () => {
+  if (!user) {
+    Alert.alert(
+      'Login Required',
+      'Please log in to message this mentor.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Login', onPress: () => router.push('/auth/login') }
+      ]
+    );
+    return;
+  }
+
+  Alert.alert(
+    'Send Message',
+    `Send a message to ${mentor?.displayName}?`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Send Message', 
+        onPress: () => {
+          // Navigate to chat or message screen
+          router.push({
+            pathname: '/chat/[mentorId]',
+            params: { mentorId: mentor?._id }
+          });
+        }
+      }
+    ]
+  );
+};
 
   const renderAvailabilityDay = (day: string, slots: any[]) => {
     if (!slots || slots.length === 0) {
@@ -292,6 +358,24 @@ export default function MentorProfileScreen() {
               </View>
             )}
           </View>
+          
+          <View style={styles.quickActions}>
+            <TouchableOpacity 
+              style={styles.quickActionButton}
+              onPress={handleQuickMessage}
+            >
+              <MaterialIcons name="message" size={18} color="#8B4513" />
+              <Text style={styles.quickActionText}>Message</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionButton}
+              onPress={() => router.push(`/mentor/${mentor._id}/reviews`)}
+            >
+              <MaterialIcons name="rate-review" size={18} color="#8B4513" />
+              <Text style={styles.quickActionText}>Reviews</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Expertise Section */}
@@ -423,14 +507,21 @@ export default function MentorProfileScreen() {
       {/* Book Session Button */}
       <View style={styles.bookingSection}>
         <TouchableOpacity
-          style={styles.bookButton}
+          style={[
+            styles.bookButton,
+            bookingLoading && styles.bookButtonLoading
+          ]}
           onPress={handleBookSession}
+          disabled={bookingLoading}
         >
-          <MaterialIcons name="event" size={20} color="#FFFFFF" />
-          <Text style={styles.bookButtonText}>Book a Session</Text>
-          <Text style={styles.bookButtonPrice}>
-            ${mentor.pricing.hourlyRate}/{mentor.pricing.currency || 'USD'}
-          </Text>
+          {bookingLoading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <MaterialIcons name="event" size={20} color="#FFFFFF" />
+              <Text style={styles.bookButtonText}>Book Session</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -853,6 +944,34 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginLeft: 8,
     opacity: 0.9,
+  },
+  
+  // Quick Actions
+  quickActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  quickActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8F3EE",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E8DDD1",
+  },
+  quickActionText: {
+    fontSize: 14,
+    color: "#8B4513",
+    fontWeight: "500",
+    marginLeft: 6,
+  },
+  
+  // Book Button Loading State
+  bookButtonLoading: {
+    backgroundColor: "#D1C4B8",
   },
 
   bottomPadding: {

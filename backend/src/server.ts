@@ -13,6 +13,8 @@ import studentRoutes from './routes/student.routes.js';
 import mentorRoutes from './routes/mentor.routes.js';
 import './models/index.js'
 import psychometricRoutes from './routes/psychometric.routes.js';
+import bookingRoutes from './routes/booking.routes.js';
+
 const app = express();
 
 // Validate environment variables first
@@ -188,6 +190,7 @@ app.use('/api/v1/psychometric', psychometricRoutes);
 console.log('📝 Psychometric routes registered at /api/v1/psychometric');
 app.use('/api/v1/mentors', mentorRoutes)
 console.log('mentor routes registered.')
+app.use('/api/v1/booking', bookingRoutes);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
