@@ -89,79 +89,85 @@ class GoogleCalendarService {
    * Check availability by comparing with Google Calendar events
    */
   async checkAvailability(
-    mentorId: string, 
-    date: string, 
-    proposedSlots: TimeSlot[]
-  ): Promise<TimeSlot[]> {
-    try {
-      console.log('📅 Checking Google Calendar availability for:', { mentorId, date });
+  mentorId: string, 
+  date: string, 
+  proposedSlots: TimeSlot[]
+): Promise<TimeSlot[]> {
+  try {
+    console.log('📅 Checking Google Calendar availability for:', { mentorId, date, slotsCount: proposedSlots.length });
 
-      const authSuccess = await this.initializeAuth(mentorId);
-      if (!authSuccess) {
-        console.warn('⚠️ Google Calendar auth failed, returning original slots');
-        return proposedSlots;
-      }
-
-      // Get start and end of the day
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      // Fetch calendar events for the day
-      const response = await this.calendar.events.list({
-        calendarId: 'primary',
-        timeMin: startOfDay.toISOString(),
-        timeMax: endOfDay.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      });
-
-      const events = response.data.items || [];
-      console.log(`📊 Found ${events.length} calendar events for ${date}`);
-
-      // Check each proposed slot against calendar events
-      const availableSlots = proposedSlots.map(slot => {
-        const slotStart = new Date(slot.startTime);
-        const slotEnd = new Date(slot.endTime);
-
-        // Check if slot conflicts with any calendar event
-        const hasConflict = events.some((event: any) => {
-          // Skip events without start/end times (all-day events)
-          if (!event.start?.dateTime || !event.end?.dateTime) {
-            return false;
-          }
-
-          const eventStart = new Date(event.start.dateTime);
-          const eventEnd = new Date(event.end.dateTime);
-
-          // Check for overlap
-          return (
-            (slotStart >= eventStart && slotStart < eventEnd) ||
-            (slotEnd > eventStart && slotEnd <= eventEnd) ||
-            (slotStart <= eventStart && slotEnd >= eventEnd)
-          );
-        });
-
-        return {
-          ...slot,
-          isAvailable: !hasConflict,
-        };
-      });
-
-      const availableCount = availableSlots.filter(slot => slot.isAvailable).length;
-      console.log(`✅ Availability check complete: ${availableCount}/${proposedSlots.length} slots available`);
-
-      return availableSlots;
-
-    } catch (error: any) {
-      console.error('❌ Error checking calendar availability:', error);
-      
-      // Return original slots if calendar check fails
-      return proposedSlots;
+    // If no slots provided, return empty array
+    if (!proposedSlots || proposedSlots.length === 0) {
+      console.log('⚠️ No proposed slots to check');
+      return [];
     }
+
+    const authSuccess = await this.initializeAuth(mentorId);
+    if (!authSuccess) {
+      console.warn('⚠️ Google Calendar auth failed, returning original slots');
+      return proposedSlots.map(slot => ({ ...slot, isAvailable: true }));
+    }
+
+    // Get start and end of the day
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Fetch calendar events for the day
+    const response = await this.calendar.events.list({
+      calendarId: 'primary',
+      timeMin: startOfDay.toISOString(),
+      timeMax: endOfDay.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items || [];
+    console.log(`📊 Found ${events.length} calendar events for ${date}`);
+
+    // Check each proposed slot against calendar events
+    const availableSlots = proposedSlots.map(slot => {
+      const slotStart = new Date(slot.startTime);
+      const slotEnd = new Date(slot.endTime);
+
+      // Check if slot conflicts with any calendar event
+      const hasConflict = events.some((event: any) => {
+        // Skip events without start/end times (all-day events)
+        if (!event.start?.dateTime || !event.end?.dateTime) {
+          return false;
+        }
+
+        const eventStart = new Date(event.start.dateTime);
+        const eventEnd = new Date(event.end.dateTime);
+
+        // Check for overlap
+        return (
+          (slotStart >= eventStart && slotStart < eventEnd) ||
+          (slotEnd > eventStart && slotEnd <= eventEnd) ||
+          (slotStart <= eventStart && slotEnd >= eventEnd)
+        );
+      });
+
+      return {
+        ...slot,
+        isAvailable: !hasConflict,
+      };
+    });
+
+    const availableCount = availableSlots.filter(slot => slot.isAvailable).length;
+    console.log(`✅ Availability check complete: ${availableCount}/${proposedSlots.length} slots available`);
+
+    return availableSlots;
+
+  } catch (error: any) {
+    console.error('❌ Error checking calendar availability:', error);
+    
+    // Return original slots as available if calendar check fails
+    return proposedSlots.map(slot => ({ ...slot, isAvailable: true }));
   }
+}
 
   /**
    * Create a calendar event

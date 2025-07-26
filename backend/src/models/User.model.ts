@@ -88,6 +88,23 @@ export interface IUser extends Document {
   isOnboarded: boolean;
   onboardingStatus: OnboardingStatus;
   isTestGiven: boolean;
+
+  weeklySchedule?: {
+    [key: string]: Array<{
+      startTime: string;
+      endTime: string;
+      isAvailable: boolean;
+    }>;
+  };
+
+  pricing?: {
+    hourlyRate?: number;
+    currency?: string;
+    trialSessionEnabled?: boolean;
+    trialSessionRate?: number;
+    groupSessionEnabled?: boolean;
+    groupSessionRate?: number;
+  };
   
   // Statistics for mentees
   stats: IUserStats;

@@ -400,6 +400,33 @@ export class ApiEndpoints {
       PSYCHOMETRIC_SAVE_PROGRESS: `${baseUrl}${apiVersion}/psychometric/save-progress`,
       PSYCHOMETRIC_VALIDATE: `${baseUrl}${apiVersion}/psychometric/validate-section`,
       PSYCHOMETRIC_CAREER_REC: `${baseUrl}${apiVersion}/psychometric/career-recommendations`,
+
+      // Booking endpoints (ADD THESE)
+      BOOKING_BASE: `${baseUrl}${apiVersion}/booking`,
+      BOOKING_AVAILABLE_SLOTS: `${baseUrl}${apiVersion}/booking/available-slots`,
+      BOOKING_CREATE: `${baseUrl}${apiVersion}/booking/create`,
+      BOOKING_CANCEL: `${baseUrl}${apiVersion}/booking/cancel`,
+      BOOKING_RESCHEDULE: `${baseUrl}${apiVersion}/booking/reschedule`,
+      BOOKING_USER_BOOKINGS: `${baseUrl}${apiVersion}/booking/user-bookings`,
+      BOOKING_DETAILS: `${baseUrl}${apiVersion}/booking`,
+
+      // Google integration endpoints
+      GOOGLE_CALENDAR_CHECK: `${baseUrl}${apiVersion}/booking/google/calendar/check-availability`,
+      GOOGLE_MEET_CREATE: `${baseUrl}${apiVersion}/booking/google/meet/create`,
+      GOOGLE_CALENDAR_CREATE: `${baseUrl}${apiVersion}/booking/google/calendar/create-event`,
+      GOOGLE_CALENDAR_UPDATE: `${baseUrl}${apiVersion}/booking/google/calendar/update-event`,
+      GOOGLE_CALENDAR_DELETE: `${baseUrl}${apiVersion}/booking/google/calendar/delete-event`,
+    
+      // Payment endpoints - FIXED
+      PAYMENT_PROCESS: `${baseUrl}${apiVersion}/booking/payment/process`,
+      PAYMENT_REFUND: `${baseUrl}${apiVersion}/booking/payment/refund`,
+      PAYMENT_VALIDATE: `${baseUrl}${apiVersion}/booking/payment/validate`,
+
+      // Notification endpoints - FIXED
+      NOTIFICATION_SETUP: `${baseUrl}${apiVersion}/booking/notifications/setup-reminders`,
+      NOTIFICATION_CANCEL: `${baseUrl}${apiVersion}/booking/notifications/cancellation`,
+      NOTIFICATION_RESCHEDULE: `${baseUrl}${apiVersion}/booking/notifications/reschedule`,
+
     };
 
     return this._cachedEndpoints;
@@ -525,9 +552,26 @@ export class ApiService {
 
       console.log(`📡 API Response: ${response.status} ${response.statusText}`);
 
+      const responseText = await response.text();
+    console.log(`📄 Response preview: ${responseText.substring(0, 200)}...`);
+
+    // Check if response is HTML (404 page)
+    if (responseText.trim().startsWith('<')) {
+      throw new ApiError(
+        `Endpoint not found: ${url}. Server returned HTML instead of JSON.`,
+        response.status,
+        { url, responsePreview: responseText.substring(0, 500) }
+      );
+    }
+
       // Handle different response types
       if (!response.ok) {
-        const errorData = await this.parseErrorResponse(response);
+        let errorData;
+        try{
+          errorData = JSON.parse(responseText);
+        } catch{
+          errorData = { message: responseText};
+        }
         throw new ApiError(
           errorData.message || `HTTP ${response.status}: ${response.statusText}`,
           response.status,
@@ -535,9 +579,19 @@ export class ApiService {
         );
       }
 
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse response as JSON:', parseError);
+      throw new ApiError('Invalid JSON response from server', response.status, { 
+        responseText: responseText.substring(0, 500) 
+      });
+    }
+
       // Reset retry count on successful request
       this.retryCount = 0;
-      return await response.json();
+      return data;
 
     } catch (error: any) {
       console.error(`❌ API Error for ${endpoint} (attempt ${retryAttempt + 1}):`, error);
@@ -574,10 +628,26 @@ export class ApiService {
     if (endpoint.startsWith('http')) {
       return endpoint;
     }
+    if (endpoint.startsWith('/')) {
+    const baseUrl = await ApiConfig.getBaseUrl();
+    const apiVersion = ApiConfig.apiVersion;
+    
+    // Check if it already includes api version
+    if (endpoint.startsWith('/api/v1/')) {
+      return `${baseUrl}${endpoint}`;
+    } else {
+      return `${baseUrl}${apiVersion}${endpoint}`;
+    }
+  }
 
     // If it's an endpoint key, resolve it
     const endpoints = await ApiEndpoints.getEndpoints();
-    return endpoints[endpoint] || endpoint;
+    const resolvedUrl = endpoints[endpoint];
+
+    if (!resolvedUrl){
+      throw new Error(`Unknown endpoint: ${endpoint}`);
+    }
+    return resolvedUrl;
   }
 
   private static async parseErrorResponse(response: Response): Promise<any> {

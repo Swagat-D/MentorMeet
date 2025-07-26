@@ -187,9 +187,6 @@ app.use((req, res, next) => {
 app.use('/api/v1/student', studentRoutes);
 app.use('/api/v1/mentors', mentorRoutes);
 app.use('/api/v1/psychometric', psychometricRoutes);
-console.log('📝 Psychometric routes registered at /api/v1/psychometric');
-app.use('/api/v1/mentors', mentorRoutes)
-console.log('mentor routes registered.')
 app.use('/api/v1/booking', bookingRoutes);
 
 // Health check endpoint

@@ -1,5 +1,5 @@
 // backend/src/services/booking.service.ts - Core Booking Logic
-import User from '../models/User.model';
+import User, { IUser } from '../models/User.model';
 import { Session } from '../models/Session.model';
 
 interface TimeSlot {
@@ -27,15 +27,21 @@ class BookingService {
   /**
    * Generate time slots based on mentor's weekly schedule
    */
-  async generateTimeSlots(mentor: any, date: string): Promise<TimeSlot[]> {
+  async generateTimeSlots(mentor: IUser, date: string): Promise<TimeSlot[]> {
     try {
       const requestedDate = new Date(date);
       const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       
-      // Get mentor's schedule for the requested day
-      const daySchedule = mentor.weeklySchedule?.[dayName] || [];
+      console.log('📅 Generating slots for:', { date, dayName, mentorId: mentor._id });
+      console.log('📋 Mentor weekly schedule:', mentor.weeklySchedule);
       
-      if (!daySchedule || daySchedule.length === 0) {
+      // Get mentor's schedule for the requested day
+      const daySchedule = mentor.weeklySchedule?.[dayName];
+      
+      console.log('📋 Day schedule for', dayName, ':', daySchedule);
+      
+      if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
+        console.log('⚠️ No schedule found for', dayName);
         return [];
       }
 
@@ -43,51 +49,94 @@ class BookingService {
       const now = new Date();
       
       // Generate slots for each time block in the day
-      for (const block of daySchedule) {
-        if (!block.isAvailable) continue;
+      for (let blockIndex = 0; blockIndex < daySchedule.length; blockIndex++) {
+        const block = daySchedule[blockIndex];
         
-        const [startHour, startMinute] = block.startTime.split(':').map(Number);
-        const [endHour, endMinute] = block.endTime.split(':').map(Number);
+        console.log(`📋 Processing block ${blockIndex}:`, block);
         
-        const blockStart = new Date(requestedDate);
-        blockStart.setHours(startHour, startMinute, 0, 0);
+        if (!block || !block.isAvailable || !block.startTime || !block.endTime) {
+          console.log('⚠️ Skipping invalid block:', block);
+          continue;
+        }
         
-        const blockEnd = new Date(requestedDate);
-        blockEnd.setHours(endHour, endMinute, 0, 0);
-        
-        // Generate 60-minute slots within this block
-        const slotDuration = 60; // minutes
-        let currentTime = new Date(blockStart);
-        
-        while (currentTime.getTime() + (slotDuration * 60 * 1000) <= blockEnd.getTime()) {
-          const slotStart = new Date(currentTime);
-          const slotEnd = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+        try {
+          // Parse time strings (format: "HH:MM")
+          const [startHour, startMinute] = block.startTime.split(':').map(Number);
+          const [endHour, endMinute] = block.endTime.split(':').map(Number);
           
-          // Skip past slots
-          if (slotStart <= now) {
-            currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+          if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+            console.log('⚠️ Invalid time format in block:', block);
             continue;
           }
           
-          slots.push({
-            id: `${mentor._id}-${slotStart.getTime()}`,
-            startTime: slotStart.toISOString(),
-            endTime: slotEnd.toISOString(),
-            date: date,
-            isAvailable: true,
-            price: mentor.pricing?.hourlyRate || 50,
-            duration: slotDuration,
-            sessionType: 'video',
-          });
+          console.log(`⏰ Block times: ${startHour}:${startMinute} - ${endHour}:${endMinute}`);
           
-          currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+          const blockStart = new Date(requestedDate);
+          blockStart.setHours(startHour, startMinute, 0, 0);
+          
+          const blockEnd = new Date(requestedDate);
+          blockEnd.setHours(endHour, endMinute, 0, 0);
+          
+          // Validate block times
+          if (blockStart >= blockEnd) {
+            console.log('⚠️ Invalid block: start time is after end time:', block);
+            continue;
+          }
+          
+          console.log(`📅 Block range: ${blockStart.toISOString()} - ${blockEnd.toISOString()}`);
+          
+          // Generate 60-minute slots within this block
+          const slotDuration = 60; // minutes
+          let currentTime = new Date(blockStart);
+          let slotCount = 0;
+          
+          while (currentTime.getTime() + (slotDuration * 60 * 1000) <= blockEnd.getTime()) {
+            const slotStart = new Date(currentTime);
+            const slotEnd = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+            
+            // Skip past slots (add 30 minute buffer)
+            if (slotStart <= new Date(now.getTime() + 30 * 60 * 1000)) {
+              console.log('⏭️ Skipping past slot:', slotStart.toISOString());
+              currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+              continue;
+            }
+            
+            const pricing = (mentor as any).pricing;
+            
+            const slot: TimeSlot = {
+              id: `${mentor._id}-${slotStart.getTime()}`,
+              startTime: slotStart.toISOString(),
+              endTime: slotEnd.toISOString(),
+              date: date,
+              isAvailable: true,
+              price: pricing?.hourlyRate || 50,
+              duration: slotDuration,
+              sessionType: 'video',
+            };
+            
+            slots.push(slot);
+            slotCount++;
+            
+            console.log(`🎯 Generated slot ${slotCount}: ${slotStart.toLocaleTimeString()} - ${slotEnd.toLocaleTimeString()}`);
+            
+            currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
+          }
+          
+          console.log(`✅ Generated ${slotCount} slots from block ${blockIndex}`);
+          
+        } catch (blockError: unknown) {
+          const errorMessage = blockError instanceof Error ? blockError.message : String(blockError);
+          console.error('❌ Error processing block:', block, errorMessage);
+          continue;
         }
       }
       
+      console.log(`✅ Total generated slots: ${slots.length}`);
       return slots;
       
-    } catch (error) {
-      console.error('❌ Error generating time slots:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error generating time slots:', errorMessage);
       return [];
     }
   }

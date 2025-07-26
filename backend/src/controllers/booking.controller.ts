@@ -25,8 +25,9 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
   }
 
   try {
-    // Get mentor's weekly schedule
-    const mentor = await User.findById(mentorId).select('weeklySchedule timezone pricing') as (UserType & { pricing?: any });
+    // Fix: Get mentor with proper field selection - make sure weeklySchedule is included
+    const mentor = await User.findById(mentorId).select('weeklySchedule timezone pricing name displayName') as (UserType & { pricing?: any; weeklySchedule?: any; displayName?: string });
+    
     if (!mentor) {
       res.status(404).json({
         success: false,
@@ -35,9 +36,42 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
+    console.log('👤 Mentor found:', mentor.name || mentor.displayName);
+    console.log('📋 Weekly schedule exists:', !!mentor.weeklySchedule);
+    console.log('📋 Weekly schedule keys:', mentor.weeklySchedule ? Object.keys(mentor.weeklySchedule) : 'none');
+
+    // Check if mentor has weekly schedule
+    if (!mentor.weeklySchedule || Object.keys(mentor.weeklySchedule).length === 0) {
+      console.log('⚠️ Mentor has no weekly schedule configured');
+      res.status(200).json({
+        success: true,
+        message: 'No schedule configured for this mentor',
+        data: [],
+      });
+      return;
+    }
+
+    // Debug: Log the specific day we're looking for
+    const requestedDate = new Date(date);
+    const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    console.log('📅 Looking for day:', dayName);
+    console.log('📅 Day schedule:', mentor.weeklySchedule[dayName]);
+
     // Generate slots based on mentor's schedule
     const mentorSlots = await bookingService.generateTimeSlots(mentor, date);
     
+    console.log('🎯 Generated mentor slots:', mentorSlots.length);
+    
+    if (mentorSlots.length === 0) {
+      console.log('⚠️ No slots generated for this date');
+      res.status(200).json({
+        success: true,
+        message: 'No available slots for this date',
+        data: [],
+      });
+      return;
+    }
+
     // Check Google Calendar availability
     const availableSlots = await googleCalendarService.checkAvailability(
       mentorId,
@@ -45,23 +79,23 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       mentorSlots
     );
 
-    // Enrich availableSlots with required properties if missing
+    // Enrich availableSlots with required properties
     const enrichedSlots = availableSlots.map(slot => {
-      // If slot does not have sessionType/duration, use defaults or infer from context
       const sessionType = (slot as any).sessionType || 'video';
       const duration = (slot as any).duration || 60;
       return {
         ...slot,
         date: date,
-        price: mentor.pricing?.[sessionType] || mentor.pricing?.default || 0,
+        price: mentor.pricing?.hourlyRate || 50,
         duration,
         sessionType,
       };
     });
+
     // Filter out already booked slots from database
     const finalSlots = await bookingService.filterBookedSlots(enrichedSlots, mentorId, date);
 
-    console.log('✅ Available slots generated:', finalSlots.length);
+    console.log('✅ Final available slots:', finalSlots.length);
 
     res.status(200).json({
       success: true,

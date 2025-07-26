@@ -99,60 +99,60 @@ class BookingService {
    * Get available time slots for a mentor on a specific date
    */
   async getAvailableSlots(mentorId: string, date: string): Promise<TimeSlot[]> {
-    try {
-      console.log('📅 Fetching available slots:', { mentorId, date });
+  try {
+    console.log('📅 Fetching available slots:', { mentorId, date });
 
-      const response = await ApiService.post('/api/v1/booking/available-slots', {
-        mentorId,
-        date,
-      });
+    // Fix: Use proper endpoint key
+    const response = await ApiService.post('BOOKING_AVAILABLE_SLOTS', {
+      mentorId,
+      date,
+    });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch available slots');
-      }
-
-      // Merge mentor's weekly schedule with Google Calendar availability
-      const slots = await this.mergeWithGoogleCalendar(response.data, mentorId, date);
-      
-      console.log('✅ Available slots fetched successfully:', slots.length);
-      return slots;
-
-    } catch (error: any) {
-      console.error('❌ Error fetching available slots:', error);
-      throw error;
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to fetch available slots');
     }
+
+    // Merge mentor's weekly schedule with Google Calendar availability
+    const slots = await this.mergeWithGoogleCalendar(response.data, mentorId, date);
+    
+    console.log('✅ Available slots fetched successfully:', slots.length);
+    return slots;
+
+  } catch (error: any) {
+    console.error('❌ Error fetching available slots:', error);
+    throw error;
   }
+}
 
   /**
    * Merge mentor's schedule with Google Calendar to check real availability
    */
   private async mergeWithGoogleCalendar(
-    mentorSlots: TimeSlot[], 
-    mentorId: string, 
-    date: string
-  ): Promise<TimeSlot[]> {
-    try {
-      console.log('🔄 Merging with Google Calendar...');
+  mentorSlots: TimeSlot[], 
+  mentorId: string, 
+  date: string
+): Promise<TimeSlot[]> {
+  try {
+    console.log('🔄 Merging with Google Calendar...');
 
-      const response = await ApiService.post('/google/calendar/check-availability', {
-        mentorId,
-        date,
-        slots: mentorSlots,
-      });
+    const response = await ApiService.post('GOOGLE_CALENDAR_CHECK', {
+      mentorId,
+      date,
+      slots: mentorSlots,
+    });
 
-      if (response.success && response.data) {
-        return response.data.availableSlots;
-      }
-
-      // If Google Calendar integration fails, return mentor's original slots
-      console.warn('⚠️ Google Calendar integration unavailable, using mentor slots');
-      return mentorSlots;
-
-    } catch (error) {
-      console.error('❌ Google Calendar integration error:', error);
-      return mentorSlots;
+    if (response.success && response.data) {
+      return response.data.availableSlots;
     }
+
+    console.warn('⚠️ Google Calendar integration unavailable, using mentor slots');
+    return mentorSlots;
+
+  } catch (error) {
+    console.error('❌ Google Calendar integration error:', error);
+    return mentorSlots;
   }
+}
 
   /**
    * Create a booking with payment processing
@@ -244,267 +244,261 @@ class BookingService {
    * Process payment for the booking
    */
   private async processPayment(request: BookingRequest): Promise<{ success: boolean; paymentId: string }> {
-    try {
-      console.log('💳 Processing payment...');
+  try {
+    console.log('💳 Processing payment...');
 
-      const paymentDetails: PaymentDetails = {
-        amount: request.timeSlot.price,
-        currency: 'USD',
-        description: `Mentoring Session - ${request.subject}`,
-        mentorId: request.mentorId,
-        studentId: request.studentId,
-        sessionDetails: {
-          subject: request.subject,
-          duration: request.timeSlot.duration,
-          scheduledTime: request.timeSlot.startTime,
-        },
-      };
+    const paymentDetails: PaymentDetails = {
+      amount: request.timeSlot.price,
+      currency: 'USD',
+      description: `Mentoring Session - ${request.subject}`,
+      mentorId: request.mentorId,
+      studentId: request.studentId,
+      sessionDetails: {
+        subject: request.subject,
+        duration: request.timeSlot.duration,
+        scheduledTime: request.timeSlot.startTime,
+      },
+    };
 
-      const response = await ApiService.post('/payment/process', {
-        ...paymentDetails,
-        paymentMethodId: request.paymentMethodId,
-      });
+    const response = await ApiService.post('PAYMENT_PROCESS', {
+      ...paymentDetails,
+      paymentMethodId: request.paymentMethodId,
+    });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Payment processing failed');
-      }
-
-      console.log('✅ Payment processed successfully:', response.data.paymentId);
-      return {
-        success: true,
-        paymentId: response.data.paymentId,
-      };
-
-    } catch (error: any) {
-      console.error('❌ Payment processing failed:', error);
-      throw error;
+    if (!response.success) {
+      throw new Error(response.message || 'Payment processing failed');
     }
+
+    console.log('✅ Payment processed successfully:', response.data.paymentId);
+    return {
+      success: true,
+      paymentId: response.data.paymentId,
+    };
+
+  } catch (error: any) {
+    console.error('❌ Payment processing failed:', error);
+    throw error;
   }
+}
 
   /**
    * Create booking record in database
    */
   private async createBookingRecord(
-    request: BookingRequest, 
-    paymentId: string
-  ): Promise<{ success: boolean; data: { bookingId: string; sessionId: string } }> {
-    try {
-      console.log('📝 Creating booking record...');
+  request: BookingRequest, 
+  paymentId: string
+): Promise<{ success: boolean; data: { bookingId: string; sessionId: string } }> {
+  try {
+    console.log('📝 Creating booking record...');
 
-      const response = await ApiService.post('api/v1/booking/create', {
-        mentorId: request.mentorId,
-        studentId: request.studentId,
-        timeSlot: request.timeSlot,
-        sessionType: request.sessionType,
-        subject: request.subject,
-        notes: request.notes,
-        paymentId: paymentId,
-        status: 'confirmed',
-      });
+    // Fix: Use proper endpoint key
+    const response = await ApiService.post('BOOKING_CREATE', {
+      mentorId: request.mentorId,
+      timeSlot: request.timeSlot,
+      sessionType: request.sessionType,
+      subject: request.subject,
+      notes: request.notes,
+      paymentMethodId: request.paymentMethodId,
+    });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to create booking record');
-      }
-
-      console.log('✅ Booking record created:', response.data);
-      return response;
-
-    } catch (error: any) {
-      console.error('❌ Failed to create booking record:', error);
-      throw error;
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to create booking record');
     }
+
+    console.log('✅ Booking record created:', response.data);
+    return response;
+
+  } catch (error: any) {
+    console.error('❌ Failed to create booking record:', error);
+    throw error;
   }
+}
 
   /**
    * Create Google Meet link for the session
    */
   private async createGoogleMeetLink(request: BookingRequest): Promise<string> {
-    try {
-      console.log('🎥 Creating Google Meet link...');
+  try {
+    console.log('🎥 Creating Google Meet link...');
 
-      const response = await ApiService.post('/google/meet/create', {
-        mentorId: request.mentorId,
-        studentId: request.studentId,
-        sessionDetails: {
-          subject: request.subject,
-          startTime: request.timeSlot.startTime,
-          endTime: request.timeSlot.endTime,
-          duration: request.timeSlot.duration,
-        },
-      });
+    const response = await ApiService.post('GOOGLE_MEET_CREATE', {
+      mentorId: request.mentorId,
+      studentId: request.studentId,
+      sessionDetails: {
+        subject: request.subject,
+        startTime: request.timeSlot.startTime,
+        endTime: request.timeSlot.endTime,
+        duration: request.timeSlot.duration,
+      },
+    });
 
-      if (!response.success) {
-        console.warn('⚠️ Google Meet creation failed, using fallback');
-        return `https://meet.google.com/new`; // Fallback
-      }
-
-      console.log('✅ Google Meet link created:', response.data.meetingLink);
-      return response.data.meetingLink;
-
-    } catch (error) {
-      console.error('❌ Google Meet creation error:', error);
-      return `https://meet.google.com/new`; // Fallback
+    if (!response.success) {
+      console.warn('⚠️ Google Meet creation failed, using fallback');
+      return `https://meet.google.com/new`;
     }
+
+    console.log('✅ Google Meet link created:', response.data.meetingLink);
+    return response.data.meetingLink;
+
+  } catch (error) {
+    console.error('❌ Google Meet creation error:', error);
+    return `https://meet.google.com/new`;
   }
+}
 
   /**
    * Create Google Calendar events for both mentor and student
    */
   private async createCalendarEvents(
-    request: BookingRequest,
-    meetingLink: string,
-    sessionId: string
-  ): Promise<string> {
-    try {
-      console.log('📅 Creating Google Calendar events...');
+  request: BookingRequest,
+  meetingLink: string,
+  sessionId: string
+): Promise<string> {
+  try {
+    console.log('📅 Creating Google Calendar events...');
 
-      const eventData: GoogleCalendarEvent = {
-        id: `session-${sessionId}`,
-        summary: `Mentoring Session: ${request.subject}`,
-        description: `
-          Mentoring session scheduled.
-          
-          Subject: ${request.subject}
-          Duration: ${request.timeSlot.duration} minutes
-          Session Type: ${request.sessionType}
-          
-          Meeting Link: ${meetingLink}
-          
-          Notes: ${request.notes || 'No additional notes'}
-        `,
-        start: {
-          dateTime: request.timeSlot.startTime,
-          timeZone: 'UTC',
-        },
-        end: {
-          dateTime: request.timeSlot.endTime,
-          timeZone: 'UTC',
-        },
-        attendees: [], // Will be populated by the backend
-        conferenceData: {
-          conferenceSolution: {
-            key: {
-              type: 'hangoutsMeet',
-            },
-          },
-          createRequest: {
-            requestId: `session-${sessionId}-${Date.now()}`,
+    const eventData: GoogleCalendarEvent = {
+      id: `session-${sessionId}`,
+      summary: `Mentoring Session: ${request.subject}`,
+      description: `
+        Mentoring session scheduled.
+        
+        Subject: ${request.subject}
+        Duration: ${request.timeSlot.duration} minutes
+        Session Type: ${request.sessionType}
+        
+        Meeting Link: ${meetingLink}
+        
+        Notes: ${request.notes || 'No additional notes'}
+      `,
+      start: {
+        dateTime: request.timeSlot.startTime,
+        timeZone: 'UTC',
+      },
+      end: {
+        dateTime: request.timeSlot.endTime,
+        timeZone: 'UTC',
+      },
+      attendees: [],
+      conferenceData: {
+        conferenceSolution: {
+          key: {
+            type: 'hangoutsMeet',
           },
         },
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: 'email', minutes: 60 },
-            { method: 'popup', minutes: 15 },
-          ],
+        createRequest: {
+          requestId: `session-${sessionId}-${Date.now()}`,
         },
-      };
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'email', minutes: 60 },
+          { method: 'popup', minutes: 15 },
+        ],
+      },
+    };
 
-      const response = await ApiService.post('/google/calendar/create-event', {
-        eventData,
-        mentorId: request.mentorId,
-        studentId: request.studentId,
-      });
+    const response = await ApiService.post('GOOGLE_CALENDAR_CREATE', {
+      eventData,
+      mentorId: request.mentorId,
+      studentId: request.studentId,
+    });
 
-      if (!response.success) {
-        console.warn('⚠️ Calendar event creation failed');
-        return '';
-      }
-
-      console.log('✅ Calendar events created:', response.data.eventId);
-      return response.data.eventId;
-
-    } catch (error) {
-      console.error('❌ Calendar event creation error:', error);
+    if (!response.success) {
+      console.warn('⚠️ Calendar event creation failed');
       return '';
     }
+
+    console.log('✅ Calendar events created:', response.data.eventId);
+    return response.data.eventId;
+
+  } catch (error) {
+    console.error('❌ Calendar event creation error:', error);
+    return '';
   }
+}
 
   /**
    * Setup notifications and reminders
    */
   private async setupNotificationsAndReminders(
-    request: BookingRequest,
-    sessionId: string,
-    meetingLink: string
-  ): Promise<void> {
-    try {
-      console.log('🔔 Setting up notifications and reminders...');
+  request: BookingRequest,
+  sessionId: string,
+  meetingLink: string
+): Promise<void> {
+  try {
+    console.log('🔔 Setting up notifications and reminders...');
 
-      const response = await ApiService.post('/notifications/setup-reminders', {
-        sessionId,
-        mentorId: request.mentorId,
-        studentId: request.studentId,
-        sessionDetails: {
-          subject: request.subject,
-          startTime: request.timeSlot.startTime,
-          duration: request.timeSlot.duration,
-          meetingLink,
-        },
-        reminderTimes: [
-          { type: 'email', minutes: 1440 }, // 24 hours
-          { type: 'email', minutes: 60 },   // 1 hour
-          { type: 'push', minutes: 15 },    // 15 minutes
-          { type: 'sms', minutes: 10 },     // 10 minutes (optional)
-        ],
-      });
+    const response = await ApiService.post('NOTIFICATION_SETUP', {
+      sessionId,
+      mentorId: request.mentorId,
+      studentId: request.studentId,
+      sessionDetails: {
+        subject: request.subject,
+        startTime: request.timeSlot.startTime,
+        duration: request.timeSlot.duration,
+        meetingLink,
+      },
+      reminderTimes: [
+        { type: 'email', minutes: 1440 }, // 24 hours
+        { type: 'email', minutes: 60 },   // 1 hour
+        { type: 'push', minutes: 15 },    // 15 minutes
+        { type: 'sms', minutes: 10 },     // 10 minutes (optional)
+      ],
+    });
 
-      if (response.success) {
-        console.log('✅ Notifications and reminders set up successfully');
-      } else {
-        console.warn('⚠️ Some notifications setup failed');
-      }
-
-    } catch (error) {
-      console.error('❌ Notifications setup error:', error);
-      // Don't throw error as this is not critical for booking success
+    if (response.success) {
+      console.log('✅ Notifications and reminders set up successfully');
+    } else {
+      console.warn('⚠️ Some notifications setup failed');
     }
+
+  } catch (error) {
+    console.error('❌ Notifications setup error:', error);
   }
+}
 
   /**
    * Cancel a booking
    */
-  async cancelBooking(bookingId: string, reason?: string): Promise<BookingResponse> {
-    try {
-      console.log('❌ Cancelling booking:', bookingId);
+   async cancelBooking(bookingId: string, reason?: string): Promise<BookingResponse> {
+  try {
+    console.log('❌ Cancelling booking:', bookingId);
 
-      const response = await ApiService.post('api/v1/booking/cancel', {
-        bookingId,
-        reason,
-      });
+    const response = await ApiService.put(`/booking/${bookingId}/cancel`, {
+      reason,
+    });
 
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to cancel booking');
-      }
-
-      // Handle refund if applicable
-      if (response.data.refundEligible) {
-        await this.processRefund(response.data.paymentId, response.data.refundAmount);
-      }
-
-      // Cancel calendar events
-      if (response.data.calendarEventId) {
-        await this.cancelCalendarEvent(response.data.calendarEventId);
-      }
-
-      // Send cancellation notifications
-      await this.sendCancellationNotifications(response.data);
-
-      console.log('✅ Booking cancelled successfully');
-      return {
-        success: true,
-        message: 'Booking cancelled successfully',
-        data: response.data,
-      };
-
-    } catch (error: any) {
-      console.error('❌ Booking cancellation failed:', error);
-      return {
-        success: false,
-        message: error.message || 'Booking cancellation failed',
-      };
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to cancel booking');
     }
+
+    if (response.data.refundEligible) {
+      await this.processRefund(response.data.paymentId, response.data.refundAmount);
+    }
+
+    if (response.data.calendarEventId) {
+      await this.cancelCalendarEvent(response.data.calendarEventId);
+    }
+
+    await this.sendCancellationNotifications(response.data);
+
+    console.log('✅ Booking cancelled successfully');
+    return {
+      success: true,
+      message: 'Booking cancelled successfully',
+      data: response.data,
+    };
+
+  } catch (error: any) {
+    console.error('❌ Booking cancellation failed:', error);
+    return {
+      success: false,
+      message: error.message || 'Booking cancellation failed',
+    };
   }
+}
 
   /**
    * Reschedule a booking
@@ -563,42 +557,42 @@ class BookingService {
    * Get user's bookings
    */
   async getUserBookings(
-    userId: string, 
-    status?: 'upcoming' | 'completed' | 'cancelled'
-  ): Promise<any[]> {
-    try {
-      console.log('📋 Fetching user bookings:', { userId, status });
+  userId: string, 
+  status?: 'upcoming' | 'completed' | 'cancelled'
+): Promise<any[]> {
+  try {
+    console.log('📋 Fetching user bookings:', { userId, status });
 
-      const queryParams = new URLSearchParams();
-      queryParams.append('userId', userId);
-      if (status) queryParams.append('status', status);
+    const queryParams = new URLSearchParams();
+    if (status) queryParams.append('status', status);
 
-      const response = await ApiService.get(`api/v1/booking/user-bookings?${queryParams.toString()}`);
+    // Fix: Use proper endpoint
+    const response = await ApiService.get(`BOOKING_USER_BOOKINGS?${queryParams.toString()}`);
 
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch bookings');
-      }
-
-      console.log('✅ User bookings fetched:', response.data.length);
-      return response.data;
-
-    } catch (error: any) {
-      console.error('❌ Error fetching user bookings:', error);
-      return [];
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to fetch bookings');
     }
+
+    console.log('✅ User bookings fetched:', response.data.length);
+    return response.data;
+
+  } catch (error: any) {
+    console.error('❌ Error fetching user bookings:', error);
+    return [];
   }
+}
 
   /**
    * Helper methods
    */
   private async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
-    try {
-      const response = await ApiService.get(`/payment/method/${paymentMethodId}/validate`);
-      return response.success && response.data.valid;
-    } catch {
-      return false;
-    }
+  try {
+    const response = await ApiService.get(`PAYMENT_VALIDATE?paymentMethodId=${paymentMethodId}`);
+    return response.success && response.data.valid;
+  } catch {
+    return false;
   }
+}
 
   private async refundPayment(paymentId: string): Promise<void> {
     try {
@@ -609,12 +603,12 @@ class BookingService {
   }
 
   private async processRefund(paymentId: string, amount: number): Promise<void> {
-    try {
-      await ApiService.post('/payment/refund', { paymentId, amount });
-    } catch (error) {
-      console.error('❌ Refund processing failed:', error);
-    }
+  try {
+    await ApiService.post('PAYMENT_REFUND', { paymentId, amount });
+  } catch (error) {
+    console.error('❌ Refund processing failed:', error);
   }
+}
 
   private async cancelCalendarEvent(eventId: string): Promise<void> {
     try {
@@ -636,20 +630,22 @@ class BookingService {
   }
 
   private async sendCancellationNotifications(data: any): Promise<void> {
-    try {
-      await ApiService.post('/notifications/cancellation', data);
-    } catch (error) {
-      console.error('❌ Cancellation notifications failed:', error);
-    }
+  try {
+    await ApiService.post('NOTIFICATION_CANCEL', data);
+  } catch (error) {
+    console.error('❌ Cancellation notifications failed:', error);
   }
+}
+
 
   private async sendRescheduleNotifications(data: any): Promise<void> {
-    try {
-      await ApiService.post('/notifications/reschedule', data);
-    } catch (error) {
-      console.error('❌ Reschedule notifications failed:', error);
-    }
+  try {
+    await ApiService.post('NOTIFICATION_RESCHEDULE', data);
+  } catch (error) {
+    console.error('❌ Reschedule notifications failed:', error);
   }
+}
+
 }
 
 // Export singleton instance
