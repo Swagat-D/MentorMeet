@@ -59,12 +59,15 @@ export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   id: string;
   email: string;
+  lastName?: string;
+  firstName?: string;
   name: string;
   password: string;
   role: UserRole;
   avatar?: string;
   phone?: string;
   googleTokens?: GoogleTokens;
+  displayName?: string;
 
   // OAuth fields
   provider: 'email' | 'google';

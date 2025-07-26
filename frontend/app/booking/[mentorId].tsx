@@ -1,5 +1,5 @@
-// app/booking/[mentorId].tsx - Complete Professional Booking Flow
-import React, { useState, useEffect } from 'react';
+// app/booking/[mentorId].tsx - Enhanced Booking Flow with Better Error Handling
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -23,6 +25,10 @@ import mentorService, { MentorProfile } from '@/services/mentorService';
 import bookingService, { TimeSlot, BookingRequest } from '@/services/bookingService';
 import { useAuthStore } from '@/stores/authStore';
 
+const { width, height } = Dimensions.get('window');
+const isSmallScreen = width < 375;
+const isTablet = width > 768;
+
 type BookingStep = 'calendar' | 'details' | 'payment' | 'confirmation';
 
 interface BookingDetails {
@@ -30,6 +36,16 @@ interface BookingDetails {
   sessionType: 'video' | 'audio' | 'in-person';
   notes: string;
   paymentMethodId: string;
+}
+
+interface PaymentMethod {
+  id: string;
+  type: 'card';
+  card: {
+    brand: string;
+    last4: string;
+  };
+  isDefault: boolean;
 }
 
 export default function BookingFlowScreen() {
@@ -45,21 +61,34 @@ export default function BookingFlowScreen() {
     notes: '',
     paymentMethodId: '',
   });
-  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [bookingResult, setBookingResult] = useState<any>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (mentorId) {
-      loadMentorData();
-      loadPaymentMethods();
+      loadInitialData();
     }
   }, [mentorId]);
 
-  const loadMentorData = async () => {
+  const loadInitialData = async () => {
     try {
       setLoading(true);
+      await Promise.all([
+        loadMentorData(),
+        loadPaymentMethods(),
+      ]);
+    } catch (error) {
+      console.error('❌ Error loading initial data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMentorData = async () => {
+    try {
       const mentorData = await mentorService.getMentorById(mentorId!);
       
       if (!mentorData) {
@@ -84,68 +113,100 @@ export default function BookingFlowScreen() {
       Alert.alert('Error', 'Failed to load mentor information', [
         { text: 'OK', onPress: () => router.back() }
       ]);
-    } finally {
-      setLoading(false);
     }
   };
 
   const loadPaymentMethods = async () => {
     try {
       // Mock payment methods - replace with actual API call
-      setPaymentMethods([
+      const mockPaymentMethods: PaymentMethod[] = [
         {
-          id: 'pm_1',
+          id: 'pm_1NQ5xA2eZvKYlo2CYou1tn2W',
           type: 'card',
           card: { brand: 'visa', last4: '4242' },
           isDefault: true,
         },
         {
-          id: 'pm_2',
+          id: 'pm_1NQ5xB2eZvKYlo2CYou1tn2X',
           type: 'card',
           card: { brand: 'mastercard', last4: '8888' },
           isDefault: false,
         },
-      ]);
+      ];
+      
+      setPaymentMethods(mockPaymentMethods);
       
       // Set default payment method
-      setBookingDetails(prev => ({ ...prev, paymentMethodId: 'pm_1' }));
+      const defaultPayment = mockPaymentMethods.find(pm => pm.isDefault);
+      if (defaultPayment) {
+        setBookingDetails(prev => ({ ...prev, paymentMethodId: defaultPayment.id }));
+      }
       
     } catch (error) {
       console.error('❌ Error loading payment methods:', error);
     }
   };
 
-  const handleSlotSelect = (slot: TimeSlot) => {
-    setSelectedSlot(slot);
-  };
+  const validateCurrentStep = useCallback((): boolean => {
+    const newErrors: Record<string, string> = {};
 
-  const handleNextStep = () => {
     switch (currentStep) {
       case 'calendar':
         if (!selectedSlot) {
-          Alert.alert('Select Time', 'Please select a time slot to continue.');
-          return;
+          newErrors.slot = 'Please select a time slot to continue';
+          return false;
         }
+        break;
+        
+      case 'details':
+        if (!bookingDetails.subject.trim()) {
+          newErrors.subject = 'Subject is required';
+        }
+        if (bookingDetails.subject.trim().length < 3) {
+          newErrors.subject = 'Subject must be at least 3 characters';
+        }
+        break;
+        
+      case 'payment':
+        if (!bookingDetails.paymentMethodId) {
+          newErrors.payment = 'Please select a payment method';
+        }
+        break;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [currentStep, selectedSlot, bookingDetails]);
+
+  const handleSlotSelect = useCallback((slot: TimeSlot) => {
+    setSelectedSlot(slot);
+    setErrors(prev => ({ ...prev, slot: '' }));
+  }, []);
+
+  const handleNextStep = useCallback(async () => {
+    if (!validateCurrentStep()) {
+      // Show first error
+      const firstError = Object.values(errors)[0];
+      if (firstError) {
+        Alert.alert('Validation Error', firstError);
+      }
+      return;
+    }
+
+    switch (currentStep) {
+      case 'calendar':
         setCurrentStep('details');
         break;
       case 'details':
-        if (!bookingDetails.subject.trim()) {
-          Alert.alert('Subject Required', 'Please enter a subject for your session.');
-          return;
-        }
         setCurrentStep('payment');
         break;
       case 'payment':
-        if (!bookingDetails.paymentMethodId) {
-          Alert.alert('Payment Method', 'Please select a payment method.');
-          return;
-        }
-        handleCreateBooking();
+        await handleCreateBooking();
         break;
     }
-  };
+  }, [currentStep, validateCurrentStep, errors]);
 
-  const handlePreviousStep = () => {
+  const handlePreviousStep = useCallback(() => {
     switch (currentStep) {
       case 'details':
         setCurrentStep('calendar');
@@ -157,7 +218,7 @@ export default function BookingFlowScreen() {
         // Don't allow going back from confirmation
         break;
     }
-  };
+  }, [currentStep]);
 
   const handleCreateBooking = async () => {
     if (!mentor || !selectedSlot || !user) {
@@ -170,11 +231,10 @@ export default function BookingFlowScreen() {
 
       const bookingRequest: BookingRequest = {
         mentorId: mentor._id,
-        studentId: user.id,
         timeSlot: selectedSlot,
         sessionType: bookingDetails.sessionType,
-        subject: bookingDetails.subject,
-        notes: bookingDetails.notes,
+        subject: bookingDetails.subject.trim(),
+        notes: bookingDetails.notes.trim(),
         paymentMethodId: bookingDetails.paymentMethodId,
       };
 
@@ -182,7 +242,7 @@ export default function BookingFlowScreen() {
 
       const result = await bookingService.createBooking(bookingRequest);
 
-      if (result.success) {
+      if (result.success && result.data) {
         setBookingResult(result.data);
         setCurrentStep('confirmation');
         
@@ -190,10 +250,10 @@ export default function BookingFlowScreen() {
         Alert.alert(
           'Booking Confirmed!',
           'Your session has been booked successfully. Check your email for confirmation and meeting details.',
-          [{ text: 'OK' }]
+          [{ text: 'Perfect!' }]
         );
       } else {
-        throw new Error(result.message);
+        throw new Error(result.message || 'Failed to create booking');
       }
 
     } catch (error: any) {
@@ -208,7 +268,7 @@ export default function BookingFlowScreen() {
     }
   };
 
-  const formatDateTime = (dateString: string) => {
+  const formatDateTime = useCallback((dateString: string) => {
     const date = new Date(dateString);
     return {
       date: date.toLocaleDateString('en-US', {
@@ -223,9 +283,9 @@ export default function BookingFlowScreen() {
         hour12: true,
       }),
     };
-  };
+  }, []);
 
-  const getStepProgress = () => {
+  const getStepProgress = useCallback(() => {
     switch (currentStep) {
       case 'calendar': return 25;
       case 'details': return 50;
@@ -233,12 +293,17 @@ export default function BookingFlowScreen() {
       case 'confirmation': return 100;
       default: return 0;
     }
-  };
+  }, [currentStep]);
 
   const renderProgressBar = () => (
     <View style={styles.progressContainer}>
       <View style={styles.progressBackground}>
-        <View style={[styles.progressFill, { width: `${getStepProgress()}%` }]} />
+        <LinearGradient
+          colors={['#8B4513', '#D2691E']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.progressFill, { width: `${getStepProgress()}%` }]}
+        />
       </View>
       <Text style={styles.progressText}>
         Step {currentStep === 'calendar' ? 1 : currentStep === 'details' ? 2 : currentStep === 'payment' ? 3 : 4} of 4
@@ -261,19 +326,29 @@ export default function BookingFlowScreen() {
       
       {selectedSlot && (
         <View style={styles.selectedSlotSummary}>
-          <MaterialIcons name="schedule" size={20} color="#8B4513" />
-          <View style={styles.slotSummaryContent}>
-            <Text style={styles.slotSummaryTitle}>Selected Time</Text>
-            <Text style={styles.slotSummaryDetails}>
-              {formatDateTime(selectedSlot.startTime).date}
-            </Text>
-            <Text style={styles.slotSummaryDetails}>
-              {formatDateTime(selectedSlot.startTime).time} - {formatDateTime(selectedSlot.endTime).time}
-            </Text>
-            <Text style={styles.slotSummaryPrice}>
-              ${selectedSlot.price} • {selectedSlot.duration} minutes
-            </Text>
-          </View>
+          <LinearGradient
+            colors={['#F8F3EE', '#FFFFFF']}
+            style={styles.selectedSlotGradient}
+          >
+            <MaterialIcons name="schedule" size={24} color="#8B4513" />
+            <View style={styles.slotSummaryContent}>
+              <Text style={styles.slotSummaryTitle}>Selected Time</Text>
+              <Text style={styles.slotSummaryDetails}>
+                {formatDateTime(selectedSlot.startTime).date}
+              </Text>
+              <Text style={styles.slotSummaryDetails}>
+                {formatDateTime(selectedSlot.startTime).time} - {formatDateTime(selectedSlot.endTime).time}
+              </Text>
+              <View style={styles.slotSummaryMeta}>
+                <Text style={styles.slotSummaryPrice}>
+                  ${selectedSlot.price}
+                </Text>
+                <Text style={styles.slotSummaryDuration}>
+                  {selectedSlot.duration} minutes
+                </Text>
+              </View>
+            </View>
+          </LinearGradient>
         </View>
       )}
     </View>
@@ -290,12 +365,22 @@ export default function BookingFlowScreen() {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Subject *</Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              errors.subject && styles.inputError
+            ]}
             value={bookingDetails.subject}
-            onChangeText={(text) => setBookingDetails(prev => ({ ...prev, subject: text }))}
+            onChangeText={(text) => {
+              setBookingDetails(prev => ({ ...prev, subject: text }));
+              setErrors(prev => ({ ...prev, subject: '' }));
+            }}
             placeholder="e.g., Mathematics - Algebra, Python Programming"
             placeholderTextColor="#8B7355"
+            maxLength={200}
           />
+          {errors.subject && (
+            <Text style={styles.errorText}>{errors.subject}</Text>
+          )}
         </View>
         
         <View style={styles.inputGroup}>
@@ -309,6 +394,7 @@ export default function BookingFlowScreen() {
                   bookingDetails.sessionType === type && styles.sessionTypeOptionSelected
                 ]}
                 onPress={() => setBookingDetails(prev => ({ ...prev, sessionType: type }))}
+                activeOpacity={0.8}
               >
                 <MaterialIcons
                   name={type === 'video' ? 'videocam' : type === 'audio' ? 'mic' : 'place'}
@@ -337,7 +423,11 @@ export default function BookingFlowScreen() {
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            maxLength={1000}
           />
+          <Text style={styles.characterCount}>
+            {bookingDetails.notes.length}/1000 characters
+          </Text>
         </View>
       </View>
     </View>
@@ -358,7 +448,11 @@ export default function BookingFlowScreen() {
               styles.paymentMethod,
               bookingDetails.paymentMethodId === method.id && styles.paymentMethodSelected
             ]}
-            onPress={() => setBookingDetails(prev => ({ ...prev, paymentMethodId: method.id }))}
+            onPress={() => {
+              setBookingDetails(prev => ({ ...prev, paymentMethodId: method.id }));
+              setErrors(prev => ({ ...prev, payment: '' }));
+            }}
+            activeOpacity={0.8}
           >
             <View style={styles.paymentMethodLeft}>
               <MaterialIcons name="credit-card" size={24} color="#8B4513" />
@@ -372,17 +466,21 @@ export default function BookingFlowScreen() {
               </View>
             </View>
             <MaterialIcons
-              name={bookingDetails.paymentMethodId === method.id ? 'radio-button-on' : 'radio-button-off'}
+              name={bookingDetails.paymentMethodId === method.id ? 'radio-button-checked' : 'radio-button-unchecked'}
               size={20}
               color="#8B4513"
             />
           </TouchableOpacity>
         ))}
         
-        <TouchableOpacity style={styles.addPaymentMethod}>
+        <TouchableOpacity style={styles.addPaymentMethod} activeOpacity={0.8}>
           <MaterialIcons name="add" size={20} color="#8B4513" />
           <Text style={styles.addPaymentMethodText}>Add New Payment Method</Text>
         </TouchableOpacity>
+        
+        {errors.payment && (
+          <Text style={styles.errorText}>{errors.payment}</Text>
+        )}
       </View>
       
       {/* Booking Summary */}
@@ -401,12 +499,14 @@ export default function BookingFlowScreen() {
         
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Date & Time</Text>
-          <Text style={styles.summaryValue}>
-            {selectedSlot && formatDateTime(selectedSlot.startTime).date}
-          </Text>
-          <Text style={styles.summaryValueSecondary}>
-            {selectedSlot && `${formatDateTime(selectedSlot.startTime).time} - ${formatDateTime(selectedSlot.endTime).time}`}
-          </Text>
+          <View style={styles.summaryValueContainer}>
+            <Text style={styles.summaryValue}>
+              {selectedSlot && formatDateTime(selectedSlot.startTime).date}
+            </Text>
+            <Text style={styles.summaryValueSecondary}>
+              {selectedSlot && `${formatDateTime(selectedSlot.startTime).time} - ${formatDateTime(selectedSlot.endTime).time}`}
+            </Text>
+          </View>
         </View>
         
         <View style={styles.summaryItem}>
@@ -417,7 +517,7 @@ export default function BookingFlowScreen() {
         <View style={styles.summaryDivider} />
         
         <View style={styles.summaryTotal}>
-          <Text style={styles.summaryTotalLabel}>Total</Text>
+          <Text style={styles.summaryTotalLabel}>Total Amount</Text>
           <Text style={styles.summaryTotalValue}>${selectedSlot?.price}</Text>
         </View>
       </View>
@@ -425,103 +525,127 @@ export default function BookingFlowScreen() {
   );
 
   const renderConfirmationStep = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.confirmationHeader}>
-        <View style={styles.successIcon}>
-          <MaterialIcons name="check-circle" size={48} color="#10B981" />
-        </View>
-        <Text style={styles.confirmationTitle}>Booking Confirmed!</Text>
-        <Text style={styles.confirmationSubtitle}>
-          Your session has been successfully booked
-        </Text>
-      </View>
-      
-      <View style={styles.confirmationDetails}>
-        <View style={styles.confirmationItem}>
-          <MaterialIcons name="person" size={20} color="#8B4513" />
-          <Text style={styles.confirmationLabel}>Mentor</Text>
-          <Text style={styles.confirmationValue}>{mentor?.displayName}</Text>
-        </View>
-        
-        <View style={styles.confirmationItem}>
-          <MaterialIcons name="book" size={20} color="#8B4513" />
-          <Text style={styles.confirmationLabel}>Subject</Text>
-          <Text style={styles.confirmationValue}>{bookingDetails.subject}</Text>
-        </View>
-        
-        <View style={styles.confirmationItem}>
-          <MaterialIcons name="schedule" size={20} color="#8B4513" />
-          <Text style={styles.confirmationLabel}>Date & Time</Text>
-          <Text style={styles.confirmationValue}>
-            {selectedSlot && formatDateTime(selectedSlot.startTime).date}
-          </Text>
-          <Text style={styles.confirmationValueSecondary}>
-            {selectedSlot && `${formatDateTime(selectedSlot.startTime).time} - ${formatDateTime(selectedSlot.endTime).time}`}
+    <ScrollView style={styles.confirmationScrollContainer} showsVerticalScrollIndicator={false}>
+      <View style={styles.stepContainer}>
+        <View style={styles.confirmationHeader}>
+          <LinearGradient
+            colors={['#10B981', '#059669']}
+            style={styles.successIconContainer}
+          >
+            <MaterialIcons name="check" size={32} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={styles.confirmationTitle}>Booking Confirmed!</Text>
+          <Text style={styles.confirmationSubtitle}>
+            Your session has been successfully booked
           </Text>
         </View>
         
-        {bookingResult?.meetingLink && (
+        <View style={styles.confirmationDetails}>
           <View style={styles.confirmationItem}>
-            <MaterialIcons name="videocam" size={20} color="#8B4513" />
-            <Text style={styles.confirmationLabel}>Meeting Link</Text>
-            <TouchableOpacity 
-              style={styles.meetingLinkButton}
-              onPress={() => {
-                // Copy to clipboard or open link
-                Alert.alert('Meeting Link', bookingResult.meetingLink);
-              }}
-            >
-              <Text style={styles.meetingLinkText}>Join Meeting</Text>
-              <MaterialIcons name="launch" size={16} color="#8B4513" />
-            </TouchableOpacity>
+            <MaterialIcons name="person" size={20} color="#8B4513" />
+            <View style={styles.confirmationItemContent}>
+              <Text style={styles.confirmationLabel}>Mentor</Text>
+              <Text style={styles.confirmationValue}>{mentor?.displayName}</Text>
+            </View>
           </View>
-        )}
-      </View>
-      
-      <View style={styles.confirmationNotices}>
-        <View style={styles.noticeItem}>
-          <MaterialIcons name="email" size={16} color="#10B981" />
-          <Text style={styles.noticeText}>
-            Confirmation email sent with calendar invite
-          </Text>
+          
+          <View style={styles.confirmationItem}>
+            <MaterialIcons name="book" size={20} color="#8B4513" />
+            <View style={styles.confirmationItemContent}>
+              <Text style={styles.confirmationLabel}>Subject</Text>
+              <Text style={styles.confirmationValue}>{bookingDetails.subject}</Text>
+            </View>
+          </View>
+          
+          <View style={styles.confirmationItem}>
+            <MaterialIcons name="schedule" size={20} color="#8B4513" />
+            <View style={styles.confirmationItemContent}>
+              <Text style={styles.confirmationLabel}>Date & Time</Text>
+              <Text style={styles.confirmationValue}>
+                {selectedSlot && formatDateTime(selectedSlot.startTime).date}
+              </Text>
+              <Text style={styles.confirmationValueSecondary}>
+                {selectedSlot && `${formatDateTime(selectedSlot.startTime).time} - ${formatDateTime(selectedSlot.endTime).time}`}
+              </Text>
+            </View>
+          </View>
+          
+          {bookingResult?.meetingLink && (
+            <View style={styles.confirmationItem}>
+              <MaterialIcons name="videocam" size={20} color="#8B4513" />
+              <View style={styles.confirmationItemContent}>
+                <Text style={styles.confirmationLabel}>Meeting Link</Text>
+                <TouchableOpacity 
+                  style={styles.meetingLinkButton}
+                  onPress={() => {
+                    Alert.alert('Meeting Link', bookingResult.meetingLink, [
+                      { text: 'Copy Link', onPress: () => {/* Copy to clipboard */} },
+                      { text: 'OK' }
+                    ]);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.meetingLinkText}>Join Meeting</Text>
+                  <MaterialIcons name="launch" size={16} color="#8B4513" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
         
-        <View style={styles.noticeItem}>
-          <MaterialIcons name="notifications" size={16} color="#10B981" />
-          <Text style={styles.noticeText}>
-            Reminders set for 24hrs, 1hr, and 15min before session
-          </Text>
+        <View style={styles.confirmationNotices}>
+          <View style={styles.noticeItem}>
+            <MaterialIcons name="email" size={16} color="#10B981" />
+            <Text style={styles.noticeText}>
+              Confirmation email sent with calendar invite
+            </Text>
+          </View>
+          
+          <View style={styles.noticeItem}>
+            <MaterialIcons name="notifications" size={16} color="#10B981" />
+            <Text style={styles.noticeText}>
+              Reminders set for 24hrs, 1hr, and 15min before session
+            </Text>
+          </View>
+          
+          <View style={styles.noticeItem}>
+            <MaterialIcons name="calendar-today" size={16} color="#10B981" />
+            <Text style={styles.noticeText}>
+              Event added to your Google Calendar
+            </Text>
+          </View>
         </View>
         
-        <View style={styles.noticeItem}>
-          <MaterialIcons name="calendar-today" size={16} color="#10B981" />
-          <Text style={styles.noticeText}>
-            Event added to your Google Calendar
-          </Text>
+        <View style={styles.confirmationActions}>
+          <TouchableOpacity
+            style={styles.viewSessionsButton}
+            onPress={() => router.push('/(tabs)/sessions')}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#8B4513', '#D2691E']}
+              style={styles.buttonGradient}
+            >
+              <Text style={styles.viewSessionsButtonText}>View My Sessions</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.findMoreMentorsButton}
+            onPress={() => router.push('/(tabs)/search')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.findMoreMentorsButtonText}>Find More Mentors</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      
-      <View style={styles.confirmationActions}>
-        <TouchableOpacity
-          style={styles.viewSessionsButton}
-          onPress={() => router.push('/(tabs)/sessions')}
-        >
-          <Text style={styles.viewSessionsButtonText}>View My Sessions</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.findMoreMentorsButton}
-          onPress={() => router.push('/(tabs)/search')}
-        >
-          <Text style={styles.findMoreMentorsButtonText}>Find More Mentors</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </ScrollView>
   );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F8F3EE" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#8B4513" />
           <Text style={styles.loadingText}>Loading mentor information...</Text>
@@ -533,6 +657,7 @@ export default function BookingFlowScreen() {
   if (!mentor) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F8F3EE" />
         <View style={styles.errorContainer}>
           <MaterialIcons name="error-outline" size={48} color="#DC2626" />
           <Text style={styles.errorTitle}>Mentor Not Found</Text>
@@ -542,6 +667,7 @@ export default function BookingFlowScreen() {
           <TouchableOpacity
             style={styles.errorButton}
             onPress={() => router.back()}
+            activeOpacity={0.8}
           >
             <Text style={styles.errorButtonText}>Go Back</Text>
           </TouchableOpacity>
@@ -550,13 +676,16 @@ export default function BookingFlowScreen() {
     );
   }
 
-  return (
+    return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F3EE" />
+      
       {/* Custom Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => currentStep === 'confirmation' ? router.push('/(tabs)/sessions') : router.back()}
+          activeOpacity={0.8}
         >
           <MaterialIcons name="arrow-back" size={24} color="#8B4513" />
         </TouchableOpacity>
@@ -569,7 +698,11 @@ export default function BookingFlowScreen() {
         
         <View style={styles.headerRight}>
           {currentStep !== 'confirmation' && (
-            <TouchableOpacity style={styles.helpButton}>
+            <TouchableOpacity 
+              style={styles.helpButton}
+              onPress={() => Alert.alert('Help', 'Contact support if you need assistance')}
+              activeOpacity={0.8}
+            >
               <MaterialIcons name="help-outline" size={20} color="#8B7355" />
             </TouchableOpacity>
           )}
@@ -581,17 +714,20 @@ export default function BookingFlowScreen() {
 
       {/* Mentor Info Header */}
       <View style={styles.mentorHeader}>
-        <Image source={{ uri: mentor.profileImage }} style={styles.mentorAvatar} />
+        <Image 
+          source={{ uri: mentor.profileImage || 'https://via.placeholder.com/48' }} 
+          style={styles.mentorAvatar} 
+        />
         <View style={styles.mentorInfo}>
           <Text style={styles.mentorName}>{mentor.displayName}</Text>
           <View style={styles.mentorMeta}>
             <MaterialIcons name="star" size={14} color="#D4AF37" />
             <Text style={styles.mentorRating}>
-              {mentor.rating.toFixed(1)} ({mentor.totalSessions} sessions)
+              {mentor.rating?.toFixed(1) || '5.0'} ({mentor.totalSessions || 0} sessions)
             </Text>
           </View>
           <Text style={styles.mentorExpertise} numberOfLines={1}>
-            {mentor.expertise.slice(0, 2).join(', ')}
+            {mentor.expertise?.slice(0, 2).join(', ') || 'Expert Mentor'}
           </Text>
         </View>
         {mentor.isOnline && (
@@ -606,11 +742,13 @@ export default function BookingFlowScreen() {
       <KeyboardAvoidingView
         style={styles.content}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
           style={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContentContainer}
+          keyboardShouldPersistTaps="handled"
         >
           {currentStep === 'calendar' && renderCalendarStep()}
           {currentStep === 'details' && renderDetailsStep()}
@@ -627,6 +765,7 @@ export default function BookingFlowScreen() {
               style={styles.backNavButton}
               onPress={handlePreviousStep}
               disabled={processing}
+              activeOpacity={0.8}
             >
               <MaterialIcons name="chevron-left" size={20} color="#8B4513" />
               <Text style={styles.backNavButtonText}>Back</Text>
@@ -637,27 +776,32 @@ export default function BookingFlowScreen() {
             style={[
               styles.nextButton,
               currentStep === 'calendar' && { flex: 1 },
-              (!selectedSlot && currentStep === 'calendar') && styles.nextButtonDisabled,
               processing && styles.nextButtonDisabled
             ]}
             onPress={handleNextStep}
-            disabled={(!selectedSlot && currentStep === 'calendar') || processing}
+            disabled={processing}
+            activeOpacity={0.8}
           >
-            {processing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.nextButtonText}>
-                  {currentStep === 'calendar' ? 'Continue' :
-                   currentStep === 'details' ? 'Review & Pay' :
-                   'Confirm Booking'}
-                </Text>
-                {currentStep === 'payment' && selectedSlot && (
-                  <Text style={styles.nextButtonPrice}>${selectedSlot.price}</Text>
-                )}
-                <MaterialIcons name="chevron-right" size={20} color="#FFFFFF" />
-              </>
-            )}
+            <LinearGradient
+              colors={processing ? ['#D1C4B8', '#D1C4B8'] : ['#8B4513', '#D2691E']}
+              style={styles.nextButtonGradient}
+            >
+              {processing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.nextButtonText}>
+                    {currentStep === 'calendar' ? 'Continue' :
+                     currentStep === 'details' ? 'Review & Pay' :
+                     'Confirm Booking'}
+                  </Text>
+                  {currentStep === 'payment' && selectedSlot && (
+                    <Text style={styles.nextButtonPrice}>${selectedSlot.price}</Text>
+                  )}
+                  <MaterialIcons name="chevron-right" size={20} color="#FFFFFF" />
+                </>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
@@ -682,6 +826,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#8B7355',
+    textAlign: 'center',
   },
   errorContainer: {
     flex: 1,
@@ -695,12 +840,14 @@ const styles = StyleSheet.create({
     color: '#2A2A2A',
     marginTop: 16,
     marginBottom: 8,
+    textAlign: 'center',
   },
   errorText: {
     fontSize: 16,
     color: '#8B7355',
     textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 22,
   },
   errorButton: {
     backgroundColor: '#8B4513',
@@ -724,6 +871,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   backButton: {
     padding: 8,
@@ -752,20 +910,21 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   progressBackground: {
-    height: 4,
+    height: 6,
     backgroundColor: '#E8DDD1',
-    borderRadius: 2,
+    borderRadius: 3,
     marginBottom: 8,
+    overflow: 'hidden',
   },
   progressFill: {
-    height: 4,
-    backgroundColor: '#8B4513',
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
   },
   progressText: {
     fontSize: 12,
     color: '#8B7355',
     textAlign: 'center',
+    fontWeight: '500',
   },
 
   // Mentor Header
@@ -783,6 +942,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     marginRight: 12,
+    backgroundColor: '#E8DDD1',
   },
   mentorInfo: {
     flex: 1,
@@ -841,11 +1001,11 @@ const styles = StyleSheet.create({
 
   // Step Container
   stepContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: isTablet ? 40 : 20,
     paddingTop: 20,
   },
   stepTitle: {
-    fontSize: 24,
+    fontSize: isSmallScreen ? 22 : 24,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 8,
@@ -859,14 +1019,16 @@ const styles = StyleSheet.create({
 
   // Selected Slot Summary
   selectedSlotSummary: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
     marginTop: 20,
+    borderRadius: 12,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#8B4513',
+  },
+  selectedSlotGradient: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
   },
   slotSummaryContent: {
     marginLeft: 12,
@@ -883,11 +1045,20 @@ const styles = StyleSheet.create({
     color: '#2A2A2A',
     marginBottom: 2,
   },
+  slotSummaryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
   slotSummaryPrice: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#8B4513',
-    marginTop: 4,
+    marginRight: 12,
+  },
+  slotSummaryDuration: {
+    fontSize: 14,
+    color: '#8B7355',
   },
 
   // Form Container
@@ -895,11 +1066,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   inputGroup: {
     marginBottom: 20,
@@ -920,37 +1097,46 @@ const styles = StyleSheet.create({
     color: '#2A2A2A',
     backgroundColor: '#FFFFFF',
   },
+  inputError: {
+    borderColor: '#DC2626',
+  },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
   },
+  characterCount: {
+    fontSize: 12,
+    color: '#8B7355',
+    textAlign: 'right',
+    marginTop: 4,
+  },
 
   // Session Type Selection
   sessionTypeContainer: {
-    flexDirection: 'row',
+    flexDirection: isTablet ? 'row' : 'column',
     gap: 12,
   },
   sessionTypeOption: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E8DDD1',
     backgroundColor: '#F8F3EE',
+    flex: isTablet ? 1 : undefined,
   },
   sessionTypeOptionSelected: {
     backgroundColor: '#8B4513',
     borderColor: '#8B4513',
   },
   sessionTypeText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: '#8B4513',
-    marginLeft: 6,
+    marginLeft: 8,
   },
   sessionTypeTextSelected: {
     color: '#FFFFFF',
@@ -962,11 +1148,17 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   paymentMethod: {
     flexDirection: 'row',
@@ -978,6 +1170,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E8DDD1',
     marginBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   paymentMethodSelected: {
     borderColor: '#8B4513',
@@ -1000,6 +1193,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8B4513',
     fontWeight: '500',
+    marginTop: 2,
   },
   addPaymentMethod: {
     flexDirection: 'row',
@@ -1023,11 +1217,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   summaryTitle: {
     fontSize: 18,
@@ -1053,10 +1253,13 @@ const styles = StyleSheet.create({
     flex: 2,
     textAlign: 'right',
   },
+  summaryValueContainer: {
+    flex: 2,
+    alignItems: 'flex-end',
+  },
   summaryValueSecondary: {
     fontSize: 12,
     color: '#8B7355',
-    flex: 2,
     textAlign: 'right',
     marginTop: 2,
   },
@@ -1082,19 +1285,33 @@ const styles = StyleSheet.create({
   },
 
   // Confirmation
+  confirmationScrollContainer: {
+    flex: 1,
+  },
   confirmationHeader: {
     alignItems: 'center',
     paddingVertical: 32,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
-  successIcon: {
+  successIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
   },
   confirmationTitle: {
@@ -1102,45 +1319,53 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginBottom: 8,
+    textAlign: 'center',
   },
   confirmationSubtitle: {
     fontSize: 16,
     color: '#8B7355',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
   confirmationDetails: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   confirmationItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 16,
   },
+  confirmationItemContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
   confirmationLabel: {
     fontSize: 14,
     color: '#8B7355',
-    marginLeft: 12,
-    marginRight: 12,
-    minWidth: 80,
+    marginBottom: 2,
   },
   confirmationValue: {
     fontSize: 14,
     fontWeight: '600',
     color: '#2A2A2A',
-    flex: 1,
   },
   confirmationValueSecondary: {
     fontSize: 12,
     color: '#8B7355',
-    flex: 1,
     marginTop: 2,
   },
   meetingLinkButton: {
@@ -1152,6 +1377,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#8B4513',
+    marginTop: 4,
   },
   meetingLinkText: {
     fontSize: 14,
@@ -1177,15 +1403,19 @@ const styles = StyleSheet.create({
     color: '#166534',
     marginLeft: 8,
     flex: 1,
+    lineHeight: 16,
   },
   confirmationActions: {
     gap: 12,
   },
   viewSessionsButton: {
-    backgroundColor: '#8B4513',
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  buttonGradient: {
     paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   viewSessionsButtonText: {
     fontSize: 16,
@@ -1215,11 +1445,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E8DDD1',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   backNavButton: {
     flexDirection: 'row',
@@ -1237,17 +1473,19 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#8B4513',
     borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    overflow: 'hidden',
     flex: 1,
   },
   nextButtonDisabled: {
-    backgroundColor: '#D1C4B8',
+    opacity: 0.6,
+  },
+  nextButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
   },
   nextButtonText: {
     fontSize: 16,
