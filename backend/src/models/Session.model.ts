@@ -10,6 +10,7 @@ export interface ISession extends Document {
   actualStartTime?: Date;
   actualEndTime?: Date;
   duration: number; // in minutes
+  calendarEventId?: string; 
   sessionType: 'video' | 'audio' | 'chat';
   status: 'scheduled' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
   studentRating?: number;
@@ -29,6 +30,7 @@ const sessionSchema = new Schema<ISession>({
   scheduledTime: { type: Date, required: true },
   actualStartTime: { type: Date },
   actualEndTime: { type: Date },
+  calendarEventId: { type: String },
   duration: { type: Number, required: true, min: 15, max: 240 }, // 15 minutes to 4 hours
   sessionType: { 
     type: String, 
@@ -42,6 +44,7 @@ const sessionSchema = new Schema<ISession>({
   },
   studentRating: { type: Number, min: 1, max: 5 },
   mentorRating: { type: Number, min: 1, max: 5 },
+  
   studentReview: { type: String, maxlength: 1000 },
   mentorReview: { type: String, maxlength: 1000 },
   sessionNotes: { type: String, maxlength: 2000 },

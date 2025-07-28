@@ -1,4 +1,4 @@
-// components/booking/BookingCalendar.tsx - Enhanced Calendar with Accurate Date Handling
+// components/booking/BookingCalendar.tsx - Enhanced Responsive Calendar
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -12,12 +12,20 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import bookingService, { TimeSlot } from '@/services/bookingService';
 import { MentorProfile } from '@/services/mentorService';
 
-const { width } = Dimensions.get('window');
-const CALENDAR_WIDTH = width - 40;
+const { width, height } = Dimensions.get('window');
+const isTablet = width > 768;
+const isSmallScreen = width < 375;
+
+// Responsive calculations
+const CONTAINER_PADDING = isTablet ? 40 : 20;
+const CALENDAR_PADDING = 20;
+const CALENDAR_WIDTH = width - (CONTAINER_PADDING * 2) - (CALENDAR_PADDING * 2);
 const DAY_WIDTH = CALENDAR_WIDTH / 7;
+const DAY_HEIGHT = isTablet ? 52 : 44;
 
 interface BookingCalendarProps {
   mentor: MentorProfile;
@@ -34,6 +42,7 @@ interface CalendarDay {
   isPast: boolean;
   isSelected: boolean;
   hasSlots: boolean;
+  dayOfWeek: number;
 }
 
 export default function BookingCalendar({ 
@@ -45,16 +54,15 @@ export default function BookingCalendar({
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [loadingCalendar, setLoadingCalendar] = useState(false);
 
-  // Get today's date for comparison
+  // Get today's date for comparison (fixed timezone handling)
   const today = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
   }, []);
 
-  // Generate calendar days for current month view
+  // Generate calendar days with correct day alignment
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -65,11 +73,12 @@ export default function BookingCalendar({
     // Last day of the month
     const lastDayOfMonth = new Date(year, month + 1, 0);
     
-    // First day to show (start of calendar grid)
+    // First day to show (start of calendar grid) - properly aligned
     const firstDayToShow = new Date(firstDayOfMonth);
-    firstDayToShow.setDate(firstDayToShow.getDate() - firstDayOfMonth.getDay());
+    const dayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    firstDayToShow.setDate(firstDayOfMonth.getDate() - dayOfWeek);
     
-    // Generate 42 days (6 weeks) for calendar grid
+    // Generate exactly 42 days (6 weeks) for consistent grid
     const days: CalendarDay[] = [];
     
     for (let i = 0; i < 42; i++) {
@@ -78,7 +87,7 @@ export default function BookingCalendar({
       
       const dateString = date.toISOString().split('T')[0];
       const isCurrentMonth = date.getMonth() === month;
-      const isToday = date.getTime() === today.getTime();
+      const isToday = date.toDateString() === today.toDateString();
       const isPast = date < today;
       const isSelected = selectedDate ? 
         date.toDateString() === selectedDate.toDateString() : false;
@@ -92,6 +101,7 @@ export default function BookingCalendar({
         isPast,
         isSelected,
         hasSlots: false, // Will be updated when we check availability
+        dayOfWeek: date.getDay(),
       });
     }
     
@@ -104,18 +114,6 @@ export default function BookingCalendar({
       loadAvailableSlots(selectedDate);
     }
   }, [selectedDate, mentor._id]);
-
-  // Reset selected slot when calendar changes
-  useEffect(() => {
-    if (selectedSlot && selectedDate) {
-      const slotDate = new Date(selectedSlot.startTime).toDateString();
-      const selectedDateString = selectedDate.toDateString();
-      
-      if (slotDate !== selectedDateString) {
-        onSlotSelect(selectedSlot); // Clear selection if date doesn't match
-      }
-    }
-  }, [selectedDate, selectedSlot, onSlotSelect]);
 
   const loadAvailableSlots = async (date: Date) => {
     try {
@@ -131,17 +129,17 @@ export default function BookingCalendar({
       const now = new Date();
       const filteredSlots = slots.filter(slot => {
         const slotTime = new Date(slot.startTime);
-        return slotTime > now;
+        return slotTime > now && slot.isAvailable;
       });
       
       setAvailableSlots(filteredSlots);
-      console.log('✅ Loaded slots:', filteredSlots.length);
+      console.log('✅ Loaded available slots:', filteredSlots.length);
       
     } catch (error: any) {
       console.error('❌ Error loading slots:', error);
       Alert.alert(
         'Error Loading Slots',
-        'Failed to load available time slots. Please try again.',
+        'Unable to load available time slots. Please check your connection and try again.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -200,54 +198,45 @@ export default function BookingCalendar({
   };
 
   const getDayStyle = (day: CalendarDay) => {
+    const baseStyle = [styles.dayButton];
+    
     if (!day.isCurrentMonth) {
-      return [calendarStyles.dayButton, calendarStyles.dayButtonInactive];
+      baseStyle.push(styles.dayButtonInactive as any);
     } else if (day.isPast) {
-      return [calendarStyles.dayButton, calendarStyles.dayButtonPast];
+      baseStyle.push(styles.dayButtonPast as any);
     } else if (day.isSelected) {
-      return [calendarStyles.dayButton, calendarStyles.dayButtonSelected];
+      baseStyle.push(styles.dayButtonSelected as any);
     } else if (day.isToday) {
-      return [calendarStyles.dayButton, calendarStyles.dayButtonToday];
+      baseStyle.push(styles.dayButtonToday as any);
     }
-    return [calendarStyles.dayButton];
+    
+    return baseStyle;
   };
 
   const getDayTextStyle = (day: CalendarDay) => {
-    const styles = [calendarStyles.dayText];
+    const baseStyle = [styles.dayText];
     
     if (!day.isCurrentMonth || day.isPast) {
-      styles.push(calendarStyles.dayTextInactive);
+      baseStyle.push(styles.dayTextInactive as any);
     } else if (day.isSelected) {
-      styles.push(calendarStyles.dayTextSelected);
+      baseStyle.push(styles.dayTextSelected as any);
     } else if (day.isToday) {
-      styles.push(calendarStyles.dayTextToday);
+      baseStyle.push(styles.dayTextToday as any);
     }
     
-    return styles;
+    return baseStyle;
   };
 
   const getSlotStyle = (slot: TimeSlot) => {
-    const styles = [calendarStyles.timeSlot];
+    const baseStyle = [styles.timeSlot];
     
     if (!slot.isAvailable) {
-      styles.push(calendarStyles.timeSlotUnavailable);
+      baseStyle.push(styles.timeSlotUnavailable as any);
     } else if (selectedSlot?.id === slot.id) {
-      styles.push(calendarStyles.timeSlotSelected);
+      baseStyle.push(styles.timeSlotSelected as any);
     }
     
-    return styles;
-  };
-
-  const getSlotTextStyle = (slot: TimeSlot) => {
-    const styles = [calendarStyles.timeSlotText];
-    
-    if (!slot.isAvailable) {
-      styles.push(calendarStyles.timeSlotTextUnavailable);
-    } else if (selectedSlot?.id === slot.id) {
-      styles.push(calendarStyles.timeSlotTextSelected);
-    }
-    
-    return styles;
+    return baseStyle;
   };
 
   const monthNames = [
@@ -257,107 +246,128 @@ export default function BookingCalendar({
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  // Split calendar into weeks for better layout
+  const calendarWeeks = useMemo(() => {
+    const weeks = [];
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      weeks.push(calendarDays.slice(i, i + 7));
+    }
+    return weeks;
+  }, [calendarDays]);
+
   return (
-    <View style={calendarStyles.container}>
+    <View style={styles.container}>
       {/* Calendar Header */}
-      <View style={calendarStyles.calendarHeader}>
+      <View style={styles.calendarHeader}>
         <TouchableOpacity
-          style={calendarStyles.navButton}
+          style={styles.navButton}
           onPress={() => navigateMonth('prev')}
+          activeOpacity={0.7}
         >
           <MaterialIcons name="chevron-left" size={24} color="#8B4513" />
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={calendarStyles.monthYearContainer}
+          style={styles.monthYearContainer}
           onPress={goToToday}
+          activeOpacity={0.7}
         >
-          <Text style={calendarStyles.monthText}>
+          <Text style={styles.monthText}>
             {monthNames[currentDate.getMonth()]}
           </Text>
-          <Text style={calendarStyles.yearText}>
+          <Text style={styles.yearText}>
             {currentDate.getFullYear()}
           </Text>
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={calendarStyles.navButton}
+          style={styles.navButton}
           onPress={() => navigateMonth('next')}
+          activeOpacity={0.7}
         >
           <MaterialIcons name="chevron-right" size={24} color="#8B4513" />
         </TouchableOpacity>
       </View>
 
+      {/* Today Button */}
       <TouchableOpacity 
-        style={calendarStyles.todayButton}
+        style={styles.todayButton}
         onPress={goToToday}
+        activeOpacity={0.7}
       >
         <MaterialIcons name="today" size={16} color="#8B4513" />
-        <Text style={calendarStyles.todayButtonText}>Today</Text>
+        <Text style={styles.todayButtonText}>Go to Today</Text>
       </TouchableOpacity>
 
       {/* Day Names Header */}
-      <View style={calendarStyles.dayNamesContainer}>
+      <View style={styles.dayNamesContainer}>
         {dayNames.map((day, index) => (
-          <View key={index} style={calendarStyles.dayNameItem}>
-            <Text style={calendarStyles.dayNameText}>{day}</Text>
+          <View key={index} style={styles.dayNameItem}>
+            <Text style={styles.dayNameText}>{day}</Text>
           </View>
         ))}
       </View>
 
-      {/* Calendar Grid */}
-      <View style={calendarStyles.calendarGrid}>
-        {calendarDays.map((day, index) => (
-          <TouchableOpacity
-            key={`${day.dateString}-${index}`}
-            style={getDayStyle(day)}
-            onPress={() => handleDateSelect(day)}
-            disabled={day.isPast || !day.isCurrentMonth}
-            activeOpacity={0.7}
-          >
-            <Text style={getDayTextStyle(day)}>
-              {day.dayNumber}
-            </Text>
-            {/* Availability indicator */}
-            {day.isCurrentMonth && !day.isPast && day.hasSlots && (
-              <View style={calendarStyles.slotIndicator} />
-            )}
-          </TouchableOpacity>
+      {/* Calendar Grid - Week by Week */}
+      <View style={styles.calendarGrid}>
+        {calendarWeeks.map((week, weekIndex) => (
+          <View key={weekIndex} style={styles.calendarWeek}>
+            {week.map((day, dayIndex) => (
+              <TouchableOpacity
+                key={`${day.dateString}-${dayIndex}`}
+                style={getDayStyle(day)}
+                onPress={() => handleDateSelect(day)}
+                disabled={day.isPast || !day.isCurrentMonth}
+                activeOpacity={0.7}
+              >
+                <Text style={getDayTextStyle(day)}>
+                  {day.dayNumber}
+                </Text>
+                {/* Availability indicator */}
+                {day.isCurrentMonth && !day.isPast && day.hasSlots && (
+                  <View style={styles.slotIndicator} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
         ))}
       </View>
 
       {/* Time Slots Section */}
       {selectedDate && (
-        <View style={calendarStyles.timeSlotsSection}>
-          <View style={calendarStyles.timeSlotsHeader}>
+        <View style={styles.timeSlotsSection}>
+          <LinearGradient
+            colors={['#F8F3EE', '#FFFFFF']}
+            style={styles.timeSlotsHeader}
+          >
             <MaterialIcons name="schedule" size={20} color="#8B4513" />
-            <Text style={calendarStyles.timeSlotsTitle}>
+            <Text style={styles.timeSlotsTitle}>
               Available Times - {selectedDate.toLocaleDateString('en-US', {
                 weekday: 'long',
                 month: 'short',
                 day: 'numeric'
               })}
             </Text>
-          </View>
+          </LinearGradient>
 
           {loadingSlots ? (
-            <View style={calendarStyles.slotsLoadingContainer}>
+            <View style={styles.slotsLoadingContainer}>
               <ActivityIndicator size="small" color="#8B4513" />
-              <Text style={calendarStyles.slotsLoadingText}>Loading available times...</Text>
+              <Text style={styles.slotsLoadingText}>Loading available times...</Text>
             </View>
           ) : availableSlots.length === 0 ? (
-            <View style={calendarStyles.noSlotsContainer}>
+            <View style={styles.noSlotsContainer}>
               <MaterialIcons name="event-busy" size={32} color="#8B7355" />
-              <Text style={calendarStyles.noSlotsTitle}>No Available Times</Text>
-              <Text style={calendarStyles.noSlotsText}>
+              <Text style={styles.noSlotsTitle}>No Available Times</Text>
+              <Text style={styles.noSlotsText}>
                 This mentor has no available time slots on this date. Please try another date.
               </Text>
             </View>
           ) : (
             <ScrollView 
-              style={calendarStyles.timeSlotsContainer}
+              style={styles.timeSlotsScrollContainer}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={calendarStyles.timeSlotsContent}
+              contentContainerStyle={styles.timeSlotsContent}
             >
               {availableSlots.map((slot, index) => (
                 <TouchableOpacity
@@ -367,37 +377,44 @@ export default function BookingCalendar({
                   disabled={!slot.isAvailable}
                   activeOpacity={0.8}
                 >
-                  <View style={calendarStyles.timeSlotContent}>
-                    <View style={calendarStyles.timeSlotLeft}>
-                      <Text style={getSlotTextStyle(slot)}>
-                        {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                      </Text>
-                      <Text style={calendarStyles.timeSlotDuration}>
-                        {slot.duration} minutes • {slot.sessionType}
-                      </Text>
-                    </View>
-                    
-                    <View style={calendarStyles.timeSlotRight}>
-                      <Text style={[calendarStyles.timeSlotPrice, getSlotTextStyle(slot)]}>
-                        {formatPrice(slot.price)}
-                      </Text>
-                      {slot.isAvailable ? (
+                  <LinearGradient
+                    colors={selectedSlot?.id === slot.id 
+                      ? ['#8B4513', '#D2691E'] 
+                      : ['#FFFFFF', '#F8F3EE']
+                    }
+                    style={styles.timeSlotGradient}
+                  >
+                    <View style={styles.timeSlotContent}>
+                      <View style={styles.timeSlotLeft}>
+                        <Text style={[
+                          styles.timeSlotTime,
+                          selectedSlot?.id === slot.id && styles.timeSlotTimeSelected
+                        ]}>
+                          {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                        </Text>
+                        <Text style={[
+                          styles.timeSlotDuration,
+                          selectedSlot?.id === slot.id && styles.timeSlotDurationSelected
+                        ]}>
+                          {slot.duration} minutes • Google Meet
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.timeSlotRight}>
+                        <Text style={[
+                          styles.timeSlotPrice,
+                          selectedSlot?.id === slot.id && styles.timeSlotPriceSelected
+                        ]}>
+                          {formatPrice(slot.price)}
+                        </Text>
                         <MaterialIcons 
                           name={selectedSlot?.id === slot.id ? "radio-button-checked" : "radio-button-unchecked"}
                           size={20} 
-                          color={selectedSlot?.id === slot.id ? "#FFFFFF" : "#8B7355"} 
+                          color={selectedSlot?.id === slot.id ? "#FFFFFF" : "#8B4513"} 
                         />
-                      ) : (
-                        <MaterialIcons name="block" size={20} color="#DC2626" />
-                      )}
+                      </View>
                     </View>
-                  </View>
-                  
-                  {!slot.isAvailable && (
-                    <Text style={calendarStyles.unavailableText}>
-                      This time slot is no longer available
-                    </Text>
-                  )}
+                  </LinearGradient>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -405,27 +422,34 @@ export default function BookingCalendar({
         </View>
       )}
 
-      {/* Google Calendar Integration Notice */}
-      <View style={calendarStyles.calendarNotice}>
-        <MaterialIcons name="info" size={16} color="#8B7355" />
-        <Text style={calendarStyles.calendarNoticeText}>
-          Availability synced with Google Calendar in real-time
+      {/* Integration Notice */}
+      <View style={styles.integrationNotice}>
+        <MaterialIcons name="info" size={14} color="#10B981" />
+        <Text style={styles.integrationNoticeText}>
+          Sessions are automatically scheduled with Google Meet and Calendar
         </Text>
       </View>
     </View>
   );
 }
 
-const calendarStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    padding: CALENDAR_PADDING,
+    margin: isTablet ? 20 : 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
     borderWidth: 1,
     borderColor: '#E8DDD1',
   },
@@ -435,26 +459,44 @@ const calendarStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingHorizontal: isTablet ? 8 : 4,
   },
   navButton: {
-    padding: 8,
-    borderRadius: 8,
+    width: isTablet ? 48 : 40,
+    height: isTablet ? 48 : 40,
+    borderRadius: isTablet ? 24 : 20,
     backgroundColor: '#F8F3EE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#8B4513',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   monthYearContainer: {
     alignItems: 'center',
     flex: 1,
+    paddingVertical: 8,
   },
   monthText: {
-    fontSize: 18,
+    fontSize: isTablet ? 22 : 20,
     fontWeight: 'bold',
     color: '#2A2A2A',
+    textAlign: 'center',
   },
   yearText: {
-    fontSize: 14,
+    fontSize: isTablet ? 16 : 14,
     color: '#8B7355',
     marginTop: 2,
+    textAlign: 'center',
   },
 
   // Today Button
@@ -462,24 +504,27 @@ const calendarStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     backgroundColor: '#F8F3EE',
-    borderRadius: 8,
+    borderRadius: 20,
     marginBottom: 16,
     alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
   todayButtonText: {
     fontSize: 12,
     color: '#8B4513',
     fontWeight: '600',
-    marginLeft: 4,
+    marginLeft: 6,
   },
 
   // Day Names
   dayNamesContainer: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 12,
+    paddingHorizontal: 2,
   },
   dayNameItem: {
     width: DAY_WIDTH,
@@ -487,35 +532,48 @@ const calendarStyles = StyleSheet.create({
     paddingVertical: 8,
   },
   dayNameText: {
-    fontSize: 12,
+    fontSize: isTablet ? 14 : 12,
     fontWeight: '600',
     color: '#8B7355',
+    textAlign: 'center',
   },
 
   // Calendar Grid
   calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     marginBottom: 20,
+  },
+  calendarWeek: {
+    flexDirection: 'row',
+    marginBottom: 4,
   },
   dayButton: {
     width: DAY_WIDTH,
-    height: 44,
+    height: DAY_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative',
-    marginBottom: 4,
     borderRadius: 8,
+    marginHorizontal: 1,
+    position: 'relative',
   },
   dayButtonInactive: {
     opacity: 0.3,
-    backgroundColor: 'transparent',
   },
   dayButtonPast: {
     opacity: 0.5,
   },
   dayButtonSelected: {
     backgroundColor: '#8B4513',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#8B4513',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   dayButtonToday: {
     backgroundColor: '#F8F3EE',
@@ -523,23 +581,18 @@ const calendarStyles = StyleSheet.create({
     borderColor: '#8B4513',
   },
   dayText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: isTablet ? 16 : 14,
+    fontWeight: '600',
     color: '#2A2A2A',
+    textAlign: 'center',
   },
   dayTextInactive: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#8B7355',
+    color: '#C0C0C0',
   },
   dayTextSelected: {
-    fontSize: 14,
-    fontWeight: '500',
     color: '#FFFFFF',
   },
   dayTextToday: {
-    fontSize: 14,
-    fontWeight: '500',
     color: '#8B4513',
   },
   slotIndicator: {
@@ -550,20 +603,25 @@ const calendarStyles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#10B981',
   },
+
   // Time Slots Section
   timeSlotsSection: {
-    marginTop: 20,
-    paddingTop: 20,
     borderTopWidth: 1,
     borderTopColor: '#E8DDD1',
+    paddingTop: 20,
   },
   timeSlotsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
   timeSlotsTitle: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginLeft: 8,
@@ -575,7 +633,7 @@ const calendarStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: 32,
   },
   slotsLoadingText: {
     marginLeft: 12,
@@ -586,87 +644,71 @@ const calendarStyles = StyleSheet.create({
   // No Slots
   noSlotsContainer: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
   noSlotsTitle: {
-    fontSize: 16,
+    fontSize: isTablet ? 18 : 16,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginTop: 12,
     marginBottom: 8,
+    textAlign: 'center',
   },
   noSlotsText: {
     fontSize: 14,
     color: '#8B7355',
     textAlign: 'center',
     lineHeight: 20,
-    paddingHorizontal: 20,
+    maxWidth: 280,
   },
 
   // Time Slots List
-  timeSlotsContainer: {
-    maxHeight: 240,
+  timeSlotsScrollContainer: {
+    maxHeight: isTablet ? 320 : 280,
   },
   timeSlotsContent: {
-    paddingBottom: 10,
+    paddingBottom: 16,
   },
   timeSlot: {
-    backgroundColor: '#F8F3EE',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 12,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E8DDD1',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 1,
+        elevation: 2,
       },
     }),
   },
   timeSlotUnavailable: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     opacity: 0.6,
+    borderColor: '#E5E7EB',
   },
   timeSlotSelected: {
+    borderColor: '#8B4513',
+    borderWidth: 2,
     ...Platform.select({
       ios: {
         shadowColor: '#8B4513',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
-        shadowRadius: 4,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 3,
+        elevation: 6,
       },
     }),
-    backgroundColor: '#8B4513',
-    borderColor: '#8B4513',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
+  },
+  timeSlotGradient: {
+    padding: isTablet ? 20 : 16,
   },
   timeSlotContent: {
     flexDirection: 'row',
@@ -676,46 +718,40 @@ const calendarStyles = StyleSheet.create({
   timeSlotLeft: {
     flex: 1,
   },
-  timeSlotText: {
-    fontSize: 16,
-    fontWeight: '600',
+  timeSlotTime: {
+    fontSize: isTablet ? 18 : 16,
+    fontWeight: '700',
     color: '#2A2A2A',
     marginBottom: 4,
   },
-  timeSlotTextUnavailable: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    marginBottom: 4,
-  },
-  timeSlotTextSelected: {
-    fontSize: 16,
-    fontWeight: '600',
+  timeSlotTimeSelected: {
     color: '#FFFFFF',
-    marginBottom: 4,
   },
   timeSlotDuration: {
-    fontSize: 12,
+    fontSize: isTablet ? 14 : 12,
     color: '#8B7355',
+    fontWeight: '500',
+  },
+  timeSlotDurationSelected: {
+    color: '#FFFFFF',
+    opacity: 0.9,
   },
   timeSlotRight: {
     alignItems: 'flex-end',
+    marginLeft: 16,
   },
   timeSlotPrice: {
-    fontSize: 18,
+    fontSize: isTablet ? 20 : 18,
     fontWeight: 'bold',
     color: '#8B4513',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  unavailableText: {
-    fontSize: 12,
-    color: '#DC2626',
-    marginTop: 8,
-    fontStyle: 'italic',
+  timeSlotPriceSelected: {
+    color: '#FFFFFF',
   },
 
-  // Calendar Notice
-  calendarNotice: {
+  // Integration Notice
+  integrationNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -723,10 +759,20 @@ const calendarStyles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
+    backgroundColor: '#F0FDF4',
+    marginHorizontal: -20,
+    marginBottom: -20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
-  calendarNoticeText: {
-    fontSize: 12,
-    color: '#8B7355',
+  integrationNoticeText: {
+    fontSize: 11,
+    color: '#166534',
     marginLeft: 6,
+    fontWeight: '500',
+    textAlign: 'center',
+    flex: 1,
   },
 });

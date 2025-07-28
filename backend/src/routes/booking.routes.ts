@@ -140,45 +140,7 @@ router.put(
   validateSchema(rescheduleBookingSchema),
   bookingController.rescheduleBooking
 );
-
-router.post(
-  '/:sessionId/rate',
-  validateSchema(rateSessionSchema),
-  bookingController.rateSession
-);
-
-// Google integration endpoints
-router.post('/google/calendar/check-availability', async (req, res) => {
-  try {
-    const { mentorId, date, slots } = req.body;
     
-    if (!mentorId || !date || !slots) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required parameters: mentorId, date, slots',
-      });
-    }
-
-    const googleCalendarService = await import('../services/googleCalendar.service');
-    const availableSlots = await googleCalendarService.default.checkAvailability(
-      mentorId,
-      date,
-      slots
-    );
-    
-    return res.json({
-      success: true,
-      data: { availableSlots },
-    });
-  } catch (error: any) {
-    console.error('❌ Google Calendar availability check failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to check Google Calendar availability',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
 
 router.post('/google/meet/create', async (req, res) => {
   try {
@@ -213,31 +175,7 @@ router.post('/google/meet/create', async (req, res) => {
   }
 });
 
-router.post('/google/calendar/create-event', async (req, res) => {
-  try {
-    const { eventData, mentorId, studentId } = req.body;
-    
-    const googleCalendarService = await import('../services/googleCalendar.service');
-    const result = await googleCalendarService.default.createEvent({
-      summary: eventData.summary,
-      description: eventData.description,
-      startTime: eventData.start?.dateTime || eventData.startTime,
-      endTime: eventData.end?.dateTime || eventData.endTime,
-      attendees: eventData.attendees || [],
-      meetingLink: eventData.meetingLink,
-      timezone: eventData.start?.timeZone || 'UTC',
-    });
 
-    return res.json(result);
-  } catch (error: any) {
-    console.error('❌ Calendar event creation failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create calendar event',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
 
 // Payment endpoints
 router.post('/payment/process', async (req, res) => {
