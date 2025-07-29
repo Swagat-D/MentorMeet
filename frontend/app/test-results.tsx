@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PieChart } from 'react-native-chart-kit';
 import psychometricService from '@/services/psychometricService';
+import { PersonalInsights } from '@/services/psychometricService';
 
 const { width } = Dimensions.get('window');
 const chartWidth = width - 48;
@@ -296,6 +297,44 @@ export default function TestResults() {
     );
   };
 
+  const renderPersonalInsightsResults = () => {
+  if (!testData?.personalInsightsResult) return null;
+
+  const insights = testData.personalInsightsResult.responses;
+
+  return (
+    <View style={styles.resultCard}>
+      <Text style={styles.resultTitle}>Personal Insights</Text>
+      <View style={styles.insightsContainer}>
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>What You Enjoy:</Text>
+          <Text style={styles.insightValue}>{insights.whatYouLike}</Text>
+        </View>
+        
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Your Strengths:</Text>
+          <Text style={styles.insightValue}>{insights.whatYouAreGoodAt}</Text>
+        </View>
+        
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Recent Projects:</Text>
+          <Text style={styles.insightValue}>{insights.recentProjects}</Text>
+        </View>
+        
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Character Strengths:</Text>
+          <Text style={styles.insightValue}>{insights.characterStrengths.join(', ')}</Text>
+        </View>
+        
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Life Values:</Text>
+          <Text style={styles.insightValue}>{insights.valuesInLife.join(', ')}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -345,6 +384,7 @@ export default function TestResults() {
         {testData?.riasecResult && renderRiasecResults()}
         {testData?.brainProfileResult && renderBrainProfileResults()}
         {testData?.employabilityResult && renderEmployabilityResults()}
+        {testData?.personalInsightsResult && renderPersonalInsightsResults()}
         
         {completedSections === 0 && (
           <View style={styles.noResultsContainer}>
@@ -381,7 +421,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingTop: 45,
     paddingBottom: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderBottomWidth: 1,
@@ -580,6 +620,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  insightsContainer: {
+  paddingHorizontal: 20,
+  paddingBottom: 20,
+  gap: 16,
+},
+insightItem: {
+  backgroundColor: 'rgba(220, 38, 38, 0.05)',
+  padding: 16,
+  borderRadius: 12,
+  borderLeftWidth: 4,
+  borderLeftColor: '#DC2626',
+},
+insightLabel: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#DC2626',
+  marginBottom: 8,
+},
+insightValue: {
+  fontSize: 14,
+  color: '#4a3728',
+  lineHeight: 20,
+},
   noResultsContainer: {
     alignItems: 'center',
     paddingVertical: 60,

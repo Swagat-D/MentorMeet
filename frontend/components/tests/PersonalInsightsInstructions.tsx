@@ -87,6 +87,21 @@ export default function PersonalInsightsInstructions({ onBeginTest, onBack, test
           </View>
         </View>
 
+        {/* Completion Status Card */}
+        {testData && testData.sectionsCompleted.personalInsights && (
+        <View style={styles.statusCard}>
+          <LinearGradient colors={['#059669', '#10B981']} style={styles.statusHeader}>
+          <MaterialIcons name="check-circle" size={24} color="#FFFFFF" />
+            <Text style={styles.statusTitle}>Section Completed</Text>
+            <Text style={styles.statusSubtitle}>
+              {Object.values(testData.sectionsCompleted).every(Boolean) 
+                ? 'You can retake this assessment' 
+                : 'Complete other sections to retake this test'}
+            </Text>
+          </LinearGradient>
+        </View>
+        )}
+
         {/* Begin Button */}
         <TouchableOpacity style={styles.beginButton} onPress={onBeginTest}>
           <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.beginButtonGradient}>

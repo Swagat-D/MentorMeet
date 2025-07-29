@@ -1,4 +1,4 @@
-// frontend/components/tests/PersonalInsightsResults.tsx - Professional Results
+// frontend/components/tests/PersonalInsightsResults.tsx - Updated to match other results pages
 import React from 'react';
 import {
   View,
@@ -28,28 +28,32 @@ interface Props {
 
 export default function PersonalInsightsResults({ insights, testData, onBack }: Props) {
   const renderInsightCard = (title: string, content: string, icon: string) => (
-    <View style={styles.insightCard}>
-      <View style={styles.cardHeader}>
-        <MaterialIcons name={icon as any} size={24} color="#DC2626" />
-        <Text style={styles.cardTitle}>{title}</Text>
+    <View style={styles.resultCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.insightContainer}>
+        <View style={styles.insightHeader}>
+          <MaterialIcons name={icon as any} size={20} color="#DC2626" />
+        </View>
+        <Text style={styles.insightText}>{content}</Text>
       </View>
-      <Text style={styles.cardContent}>{content}</Text>
     </View>
   );
 
   const renderListCard = (title: string, items: string[], icon: string) => (
-    <View style={styles.insightCard}>
-      <View style={styles.cardHeader}>
-        <MaterialIcons name={icon as any} size={24} color="#DC2626" />
-        <Text style={styles.cardTitle}>{title}</Text>
-      </View>
+    <View style={styles.resultCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.listContainer}>
-        {items.map((item, index) => (
-          <View key={index} style={styles.listItem}>
-            <View style={styles.listBullet} />
-            <Text style={styles.listText}>{item}</Text>
-          </View>
-        ))}
+        <View style={styles.insightHeader}>
+          <MaterialIcons name={icon as any} size={20} color="#DC2626" />
+        </View>
+        <View style={styles.itemsList}>
+          {items.map((item, index) => (
+            <View key={index} style={styles.listItem}>
+              <View style={styles.listBullet} />
+              <Text style={styles.listText}>{item}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -58,14 +62,13 @@ export default function PersonalInsightsResults({ insights, testData, onBack }: 
     <SafeAreaView style={styles.container}>
       <LinearGradient colors={['#fefbf3', '#f8f6f0']} style={styles.background} />
 
-      {/* Header */}
+      {/* Header - Matching other results pages */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <MaterialIcons name="close" size={24} color="#4a3728" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Personal Insights</Text>
-          <Text style={styles.headerSubtitle}>Your profile summary</Text>
+          <Text style={styles.headerTitle}>Personal Insights Results</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/(tabs)/')} style={styles.homeButton}>
           <MaterialIcons name="home" size={24} color="#4a3728" />
@@ -73,25 +76,16 @@ export default function PersonalInsightsResults({ insights, testData, onBack }: 
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        {/* Completion Message */}
-        <View style={styles.completionCard}>
-          <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.completionHeader}>
-            <MaterialIcons name="check-circle" size={32} color="#FFFFFF" />
-            <Text style={styles.completionTitle}>Personal Insights Complete!</Text>
-            <Text style={styles.completionSubtitle}>
-              Your personal profile has been successfully captured
-            </Text>
-            {testData && (
-              <View style={styles.testStatusContainer}>
-                <Text style={styles.testStatusText}>
-                  Assessment Status: {testData.isComplete ? 'All Sections Complete 🎉' : `${testData.completionPercentage}% Complete`}
-                </Text>
-              </View>
-            )}
+        {/* Main Results Header - Matching other results */}
+        <View style={styles.resultCard}>
+          <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.mainHeader}>
+            <MaterialIcons name="person" size={32} color="#FFFFFF" />
+            <Text style={styles.mainTitle}>Personal Profile Complete</Text>
+            <Text style={styles.mainSubtitle}>Your insights have been captured</Text>
           </LinearGradient>
         </View>
 
-        {/* Insights Cards */}
+        {/* Insights Results */}
         {renderInsightCard(
           "What You Enjoy",
           insights.whatYouLike,
@@ -122,7 +116,7 @@ export default function PersonalInsightsResults({ insights, testData, onBack }: 
           "favorite-border"
         )}
 
-        {/* Action Buttons */}
+        {/* Action Buttons - Matching other results */}
         <View style={styles.actionButtons}>
           <TouchableOpacity 
             style={styles.actionButton}
@@ -130,7 +124,7 @@ export default function PersonalInsightsResults({ insights, testData, onBack }: 
           >
             <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionButtonGradient}>
               <MaterialIcons name="psychology" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Back to Assessment</Text>
+              <Text style={styles.actionButtonText}>Continue Assessment</Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -185,11 +179,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#4a3728',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#8b7355',
-    marginTop: 2,
-  },
   homeButton: {
     padding: 8,
     borderRadius: 8,
@@ -201,80 +190,67 @@ const styles = StyleSheet.create({
   content: {
     padding: 24,
   },
-  completionCard: {
+  resultCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.2)',
+    borderColor: 'rgba(184, 134, 100, 0.1)',
     overflow: 'hidden',
   },
-  completionHeader: {
+  mainHeader: {
     alignItems: 'center',
     padding: 32,
   },
-  completionTitle: {
-    fontSize: 20,
+  mainTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginTop: 12,
     marginBottom: 8,
   },
-  completionSubtitle: {
+  mainSubtitle: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
-    lineHeight: 20,
   },
-  testStatusContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  testStatusText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  insightCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(184, 134, 100, 0.1)',
-    shadowColor: '#8b7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#4a3728',
+    padding: 20,
+    paddingBottom: 16,
   },
-  cardContent: {
+  insightContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  insightHeader: {
+    marginBottom: 12,
+  },
+  insightText: {
     fontSize: 15,
     color: '#4a3728',
     lineHeight: 22,
-    paddingLeft: 36,
+    backgroundColor: 'rgba(220, 38, 38, 0.05)',
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#DC2626',
   },
   listContainer: {
-    paddingLeft: 36,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  itemsList: {
     gap: 8,
   },
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(220, 38, 38, 0.05)',
+    padding: 12,
+    borderRadius: 8,
     gap: 12,
   },
   listBullet: {
@@ -287,6 +263,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#4a3728',
     fontWeight: '500',
+    flex: 1,
   },
   actionButtons: {
     gap: 12,

@@ -63,7 +63,7 @@ const testSections: TestSection[] = [
     questions: 25
   },
   {
-    id: 'personal',
+    id: 'personalInsights',
     title: 'Personal Insights',
     duration: '3-5 min',
     route: '/tests/personal-insights',
@@ -157,9 +157,8 @@ export default function PsychometricTest() {
 
   const renderTestCard = (section: TestSection) => {
     const status = getTestStatus(section.id);
-    const isCompleted = status === 'completed_locked';
-    const isAvailable = status === 'available';
-
+    const isCompleted = testData?.sectionsCompleted?.[section.id] || false;
+  const isAvailable = status === 'available';
     return (
       <TouchableOpacity
         key={section.id}

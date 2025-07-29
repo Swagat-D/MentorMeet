@@ -17,6 +17,7 @@ import PersonalInsightsTest from '@/components/tests/PersonalInsightsTest';
 import PersonalInsightsResults from '@/components/tests/PersonalInsightsResults';
 import psychometricService, { PersonalInsights, PsychometricTest } from '@/services/psychometricService';
 
+
 type ScreenType = 'instructions' | 'test' | 'results' | 'submitting' | 'loading';
 
 export default function PersonalInsightsMain() {
