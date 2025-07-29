@@ -15,52 +15,80 @@ export class PsychometricTestService {
    * Create or get existing test for user with optimization
    */
   static async getOrCreateTest(userId: string): Promise<IPsychometricTest> {
-    try {
-      console.log(`📋 Getting/creating test for user: ${userId}`);
-      
-      // Use lean() for better performance on read operations
-      let test = await PsychometricTest.findOne({
-        userId: new Types.ObjectId(userId),
-        status: 'in_progress'
-      }).lean();
-
-      if (!test) {
-        // Create new test with optimized structure
-        const newTest = new PsychometricTest({
-          userId: new Types.ObjectId(userId),
-          status: 'in_progress',
-          startedAt: new Date(),
-          totalTimeSpent: 0,
-          sectionsCompleted: {
-            riasec: false,
-            brainProfile: false,
-            employability: false,
-            personalInsights: false,
-          },
-          progressData: {
-            currentQuestionIndex: 0,
-            partialResponses: {}
-          }
-        });
-
-        await newTest.save();
-        test = await PsychometricTest.findOne({
-          userId: new Types.ObjectId(userId),
-          status: 'in_progress'
-        }).lean();
-        console.log(`✅ Created new test: ${test?.testId}`);
-      } else {
-        console.log(`📋 Found existing test: ${test.testId}`);
-        // Convert lean result back to document
-        test = await PsychometricTest.findById(test._id);
-      }
-
-      return test as IPsychometricTest;
-    } catch (error) {
-      console.error('❌ Error in getOrCreateTest:', error);
-      throw new Error(`Failed to get or create test: ${error}`);
+  try {
+    console.log(`📋 Getting/creating test for user: ${userId}`);
+    
+    if (!userId) {
+      throw new Error('User ID is required');
     }
+
+    // Validate ObjectId format
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new Error('Invalid user ID format');
+    }
+
+    const userObjectId = new Types.ObjectId(userId);
+    
+    // First try to find existing test
+    let test = await PsychometricTest.findOne({
+      userId: userObjectId,
+      status: 'in_progress'
+    });
+
+    if (!test) {
+      console.log('📝 Creating new psychometric test...');
+      
+      // Create new test with all required fields
+      const newTestData = {
+        userId: userObjectId,
+        status: 'in_progress' as const,
+        startedAt: new Date(),
+        totalTimeSpent: 0,
+        sectionsCompleted: {
+          riasec: false,
+          brainProfile: false,
+          employability: false,
+          personalInsights: false,
+        },
+        progressData: {
+          currentQuestionIndex: 0,
+          partialResponses: {}
+        }
+      };
+
+      test = new PsychometricTest(newTestData);
+      await test.save();
+      
+      console.log(`✅ Created new test: ${test.testId}`);
+    } else {
+      console.log(`📋 Found existing test: ${test.testId}`);
+    }
+
+    // Ensure all required fields exist
+    if (!test.sectionsCompleted) {
+      test.sectionsCompleted = {
+        riasec: false,
+        brainProfile: false,
+        employability: false,
+        personalInsights: false,
+      };
+      await test.save();
+    }
+
+    if (!test.progressData) {
+      test.progressData = {
+        currentQuestionIndex: 0,
+        partialResponses: {}
+      };
+      await test.save();
+    }
+
+    return test;
+  } catch (error) {
+    console.error('❌ Error in getOrCreateTest:', error);
+    throw new Error(`Failed to get or create test: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+}
 
   /**
    * Save RIASEC section results with optimized calculation
@@ -144,6 +172,22 @@ export class PsychometricTestService {
       throw error;
     }
   }
+
+  /**
+ * Check if user can access a specific test section
+ */
+  static canAccessSection(testData: any, sectionId: string): boolean {
+  if (!testData) return true;
+  
+  const sectionsCompleted = testData.sectionsCompleted;
+  const allSectionsCompleted = Object.values(sectionsCompleted).every(Boolean);
+  
+  if (sectionsCompleted[sectionId]) {
+    return allSectionsCompleted; 
+  }
+  
+  return true; 
+}
 
   /**
    * Save Brain Profile section results
@@ -703,6 +747,122 @@ export class PsychometricTestService {
       throw error;
     }
   }
+
+    static async validateUser(userId: string): Promise<boolean> {
+  try {
+    if (!Types.ObjectId.isValid(userId)) {
+      return false;
+    }
+    
+    const User = require('../models/User.model').default;
+    const user = await User.findById(userId);
+    return !!user;
+  } catch (error) {
+    console.error('❌ Error validating user:', error);
+    return false;
+  }
+}
+
+/**
+ * Start a new test session (for retaking)
+ */
+static async startNewTestSession(userId: string): Promise<IPsychometricTest> {
+  try {
+    console.log(`🔄 Starting new test session for user: ${userId}`);
+    
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new Error('Invalid user ID');
+    }
+
+    const userObjectId = new Types.ObjectId(userId);
+    
+    // Mark any existing in-progress test as completed/abandoned
+    await PsychometricTest.updateMany(
+      { 
+        userId: userObjectId, 
+        status: 'in_progress' 
+      },
+      { 
+        status: 'abandoned',
+        completedAt: new Date()
+      }
+    );
+    
+    // Create a completely new test
+    const newTestData = {
+      userId: userObjectId,
+      status: 'in_progress' as const,
+      startedAt: new Date(),
+      totalTimeSpent: 0,
+      sectionsCompleted: {
+        riasec: false,
+        brainProfile: false,
+        employability: false,
+        personalInsights: false,
+      },
+      progressData: {
+        currentQuestionIndex: 0,
+        partialResponses: {}
+      }
+    };
+
+    const newTest = new PsychometricTest(newTestData);
+    await newTest.save();
+    
+    console.log(`✅ Created new test session: ${newTest.testId}`);
+    return newTest;
+  } catch (error) {
+    console.error('❌ Error starting new test session:', error);
+    throw new Error(`Failed to start new test session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get test dashboard data with proper status logic
+ */
+
+static async getTestDashboardData(userId: string): Promise<{
+  testData: IPsychometricTest;
+  completedCount: number;
+  allCompleted: boolean;
+  sectionStatus: { [key: string]: 'available' | 'completed_locked' | 'completed_available' };
+}> {
+  try {
+    const testData = await this.getOrCreateTest(userId);
+    
+    const sectionsCompleted = testData.sectionsCompleted || {
+      riasec: false,
+      brainProfile: false,
+      employability: false,
+      personalInsights: false,
+    };
+    
+    const completedCount = Object.values(sectionsCompleted).filter(Boolean).length;
+    const allCompleted = Object.values(sectionsCompleted).every(Boolean);
+    
+    const sectionStatus: { [key: string]: "available" | "completed_locked" | "completed_available" } = {};
+    
+    Object.keys(sectionsCompleted).forEach(sectionId => {
+      if (sectionsCompleted[sectionId as keyof typeof sectionsCompleted]) {
+        // If section is completed
+        sectionStatus[sectionId] = allCompleted ? 'completed_available' : 'completed_locked';
+      } else {
+        // If section is not completed
+        sectionStatus[sectionId] = 'available';
+      }
+    });
+
+    return {
+      testData,
+      completedCount,
+      allCompleted,
+      sectionStatus
+    };
+  } catch (error) {
+    console.error('❌ Error getting dashboard data:', error);
+    throw error;
+  }
+}
 
   /**
    * Get platform statistics

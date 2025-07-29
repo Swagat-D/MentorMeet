@@ -149,6 +149,88 @@ class EnhancedPsychometricService {
   }
 
   /**
+ * Get test dashboard data (local implementation)
+ */
+async getTestDashboardData(): Promise<{
+  testData: PsychometricTest;
+  completedCount: number;
+  allCompleted: boolean;
+  sectionStatus: { [key: string]: 'available' | 'completed_locked' | 'completed_available' };
+}> {
+  try {
+    console.log('📊 Getting test dashboard data...');
+    
+    // Get current test data using existing method
+    const testData = await this.getOrCreateTest();
+    
+    const sectionsCompleted = testData.sectionsCompleted || {
+      riasec: false,
+      brainProfile: false,
+      employability: false,
+      personalInsights: false,
+    };
+    
+    // Calculate completion stats
+    const completedCount = Object.values(sectionsCompleted).filter(Boolean).length;
+    const allCompleted = Object.values(sectionsCompleted).every(Boolean);
+    
+    // Determine section access status
+    const sectionStatus: { [key: string]: 'available' | 'completed_locked' | 'completed_available' } = {};
+    
+    Object.keys(sectionsCompleted).forEach(sectionId => {
+      const isCompleted = sectionsCompleted[sectionId as keyof typeof sectionsCompleted];
+      
+      if (isCompleted) {
+        // If section is completed, make it available for retake only if all sections are done
+        sectionStatus[sectionId] = allCompleted ? 'completed_available' : 'completed_locked';
+      } else {
+        // If section is not completed, it's available
+        sectionStatus[sectionId] = 'available';
+      }
+    });
+
+    console.log(`✅ Dashboard data ready: ${completedCount}/4 sections completed`);
+    console.log(`📋 Section status:`, sectionStatus);
+    
+    return {
+      testData,
+      completedCount,
+      allCompleted,
+      sectionStatus
+    };
+  } catch (error) {
+    console.error('❌ Error getting test dashboard data:', error);
+    
+    // Return safe fallback data
+    const fallbackTestData: PsychometricTest = {
+      testId: 'fallback',
+      status: 'in_progress',
+      completionPercentage: 0,
+      sectionsCompleted: {
+        riasec: false,
+        brainProfile: false,
+        employability: false,
+        personalInsights: false,
+      },
+      startedAt: new Date().toISOString(),
+      totalTimeSpent: 0,
+    };
+    
+    return {
+      testData: fallbackTestData,
+      completedCount: 0,
+      allCompleted: false,
+      sectionStatus: {
+        riasec: 'available',
+        brainProfile: 'available',
+        employability: 'available',
+        personalInsights: 'available',
+      }
+    };
+  }
+}
+
+  /**
    * Enhanced request wrapper using the improved ApiService
    */
   private async makeRequest(endpoint: string, options: any = {}): Promise<any> {
@@ -215,6 +297,99 @@ class EnhancedPsychometricService {
       throw error;
     }
   }
+
+/**
+ * Check if user can access a specific test section
+ */
+async checkSectionAccess(sectionId: 'riasec' | 'brainProfile' | 'employability' | 'personalInsights'): Promise<{
+  canAccess: boolean;
+  sectionCompleted: boolean;
+  allSectionsCompleted: boolean;
+  message: string;
+}> {
+  try {
+    console.log(`🔐 Checking access for section: ${sectionId}`);
+    
+    const endpoint = await this.buildPsychometricUrl(`/section-access/${sectionId}`);
+    const response = await this.makeRequest(endpoint, {
+      method: 'GET',
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to check section access');
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error checking section access:', error);
+    // Return permissive access on error
+    return {
+      canAccess: true,
+      sectionCompleted: false,
+      allSectionsCompleted: false,
+      message: 'Unable to verify access'
+    };
+  }
+}
+
+/**
+ * Get test status with access control information
+ */
+async getTestStatusWithAccess(): Promise<{
+  testData: any;
+  sectionAccess: {
+    riasec: boolean;
+    brainProfile: boolean;
+    employability: boolean;
+    personalInsights: boolean;
+  };
+  completedCount: number;
+  canRetakeTests: boolean;
+}> {
+  try {
+    const testData = await this.getOrCreateTest();
+    
+    const sectionsCompleted = testData.sectionsCompleted;
+    const completedCount = Object.values(sectionsCompleted).filter(Boolean).length;
+    const allCompleted = Object.values(sectionsCompleted).every(Boolean);
+    
+    const sectionAccess = {
+      riasec: !sectionsCompleted.riasec || allCompleted,
+      brainProfile: !sectionsCompleted.brainProfile || allCompleted,
+      employability: !sectionsCompleted.employability || allCompleted,
+      personalInsights: !sectionsCompleted.personalInsights || allCompleted,
+    };
+
+    return {
+      testData,
+      sectionAccess,
+      completedCount,
+      canRetakeTests: allCompleted
+    };
+  } catch (error) {
+    console.error('❌ Error getting test status with access:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset all tests (start completely over)
+ */
+async resetAllTests(): Promise<void> {
+  try {
+    console.log('🔄 Resetting all psychometric tests...');
+    
+    const testData = await this.getOrCreateTest();
+    if (testData.testId) {
+      await this.deleteTest(testData.testId);
+    }
+    
+    console.log('✅ All tests reset successfully');
+  } catch (error) {
+    console.error('❌ Error resetting tests:', error);
+    throw error;
+  }
+}
 
   /**
    * Build psychometric endpoint URLs dynamically

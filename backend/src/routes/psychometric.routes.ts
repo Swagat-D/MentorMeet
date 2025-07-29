@@ -87,6 +87,45 @@ router.get('/test', testRateLimit, (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/psychometric/section-access/:sectionId - Check if user can access a section
+ */
+router.get('/section-access/:sectionId', [
+  testRateLimit,
+  withAuth.authenticate,
+  param('sectionId')
+    .isIn(['riasec', 'brainProfile', 'employability', 'personalInsights'])
+    .withMessage('Invalid section ID'),
+  validateRequest
+], async (req: Request, res: Response) => {
+  try {
+    const user = req.user as IUser;
+    const { sectionId } = req.params;
+    type SectionKey = 'riasec' | 'brainProfile' | 'employability' | 'personalInsights';
+    const sectionKey = sectionId as SectionKey;
+
+    console.log(`🔐 Checking access for user: ${user._id}, section: ${sectionId}`);
+
+    const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
+    const canAccess = PsychometricTestService.canAccessSection(test, sectionKey);
+
+    return res.json({
+      success: true,
+      data: {
+        canAccess,
+        sectionCompleted: test.sectionsCompleted[sectionKey],
+        allSectionsCompleted: Object.values(test.sectionsCompleted).every(Boolean),
+        message: canAccess 
+          ? 'Access granted' 
+          : 'Complete other sections first to re-access this test'
+      }
+    });
+
+  } catch (error: any) {
+    return handleServiceError(error, res, 'Failed to check section access');
+  }
+});
+
+/**
  * GET /api/v1/psychometric/user-test - Get or create user test
  */
 router.get('/user-test', 
@@ -95,36 +134,164 @@ router.get('/user-test',
   async (req: Request, res: Response) => {
     try {
       const user = req.user as IUser;
+      
+      if (!user || !user._id) {
+        return res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+      }
+
       console.log(`🧠 Getting/creating psychometric test for user: ${user._id}`);
 
-      const test = await PsychometricTestService.getOrCreateTest(user._id.toString());
+      // Validate user exists and has proper _id
+      const userId = user._id.toString();
+      console.log(`👤 User ID: ${userId}`);
+
+      const test = await PsychometricTestService.getOrCreateTest(userId);
+
+      if (!test) {
+        throw new Error('Failed to create or retrieve test');
+      }
+
+      // Calculate completion percentage safely
+      const sectionsCompleted = test.sectionsCompleted || {
+        riasec: false,
+        brainProfile: false,
+        employability: false,
+        personalInsights: false,
+      };
+
+      const completedCount = Object.values(sectionsCompleted).filter(Boolean).length;
+      const completionPercentage = Math.round((completedCount / 4) * 100);
+
+      // Get next section safely
+      let nextSection = null;
+      if (typeof test.getNextSection === 'function') {
+        nextSection = test.getNextSection();
+      } else {
+        // Fallback logic
+        const sections = ['riasec', 'brainProfile', 'employability', 'personalInsights'];
+        for (const section of sections) {
+          if (!sectionsCompleted[section as keyof typeof sectionsCompleted]) {
+            nextSection = section;
+            break;
+          }
+        }
+      }
+
+      // Check if test is complete
+      let isComplete = false;
+      if (typeof test.isComplete === 'function') {
+        isComplete = test.isComplete();
+      } else {
+        isComplete = Object.values(sectionsCompleted).every(Boolean);
+      }
+
+      const responseData = {
+        testId: test.testId,
+        status: test.status,
+        completionPercentage,
+        sectionsCompleted,
+        nextSection,
+        startedAt: test.startedAt,
+        totalTimeSpent: test.totalTimeSpent || 0,
+        lastActiveSection: test.lastActiveSection,
+        progressData: test.progressData || {
+          currentQuestionIndex: 0,
+          partialResponses: {}
+        },
+        riasecResult: test.riasecResult || null,
+        brainProfileResult: test.brainProfileResult || null,
+        employabilityResult: test.employabilityResult || null,
+        personalInsightsResult: test.personalInsightsResult || null,
+        overallResults: test.overallResults || null,
+        isComplete
+      };
+
+      console.log(`✅ Test data prepared for user ${userId}: ${test.testId} (${completionPercentage}% complete)`);
 
       return res.json({
         success: true,
-        data: {
-          testId: test.testId,
-          status: test.status,
-          completionPercentage: Math.round((Object.values(test.sectionsCompleted).filter(Boolean).length / 4) * 100),
-          sectionsCompleted: test.sectionsCompleted,
-          nextSection: test.getNextSection ? test.getNextSection() : null,
-          startedAt: test.startedAt,
-          totalTimeSpent: test.totalTimeSpent,
-          lastActiveSection: test.lastActiveSection,
-          progressData: test.progressData,
-          riasecResult: test.riasecResult,
-          brainProfileResult: test.brainProfileResult,
-          employabilityResult: test.employabilityResult,
-          personalInsightsResult: test.personalInsightsResult,
-          overallResults: test.overallResults,
-          isComplete: test.isComplete()
-        }
+        data: responseData
       });
 
     } catch (error: any) {
+      console.error('❌ Error in /user-test route:', error);
+      
+      // More specific error handling
+      if (error.message?.includes('User ID')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid user information',
+          ...(process.env.NODE_ENV === 'development' && { debug: error.message })
+        });
+      }
+      
       return handleServiceError(error, res, 'Failed to get psychometric test');
     }
   }
 );
+
+/**
+ * POST /api/v1/psychometric/start-new-session - Start a new test session
+ */
+router.post('/start-new-session', [
+  submissionRateLimit,
+  withAuth.authenticate,
+  validateRequest
+], async (req: Request, res: Response) => {
+  try {
+    const user = req.user as IUser;
+    
+    console.log(`🔄 Starting new test session for user: ${user._id}`);
+
+    const newTest = await PsychometricTestService.startNewTestSession(user._id.toString());
+
+    return res.json({
+      success: true,
+      message: 'New test session started successfully',
+      data: {
+        testId: newTest.testId,
+        status: newTest.status,
+        completionPercentage: 0,
+        sectionsCompleted: newTest.sectionsCompleted,
+        startedAt: newTest.startedAt,
+        isComplete: false
+      }
+    });
+
+  } catch (error: any) {
+    return handleServiceError(error, res, 'Failed to start new test session');
+  }
+});
+
+/**
+ * GET /api/v1/psychometric/dashboard-data - Get dashboard data with status logic
+ */
+router.get('/dashboard-data', [
+  testRateLimit,
+  withAuth.authenticate,
+  validateRequest
+], async (req: Request, res: Response) => {
+  try {
+    const user = req.user as IUser;
+    
+    console.log(`📊 Getting dashboard data for user: ${user._id}`);
+
+    const dashboardData = await PsychometricTestService.getTestDashboardData(user._id.toString());
+
+    return res.json({
+      success: true,
+      data: dashboardData
+    });
+
+  } catch (error: any) {
+    return handleServiceError(error, res, 'Failed to get dashboard data');
+  }
+});
+
+
 
 /**
  * POST /api/v1/psychometric/riasec - Submit RIASEC results

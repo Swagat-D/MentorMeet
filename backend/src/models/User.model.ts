@@ -72,7 +72,7 @@ export interface IUser extends Document {
   // OAuth fields
   provider: 'email' | 'google';
   googleId?: string;
-  canChangePassword: boolean; // Derived from provider
+  canChangePassword: boolean; 
   
   // Profile Information (from onboarding)
   gender?: Gender;
@@ -83,7 +83,7 @@ export interface IUser extends Document {
   timezone?: string;
   
   // Learning Information
-  goals: string[]; // Array of goal names/IDs
+  goals: string[]; 
   
   // Account Status
   isEmailVerified: boolean;

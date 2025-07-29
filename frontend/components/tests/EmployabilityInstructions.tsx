@@ -1,21 +1,15 @@
-// frontend/components/tests/EmployabilityInstructions.tsx - Employability Instructions
+// frontend/components/tests/EmployabilityInstructions.tsx - Professional Instructions
 import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  Dimensions,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { stepsInfo } from '@/data/employabilityQuestions';
-
-const { width } = Dimensions.get('window');
-const isTablet = width > 768;
-const isSmallScreen = width < 375;
 
 interface Props {
   onBeginTest: () => void;
@@ -25,183 +19,119 @@ interface Props {
 export default function EmployabilityInstructions({ onBeginTest, onBack }: Props) {
   return (
     <SafeAreaView style={styles.container}>
-      {/* Responsive Fixed Header */}
+      <LinearGradient colors={['#fefbf3', '#f8f6f0']} style={styles.background} />
+
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <MaterialIcons name="arrow-back" size={24} color="#2A2A2A" />
+          <MaterialIcons name="arrow-back" size={24} color="#4a3728" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Employability Test</Text>
-          <Text style={styles.headerSubtitle}>STEPS Framework Assessment</Text>
+          <Text style={styles.headerTitle}>Employability Assessment</Text>
+          <Text style={styles.headerSubtitle}>25 questions • 8-10 minutes</Text>
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.instructionsContent}>
-        {/* Responsive Hero Section */}
-        <LinearGradient colors={['#059669', '#10B981']} style={styles.instructionsHero}>
-          <MaterialIcons name="work" size={isTablet ? 80 : 60} color="#FFFFFF" />
-          <Text style={styles.instructionsTitle}>STEPS Assessment</Text>
-          <Text style={styles.instructionsSubtitle}>
-            Evaluate your job readiness across key employability dimensions
-          </Text>
-        </LinearGradient>
-
-        {/* Responsive Instructions Card */}
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        {/* Main Instructions */}
         <View style={styles.instructionsCard}>
-          <Text style={styles.cardTitle}>Assessment Guidelines</Text>
-          <View style={styles.instructionsList}>
-            <View style={styles.instructionItem}>
-              <View style={styles.instructionIcon}>
-                <MaterialIcons name="self-improvement" size={24} color="#059669" />
-              </View>
-              <View style={styles.instructionContent}>
-                <Text style={styles.instructionTitle}>Rate Yourself Honestly</Text>
-                <Text style={styles.instructionText}>
-                  Think about what others say about you and rate yourself on a scale of 1-5 (1 = Poor, 5 = Excellent)
-                </Text>
-              </View>
-            </View>
+          <View style={styles.iconContainer}>
+            <MaterialIcons name="work" size={32} color="#059669" />
+          </View>
+          
+          <Text style={styles.title}>Job Readiness Assessment</Text>
+          <Text style={styles.description}>
+            Evaluate your employability skills across the STEPS framework to determine your job readiness.
+          </Text>
 
-            <View style={styles.instructionItem}>
-              <View style={styles.instructionIcon}>
-                <MaterialIcons name="lightbulb" size={24} color="#F59E0B" />
-              </View>
-              <View style={styles.instructionContent}>
-                <Text style={styles.instructionTitle}>Use the Hints</Text>
-                <Text style={styles.instructionText}>
-                  Each question has helpful hints to guide your self-reflection and ensure accurate assessment
-                </Text>
-              </View>
+          <View style={styles.stepsList}>
+            <View style={styles.stepItem}>
+              <Text style={styles.stepNumber}>1</Text>
+              <Text style={styles.stepText}>Rate yourself honestly on each skill</Text>
             </View>
-
-            <View style={styles.instructionItem}>
-              <View style={styles.instructionIcon}>
-                <MaterialIcons name="psychology" size={24} color="#7C3AED" />
-              </View>
-              <View style={styles.instructionContent}>
-                <Text style={styles.instructionTitle}>Think About Feedback</Text>
-                <Text style={styles.instructionText}>
-                  Consider what colleagues, friends, and family have said about your skills and behaviors
-                </Text>
-              </View>
+            <View style={styles.stepItem}>
+              <Text style={styles.stepNumber}>2</Text>
+              <Text style={styles.stepText}>Use the 1-5 scale (1=Poor, 5=Excellent)</Text>
             </View>
-
-            <View style={styles.instructionItem}>
-              <View style={styles.instructionIcon}>
-                <MaterialIcons name="trending-up" size={24} color="#DC2626" />
-              </View>
-              <View style={styles.instructionContent}>
-                <Text style={styles.instructionTitle}>Focus on Growth</Text>
-                <Text style={styles.instructionText}>
-                  Use results to identify strengths and areas for improvement in your professional development
-                </Text>
-              </View>
+            <View style={styles.stepItem}>
+              <Text style={styles.stepNumber}>3</Text>
+              <Text style={styles.stepText}>Consider feedback from others</Text>
             </View>
           </View>
         </View>
 
-        {/* Responsive Test Details */}
-        <View style={styles.testDetails}>
-          <Text style={styles.detailsTitle}>Test Overview</Text>
-          <View style={styles.detailsGrid}>
-            <View style={styles.detailItem}>
-              <MaterialIcons name="quiz" size={20} color="#059669" />
-              <Text style={styles.detailText}>25 Questions</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <MaterialIcons name="schedule" size={20} color="#059669" />
-              <Text style={styles.detailText}>8-10 Minutes</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <MaterialIcons name="star" size={20} color="#059669" />
-              <Text style={styles.detailText}>1-5 Rating Scale</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <MaterialIcons name="insights" size={20} color="#059669" />
-              <Text style={styles.detailText}>Employability Score</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Rating Scale Guide */}
-        <View style={styles.ratingGuide}>
-          <Text style={styles.ratingTitle}>Rating Scale Guide</Text>
-          <View style={styles.ratingItems}>
+        {/* STEPS Framework */}
+        <View style={styles.stepsCard}>
+          <Text style={styles.stepsTitle}>STEPS Framework</Text>
+          <View style={styles.stepsGrid}>
             {[
-              { score: 5, label: 'Excellent', desc: 'I excel in this area', color: '#10B981' },
-              { score: 4, label: 'Good', desc: 'I perform well in this area', color: '#59C875' },
-              { score: 3, label: 'Average', desc: 'I have moderate skills in this area', color: '#F59E0B' },
-              { score: 2, label: 'Below Average', desc: 'I need improvement in this area', color: '#FB923C' },
-              { score: 1, label: 'Poor', desc: 'I struggle significantly in this area', color: '#EF4444' },
-            ].map((rating, index) => (
-              <View key={index} style={styles.ratingItem}>
-                <View style={[styles.ratingScore, { backgroundColor: rating.color }]}>
-                  <Text style={styles.ratingScoreText}>{rating.score}</Text>
+              { letter: 'S', name: 'Self Management', color: '#8B4513' },
+              { letter: 'T', name: 'Team Work', color: '#059669' },
+              { letter: 'E', name: 'Enterprising', color: '#F59E0B' },
+              { letter: 'P', name: 'Problem Solving', color: '#7C3AED' },
+              { letter: 'Sp', name: 'Speaking & Listening', color: '#DC2626' },
+            ].map((step, index) => (
+              <View key={index} style={styles.stepItem}>
+                <View style={[styles.stepIcon, { backgroundColor: step.color }]}>
+                  <Text style={styles.stepLetter}>{step.letter}</Text>
                 </View>
-                <View style={styles.ratingContent}>
-                  <Text style={styles.ratingLabel}>{rating.label}</Text>
-                  <Text style={styles.ratingDesc}>{rating.desc}</Text>
-                </View>
+                <Text style={styles.stepName}>{step.name}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        {/* Responsive STEPS Framework Info */}
-        <View style={styles.stepsInfo}>
-          <Text style={styles.stepsTitle}>The STEPS Framework</Text>
-          <Text style={styles.stepsDescription}>
-            STEPS measures five key dimensions of employability skills essential for career success:
-          </Text>
-          <View style={styles.stepsCategories}>
-            {stepsInfo.map((category, index) => (
-              <View key={index} style={styles.stepsCategory}>
-                <View style={[styles.stepsCategoryIcon, { backgroundColor: category.color }]}>
-                  <Text style={styles.stepsCategoryLetter}>{category.category}</Text>
+        {/* Rating Scale */}
+        <View style={styles.scaleCard}>
+          <Text style={styles.scaleTitle}>Rating Scale</Text>
+          <View style={styles.scaleItems}>
+            {[
+              { score: 5, label: 'Excellent', color: '#059669' },
+              { score: 4, label: 'Good', color: '#10B981' },
+              { score: 3, label: 'Average', color: '#F59E0B' },
+              { score: 2, label: 'Below Average', color: '#FB923C' },
+              { score: 1, label: 'Poor', color: '#EF4444' },
+            ].map((item, index) => (
+              <View key={index} style={styles.scaleItem}>
+                <View style={[styles.scaleNumber, { backgroundColor: item.color }]}>
+                  <Text style={styles.scaleNumberText}>{item.score}</Text>
                 </View>
-                <View style={styles.stepsCategoryContent}>
-                  <Text style={styles.stepsCategoryName}>{category.name}</Text>
-                  <Text style={styles.stepsCategoryDesc}>{category.description}</Text>
-                  <Text style={styles.stepsCategoryImportance}>{category.importance}</Text>
-                </View>
+                <Text style={styles.scaleLabel}>{item.label}</Text>
               </View>
             ))}
           </View>
         </View>
 
         {/* Sample Question */}
-        <View style={styles.sampleSection}>
+        <View style={styles.sampleCard}>
           <Text style={styles.sampleTitle}>Sample Question</Text>
-          <View style={styles.sampleCard}>
-            <Text style={styles.sampleQuestion}>How good are you in managing your time?</Text>
-            <Text style={styles.sampleHint}>
-              <Text style={styles.hintLabel}>Hint: </Text>
-              Think what others say about your Punctuality, Multi-tasking skills and ability to prioritize tasks when you have multiple things to do
-            </Text>
-            <View style={styles.sampleRating}>
-              {[1, 2, 3, 4, 5].map((score) => (
-                <TouchableOpacity
-                  key={score}
-                  style={[
-                    styles.sampleRatingButton,
-                    score === 4 && styles.sampleRatingSelected
-                  ]}
-                >
-                  <Text style={[
-                    styles.sampleRatingText,
-                    score === 4 && styles.sampleRatingTextSelected
-                  ]}>{score}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <Text style={styles.sampleQuestion}>How good are you at managing your time?</Text>
+          
+          <View style={styles.sampleRating}>
+            {[1, 2, 3, 4, 5].map((score) => (
+              <TouchableOpacity
+                key={score}
+                style={[
+                  styles.sampleRatingButton,
+                  score === 4 && styles.sampleRatingSelected
+                ]}
+              >
+                <Text style={[
+                  styles.sampleRatingText,
+                  score === 4 && styles.sampleRatingTextSelected
+                ]}>
+                  {score}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {/* Responsive Begin Button */}
+        {/* Begin Button */}
         <TouchableOpacity style={styles.beginButton} onPress={onBeginTest}>
           <LinearGradient colors={['#059669', '#10B981']} style={styles.beginButtonGradient}>
-            <Text style={styles.beginButtonText}>Begin Assessment</Text>
-            <MaterialIcons name="arrow-forward" size={24} color="#FFFFFF" />
+            <Text style={styles.beginButtonText}>Start Assessment</Text>
+            <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
@@ -212,297 +142,203 @@ export default function EmployabilityInstructions({ onBeginTest, onBack }: Props
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0FDF4',
   },
-  
-  // Responsive Fixed Header
+  background: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: isTablet ? 32 : 20,
-    paddingTop: isTablet ? 20 : 45,
-    paddingBottom: isTablet ? 20 : 20,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderBottomWidth: 1,
-    borderBottomColor: '#E8DDD1',
-    minHeight: isTablet ? 85 : 95,
+    borderBottomColor: 'rgba(184, 134, 100, 0.1)',
   },
   backButton: {
-    padding: isTablet ? 12 : 8,
-    marginRight: isTablet ? 16 : 12,
+    padding: 8,
+    marginRight: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 90, 60, 0.1)',
   },
   headerContent: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: isTablet ? 24 : 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#2A2A2A',
+    color: '#4a3728',
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: isTablet ? 16 : 13,
-    color: '#8B7355',
-    lineHeight: isTablet ? 20 : 16,
+    fontSize: 14,
+    color: '#8b7355',
   },
-  
   scrollView: {
     flex: 1,
   },
-  instructionsContent: {
-    padding: isTablet ? 32 : 20,
+  content: {
+    padding: 24,
+    gap: 24,
   },
-  
-  // Responsive Hero Section
-  instructionsHero: {
-    alignItems: 'center',
-    padding: isTablet ? 40 : 32,
+  instructionsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
-    marginBottom: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.1)',
   },
-  instructionsTitle: {
-    fontSize: isTablet ? 32 : isSmallScreen ? 24 : 28,
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(5, 150, 105, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  instructionsSubtitle: {
-    fontSize: isTablet ? 18 : 16,
-    color: '#E8DDD1',
+    color: '#4a3728',
+    marginBottom: 12,
     textAlign: 'center',
   },
-  
-  // Instructions Card
-  instructionsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 28 : 24,
+  description: {
+    fontSize: 16,
+    color: '#8b7355',
+    textAlign: 'center',
+    lineHeight: 24,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
   },
-  cardTitle: {
-    fontSize: isTablet ? 24 : 22,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-    marginBottom: 20,
-  },
-  instructionsList: {
-    gap: 20,
-  },
-  instructionItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  instructionIcon: {
-    width: isTablet ? 52 : 48,
-    height: isTablet ? 52 : 48,
-    borderRadius: isTablet ? 26 : 24,
-    backgroundColor: '#F0FDF4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  instructionContent: {
-    flex: 1,
-  },
-  instructionTitle: {
-    fontSize: isTablet ? 18 : 16,
-    fontWeight: '600',
-    color: '#2A2A2A',
-    marginBottom: 4,
-  },
-  instructionText: {
-    fontSize: isTablet ? 16 : 14,
-    color: '#8B7355',
-    lineHeight: isTablet ? 22 : 20,
-  },
-  
-  // Test Details
-  testDetails: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 24 : 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
-  },
-  detailsTitle: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-    marginBottom: 16,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: isTablet ? (width - 120) / 2 : (width - 80) / 2,
-  },
-  detailText: {
-    fontSize: isTablet ? 16 : 14,
-    color: '#2A2A2A',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  
-  // Rating Guide
-  ratingGuide: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 24 : 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
-  },
-  ratingTitle: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-    marginBottom: 16,
-  },
-  ratingItems: {
-    gap: 12,
-  },
-  ratingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingScore: {
-    width: isTablet ? 36 : 32,
-    height: isTablet ? 36 : 32,
-    borderRadius: isTablet ? 18 : 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  ratingScoreText: {
-    fontSize: isTablet ? 16 : 14,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  ratingContent: {
-    flex: 1,
-  },
-  ratingLabel: {
-    fontSize: isTablet ? 16 : 14,
-    fontWeight: '600',
-    color: '#2A2A2A',
-  },
-  ratingDesc: {
-    fontSize: isTablet ? 14 : 12,
-    color: '#8B7355',
-    marginTop: 2,
-  },
-  
-  // STEPS Info
-  stepsInfo: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: isTablet ? 24 : 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
-  },
-  stepsTitle: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-    marginBottom: 12,
-  },
-  stepsDescription: {
-    fontSize: isTablet ? 16 : 14,
-    color: '#8B7355',
-    lineHeight: isTablet ? 22 : 20,
-    marginBottom: 20,
-  },
-  stepsCategories: {
+  stepsList: {
+    width: '100%',
     gap: 16,
   },
-  stepsCategory: {
+  stepItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  stepsCategoryIcon: {
-    width: isTablet ? 48 : 40,
-    height: isTablet ? 48 : 40,
-    borderRadius: isTablet ? 24 : 20,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#059669',
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 28,
     marginRight: 16,
   },
-  stepsCategoryLetter: {
-    fontSize: isTablet ? 18 : 16,
+  stepText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#4a3728',
+    lineHeight: 22,
+  },
+  stepsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(184, 134, 100, 0.1)',
+  },
+  stepsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4a3728',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  stepsGrid: {
+    gap: 12,
+  },
+  stepIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  stepLetter: {
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  stepsCategoryContent: {
-    flex: 1,
-  },
-  stepsCategoryName: {
-    fontSize: isTablet ? 17 : 15,
+  stepName: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#2A2A2A',
-    marginBottom: 4,
+    color: '#4a3728',
   },
-  stepsCategoryDesc: {
-    fontSize: isTablet ? 15 : 13,
-    color: '#8B7355',
-    marginBottom: 6,
-    lineHeight: isTablet ? 20 : 18,
-  },
-  stepsCategoryImportance: {
-    fontSize: isTablet ? 13 : 11,
-    color: '#059669',
-    fontStyle: 'italic',
-    lineHeight: isTablet ? 18 : 16,
-  },
-  
-  // Sample Section
-  sampleSection: {
-    backgroundColor: '#FFFFFF',
+  scaleCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
-    padding: isTablet ? 24 : 20,
-    marginBottom: 24,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#E8DDD1',
+    borderColor: 'rgba(184, 134, 100, 0.1)',
   },
-  sampleTitle: {
-    fontSize: isTablet ? 20 : 18,
+  scaleTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#2A2A2A',
+    color: '#4a3728',
     marginBottom: 16,
+    textAlign: 'center',
+  },
+  scaleItems: {
+    gap: 8,
+  },
+  scaleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scaleNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  scaleNumberText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  scaleLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#4a3728',
   },
   sampleCard: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    padding: isTablet ? 20 : 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: 'rgba(184, 134, 100, 0.1)',
   },
-  sampleQuestion: {
-    fontSize: isTablet ? 18 : 16,
-    fontWeight: '600',
-    color: '#2A2A2A',
+  sampleTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4a3728',
     marginBottom: 12,
   },
-  sampleHint: {
-    fontSize: isTablet ? 14 : 12,
-    color: '#8B7355',
-    lineHeight: isTablet ? 20 : 18,
+  sampleQuestion: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#4a3728',
+    textAlign: 'center',
     marginBottom: 16,
-  },
-  hintLabel: {
-    fontWeight: 'bold',
-    color: '#059669',
+    paddingVertical: 12,
+    backgroundColor: 'rgba(139, 90, 60, 0.05)',
+    borderRadius: 8,
   },
   sampleRating: {
     flexDirection: 'row',
@@ -511,11 +347,11 @@ const styles = StyleSheet.create({
   },
   sampleRatingButton: {
     flex: 1,
-    paddingVertical: isTablet ? 12 : 10,
+    paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#D1FAE5',
+    backgroundColor: 'rgba(139, 115, 85, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 115, 85, 0.3)',
     alignItems: 'center',
   },
   sampleRatingSelected: {
@@ -523,15 +359,13 @@ const styles = StyleSheet.create({
     borderColor: '#059669',
   },
   sampleRatingText: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#8B7355',
+    color: '#4a3728',
   },
   sampleRatingTextSelected: {
     color: '#FFFFFF',
   },
-  
-  // Begin Button
   beginButton: {
     borderRadius: 12,
     overflow: 'hidden',
@@ -540,12 +374,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: isTablet ? 18 : 16,
-    paddingHorizontal: 32,
+    paddingVertical: 16,
     gap: 8,
   },
   beginButtonText: {
-    fontSize: isTablet ? 20 : 18,
+    fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
   },
