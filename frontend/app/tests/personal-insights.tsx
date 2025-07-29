@@ -1,261 +1,299 @@
+// frontend/app/tests/personal-insights.tsx - Personal Insights Test Main Page
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TouchableOpacity,
   SafeAreaView,
+  StatusBar,
+  Alert,
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { useAuthStore } from '@/stores/authStore';
+import PersonalInsightsInstructions from '@/components/tests/PersonalInsightsInstructions';
+import PersonalInsightsTest from '@/components/tests/PersonalInsightsTest';
+import PersonalInsightsResults from '@/components/tests/PersonalInsightsResults';
+import psychometricService, { PersonalInsights, PsychometricTest } from '@/services/psychometricService';
 
-export default function PersonalInsightsInstructions() {
-  const [showInstructions, setShowInstructions] = useState(true);
+type ScreenType = 'instructions' | 'test' | 'results' | 'submitting' | 'loading';
 
-  // Move navigation logic to useEffect to avoid rendering during render
+export default function PersonalInsightsMain() {
+  const { user } = useAuthStore();
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>('loading');
+  const [startTime] = useState<Date>(new Date());
+  const [submitting, setSubmitting] = useState(false);
+  const [insights, setInsights] = useState<PersonalInsights | null>(null);
+  const [testData, setTestData] = useState<PsychometricTest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!showInstructions) {
-      // Navigate after the current render cycle completes
-      // Use push instead of replace to ensure navigation happens
-      router.push('/tests/personal-insights');
+    StatusBar.setBarStyle('dark-content');
+    loadTestData();
+  }, []);
+
+  const loadTestData = async () => {
+    try {
+      setError(null);
+      console.log('📋 Loading personal insights test data...');
+      
+      const test = await psychometricService.getOrCreateTest();
+      setTestData(test);
+      
+      console.log('📊 Test data loaded:', {
+        testId: test.testId,
+        status: test.status,
+        personalInsightsCompleted: test.sectionsCompleted.personalInsights
+      });
+      
+      // Check if Personal Insights section is already completed
+      if (test.sectionsCompleted.personalInsights && test.personalInsightsResult) {
+        console.log('✅ Personal Insights already completed, showing results');
+        setInsights(test.personalInsightsResult.responses);
+        setCurrentScreen('results');
+        return;
+      }
+      
+      // Check access permissions (same logic as dashboard)
+      const allCompleted = Object.values(test.sectionsCompleted).every(Boolean);
+      const isCompleted = test.sectionsCompleted.personalInsights;
+      
+      if (isCompleted && !allCompleted) {
+        // Test is completed but user can't retake until all sections are done
+        Alert.alert(
+          'Test Already Completed',
+          'Complete the remaining tests first, then you can retake all assessments.',
+          [
+            { text: 'Got it', onPress: () => router.back() }
+          ]
+        );
+        return;
+      }
+      
+      setCurrentScreen('instructions');
+      
+    } catch (error: any) {
+      console.error('❌ Error loading test data:', error);
+      setError(error.message || 'Failed to load test. Please try again.');
+      setCurrentScreen('instructions');
     }
-  }, [showInstructions]);
+  };
 
-  // Only render the instructions when showInstructions is true
-  if (!showInstructions) {
-    return null;
-  }
+  const handleSubmit = async (personalInsights: PersonalInsights) => {
+    try {
+      setSubmitting(true);
+      setCurrentScreen('submitting');
+      const timeSpent = Math.round((new Date().getTime() - startTime.getTime()) / 60000);
+      
+      console.log('📝 Starting Personal Insights submission process...');
+      console.log(`⏱️ Time spent: ${timeSpent} minutes`);
+      
+      // Submit to backend
+      const testResult = await psychometricService.submitPersonalInsights(personalInsights, timeSpent);
+      
+      // Store insights for results display
+      setInsights(personalInsights);
+      setTestData(testResult);
+      
+      setCurrentScreen('results');
+      console.log('✅ Personal Insights test completed successfully');
+      
+    } catch (error: any) {
+      console.error('❌ Error in Personal Insights submission:', error);
+      Alert.alert('Submission Failed', error.message);
+      setCurrentScreen('test');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-  return (
+  const handleBack = () => {
+    if (currentScreen === 'test') {
+      Alert.alert(
+        'Exit Test',
+        'Are you sure you want to exit? Your progress will be lost.',
+        [
+          { text: 'Continue Test', style: 'cancel' },
+          { text: 'Exit', style: 'destructive', onPress: () => router.back() }
+        ]
+      );
+    } else {
+      router.back();
+    }
+  };
+
+  const retryLoad = () => {
+    setCurrentScreen('loading');
+    setError(null);
+    loadTestData();
+  };
+
+  const renderLoading = () => (
     <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#fefbf3', '#f8f6f0']} style={styles.background} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialIcons name="arrow-back" size={24} color="#4a3728" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Personal Insights</Text>
-          <Text style={styles.headerSubtitle}>5 questions • 3-5 minutes</Text>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#DC2626" />
+        <Text style={styles.loadingText}>Loading your test...</Text>
       </View>
+    </SafeAreaView>
+  );
 
-      <View style={styles.content}>
-        {/* Main Instructions */}
-        <View style={styles.instructionsCard}>
-          <View style={styles.iconContainer}>
-            <MaterialIcons name="person" size={32} color="#DC2626" />
-          </View>
-          
-          <Text style={styles.title}>Share Your Story</Text>
-          <Text style={styles.description}>
-            Complete your assessment by sharing personal insights about your interests, strengths, and values.
-          </Text>
-
-          <View style={styles.stepsList}>
-            <View style={styles.stepItem}>
-              <Text style={styles.stepNumber}>1</Text>
-              <Text style={styles.stepText}>Answer open-ended questions about yourself</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <Text style={styles.stepNumber}>2</Text>
-              <Text style={styles.stepText}>Select your character strengths and values</Text>
-            </View>
-            <View style={styles.stepItem}>
-              <Text style={styles.stepNumber}>3</Text>
-              <Text style={styles.stepText}>Complete your comprehensive profile</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* What You'll Share */}
-        <View style={styles.topicsCard}>
-          <Text style={styles.topicsTitle}>What You'll Share</Text>
-          <View style={styles.topicsList}>
-            <View style={styles.topicItem}>
-              <MaterialIcons name="favorite" size={20} color="#DC2626" />
-              <Text style={styles.topicText}>What you enjoy doing</Text>
-            </View>
-            <View style={styles.topicItem}>
-              <MaterialIcons name="star" size={20} color="#DC2626" />
-              <Text style={styles.topicText}>Your natural strengths</Text>
-            </View>
-            <View style={styles.topicItem}>
-              <MaterialIcons name="build" size={20} color="#DC2626" />
-              <Text style={styles.topicText}>Recent projects or achievements</Text>
-            </View>
-            <View style={styles.topicItem}>
-              <MaterialIcons name="psychology" size={20} color="#DC2626" />
-              <Text style={styles.topicText}>Character strengths and life values</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Begin Button */}
-        <TouchableOpacity 
-          style={styles.beginButton} 
-          onPress={() => setShowInstructions(false)}
-        >
-          <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.beginButtonGradient}>
-            <Text style={styles.beginButtonText}>Start Assessment</Text>
-            <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
-          </LinearGradient>
+  const renderError = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorTitle}>Connection Issue</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={retryLoad}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
+
+  const renderSubmittingScreen = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.submittingContainer}>
+        <ActivityIndicator size="large" color="#DC2626" />
+        <View style={styles.submittingContent}>
+          <Text style={styles.submittingTitle}>Saving Your Personal Insights</Text>
+          <Text style={styles.submittingText}>
+            We're processing your responses and completing your comprehensive assessment profile...
+          </Text>
+          <View style={styles.progressDots}>
+            {[0, 1, 2].map((index) => (
+              <View key={index} style={[styles.dot, { opacity: 0.3 + (index * 0.3) }]} />
+            ))}
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+
+  // Render appropriate screen
+  if (error && currentScreen !== 'test') {
+    return renderError();
+  }
+
+  if (currentScreen === 'loading') {
+    return renderLoading();
+  }
+
+  if (currentScreen === 'instructions') {
+    return (
+      <PersonalInsightsInstructions
+        onBeginTest={() => setCurrentScreen('test')}
+        onBack={handleBack}
+        testData={testData}
+      />
+    );
+  }
+
+  if (currentScreen === 'test') {
+    return (
+      <PersonalInsightsTest
+        onSubmit={handleSubmit}
+        onBack={handleBack}
+      />
+    );
+  }
+
+  if (currentScreen === 'submitting') {
+    return renderSubmittingScreen();
+  }
+
+  if (currentScreen === 'results' && insights) {
+    return (
+      <PersonalInsightsResults
+        insights={insights}
+        testData={testData}
+        onBack={handleBack}
+      />
+    );
+  }
+
+  return null;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FEF2F2',
   },
-  background: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(184, 134, 100, 0.1)',
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(139, 90, 60, 0.1)',
-  },
-  headerContent: {
+  loadingContainer: {
     flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4a3728',
-    marginBottom: 2,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#8b7355',
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'space-between',
-  },
-  instructionsCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(184, 134, 100, 0.1)',
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#4a3728',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  description: {
-    fontSize: 16,
-    color: '#8b7355',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  stepsList: {
-    width: '100%',
-    gap: 16,
-  },
-  stepItem: {
-    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 40,
   },
-  stepNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#DC2626',
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    lineHeight: 28,
-    marginRight: 16,
-  },
-  stepText: {
-    flex: 1,
+  loadingText: {
     fontSize: 16,
-    color: '#4a3728',
-    lineHeight: 22,
+    color: '#8B7355',
+    marginTop: 16,
+    textAlign: 'center',
   },
-  topicsCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(184, 134, 100, 0.1)',
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
-  topicsTitle: {
-    fontSize: 18,
+  errorTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#4a3728',
+    color: '#DC2626',
     marginBottom: 16,
     textAlign: 'center',
   },
-  topicsList: {
-    gap: 12,
+  errorText: {
+    fontSize: 16,
+    color: '#8B7355',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
   },
-  topicItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(220, 38, 38, 0.05)',
+  retryButton: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 8,
-    gap: 12,
   },
-  topicText: {
-    fontSize: 15,
-    color: '#4a3728',
-    fontWeight: '500',
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
   },
-  beginButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: 24,
-  },
-  beginButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  submittingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 16,
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  submittingContent: {
+    alignItems: 'center',
+    marginTop: 32,
+  },
+  submittingTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2A2A2A',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  submittingText: {
+    fontSize: 16,
+    color: '#8B7355',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  progressDots: {
+    flexDirection: 'row',
     gap: 8,
   },
-  beginButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#DC2626',
   },
 });

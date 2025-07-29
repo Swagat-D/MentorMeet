@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingTop: 45,
     paddingBottom: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderBottomWidth: 1,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
-    marginRight: 12,
+    marginRight: 10,
     borderRadius: 8,
     backgroundColor: 'rgba(139, 90, 60, 0.1)',
   },
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#8b7355',
   },
   scrollView: {
