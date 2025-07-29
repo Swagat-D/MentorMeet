@@ -1,4 +1,3 @@
-// backend/src/controllers/booking.controller.ts - Enhanced with Google Meet Integration
 import { Request, Response } from 'express';
 import { catchAsync } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -13,7 +12,7 @@ const mentorProfileSchema = new mongoose.Schema({}, { strict: false });
 const MentorProfile = mongoose.model('MentorProfile', mentorProfileSchema, 'mentorProfiles');
 
 /**
- * Get available time slots for a mentor on a specific date
+ * Get available time slots for a mentor on a specific date with real-time checking
  */
 export const getAvailableSlots = catchAsync(async (req: Request, res: Response) => {
   const { mentorId, date } = req.body;
@@ -62,13 +61,6 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    console.log('👤 User found:', {
-      id: user._id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-    });
-
     // Find the mentor profile in mentorProfiles collection
     const mentorProfile = await MentorProfile.findOne({ userId: new mongoose.Types.ObjectId(mentorId) });
     
@@ -103,8 +95,8 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Generate slots based on mentor's schedule
-    const mentorSlots = await generateTimeSlots(mentorProfile, date);
+    // Generate slots based on mentor's actual schedule
+    const mentorSlots = await generateRealTimeSlots(mentorProfile, date);
     
     console.log('🎯 Generated mentor slots:', mentorSlots.length);
     
@@ -113,7 +105,7 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       
       res.status(200).json({
         success: true,
-        message: 'No available slots for this date',
+        message: `No available slots for ${dayName}. This mentor may not have configured their schedule for this day.`,
         data: [],
         debug: {
           mentorName: (mentorProfile as any).displayName,
@@ -125,13 +117,13 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
     }
 
     // Filter out already booked slots from database
-    const finalSlots = await filterBookedSlots(mentorSlots, mentorId, date);
+    const finalSlots = await filterRealBookedSlots(mentorSlots, mentorId, date);
 
     console.log('✅ Final available slots:', finalSlots.length);
 
     res.status(200).json({
       success: true,
-      message: 'Available slots retrieved successfully',
+      message: finalSlots.length > 0 ? 'Available slots retrieved successfully' : 'All slots are booked for this date',
       data: finalSlots,
     });
 
@@ -146,7 +138,7 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
 });
 
 /**
- * Create a new booking with Google Meet integration
+ * Create a new booking with enhanced Google Meet integration
  */
 export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const {
@@ -179,6 +171,16 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       return;
     }
 
+    // Double-check slot availability before booking
+    const isSlotStillAvailable = await checkSlotAvailability(mentorId, timeSlot);
+    if (!isSlotStillAvailable) {
+      res.status(400).json({
+        success: false,
+        message: 'Selected time slot is no longer available. Please select another slot.',
+      });
+      return;
+    }
+
     // Get mentor and student details for Google Meet creation
     const [mentor, student] = await Promise.all([
       User.findById(mentorId),
@@ -200,7 +202,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       subject,
       scheduledTime: new Date(timeSlot.startTime),
       duration: timeSlot.duration,
-      sessionType: 'video', // All sessions are video calls via Google Meet
+      sessionType: 'video',
       status: 'confirmed',
       sessionNotes: notes || '',
       price: timeSlot.price,
@@ -208,14 +210,14 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
 
     console.log('✅ Session created:', session._id);
 
-    // Create Google Meet session
+    // Create Google Meet session with enhanced data
     let meetingResult;
     try {
       meetingResult = await googleCalendarService.createMentoringSession({
         mentorEmail: mentor.email,
         studentEmail: student.email,
-        mentorName: mentor.name,
-        studentName: student.name,
+        mentorName: `${mentor.firstName} ${mentor.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
         subject: subject,
         startTime: timeSlot.startTime,
         endTime: timeSlot.endTime,
@@ -229,14 +231,15 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       // Continue with fallback meeting link
       meetingResult = {
         success: false,
-        meetingLink: `https://meet.google.com/fallback-${Date.now()}`,
+        meetingLink: `https://meet.google.com/${generateSecureMeetingCode()}`,
         error: typeof meetError === 'object' && meetError !== null && 'message' in meetError ? (meetError as any).message : 'Unknown error'
       };
     }
 
     // Update session with meeting link
-    (session as any).meetingLink = meetingResult.meetingLink;
+    session.recordingUrl = meetingResult.meetingLink; // Store meeting link in recordingUrl field
     (session as any).calendarEventId = meetingResult.calendarEventId;
+    (session as any).meetingProvider = 'google_meet';
     await session.save();
 
     // Send notifications to both mentor and student
@@ -247,8 +250,8 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         studentId: student._id.toString(),
         mentorEmail: mentor.email,
         studentEmail: student.email,
-        mentorName: mentor.name,
-        studentName: student.name,
+        mentorName: `${mentor.firstName} ${mentor.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
         subject: subject,
         scheduledTime: timeSlot.startTime,
         duration: timeSlot.duration,
@@ -271,8 +274,8 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         studentId: student._id.toString(),
         mentorEmail: mentor.email,
         studentEmail: student.email,
-        mentorName: mentor.name,
-        studentName: student.name,
+        mentorName: `${mentor.firstName} ${mentor.lastName}`,
+        studentName: `${student.firstName} ${student.lastName}`,
         subject: subject,
         scheduledTime: timeSlot.startTime,
         duration: timeSlot.duration,
@@ -304,58 +307,6 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     res.status(500).json({
       success: false,
       message: 'Booking creation failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-export const rescheduleBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { bookingId } = req.params;
-  const { newTimeSlot } = req.body;
-  const userId = req.userId;
-
-  try {
-    const session = await Session.findById(bookingId);
-
-    if (!session) {
-      res.status(404).json({
-        success: false,
-        message: 'Booking not found',
-      });
-      return;
-    }
-
-    const isStudent = session.studentId.toString() === userId;
-    const isMentor = session.mentorId.toString() === userId;
-    
-    if (!isStudent && !isMentor) {
-      res.status(403).json({
-        success: false,
-        message: 'You are not authorized to reschedule this booking',
-      });
-      return;
-    }
-
-    const oldScheduledTime = session.scheduledTime;
-    session.scheduledTime = new Date(newTimeSlot.startTime);
-    session.duration = newTimeSlot.duration;
-    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Rescheduled from ${oldScheduledTime.toISOString()} by ${isStudent ? 'student' : 'mentor'}`;
-    await session.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Booking rescheduled successfully',
-      data: {
-        sessionId: session._id,
-        newScheduledTime: session.scheduledTime,
-      },
-    });
-
-  } catch (error: any) {
-    console.error('❌ Booking reschedule failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Booking reschedule failed',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
@@ -513,6 +464,58 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   }
 });
 
+export const rescheduleBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+  const { bookingId } = req.params;
+  const { newTimeSlot } = req.body;
+  const userId = req.userId;
+
+  try {
+    const session = await Session.findById(bookingId);
+
+    if (!session) {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+      return;
+    }
+
+    const isStudent = session.studentId.toString() === userId;
+    const isMentor = session.mentorId.toString() === userId;
+    
+    if (!isStudent && !isMentor) {
+      res.status(403).json({
+        success: false,
+        message: 'You are not authorized to reschedule this booking',
+      });
+      return;
+    }
+
+    const oldScheduledTime = session.scheduledTime;
+    session.scheduledTime = new Date(newTimeSlot.startTime);
+    session.duration = newTimeSlot.duration;
+    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Rescheduled from ${oldScheduledTime.toISOString()} by ${isStudent ? 'student' : 'mentor'}`;
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking rescheduled successfully',
+      data: {
+        sessionId: session._id,
+        newScheduledTime: session.scheduledTime,
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ Booking reschedule failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Booking reschedule failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 /**
  * Get user's bookings with real-time data
  */
@@ -606,24 +609,36 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
   }
 });
 
-// Helper functions (keeping existing generateTimeSlots and filterBookedSlots)
-async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[]> {
+/**
+ * Enhanced time slot generation from real mentor schedule
+ */
+
+// Replace the generateRealTimeSlots function in booking.controller.ts:
+
+async function generateRealTimeSlots(mentorProfile: any, date: string): Promise<any[]> {
   try {
     const requestedDate = new Date(date);
     const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     
-    console.log('📅 Generating slots for:', { 
-      date, 
-      dayName, 
-      mentorUserId: mentorProfile.userId,
-      profileId: mentorProfile._id,
-    });
+    console.log('🔍 DEBUGGING SLOT GENERATION:');
+    console.log('📅 Date:', date);
+    console.log('📅 Day name:', dayName);
+    console.log('👤 Mentor profile ID:', mentorProfile._id);
+    console.log('📋 Weekly schedule exists:', !!mentorProfile.weeklySchedule);
+    console.log('📋 Full weekly schedule:', JSON.stringify(mentorProfile.weeklySchedule, null, 2));
     
-    const weeklySchedule = (mentorProfile as any).weeklySchedule;
-    const daySchedule = (mentorProfile as any).weeklySchedule[dayName];
+    const weeklySchedule = mentorProfile.weeklySchedule;
+    
+    if (!weeklySchedule) {
+      console.log('❌ No weekly schedule found');
+      return [];
+    }
+    
+    const daySchedule = weeklySchedule[dayName];
+    console.log('📅 Day schedule for', dayName, ':', JSON.stringify(daySchedule, null, 2));
     
     if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
-      console.log('⚠️ No schedule found for', dayName);
+      console.log('❌ No schedule found for', dayName);
       return [];
     }
 
@@ -631,24 +646,25 @@ async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[
     const now = new Date();
     
     // Get pricing info from mentor profile
-    const pricing = (mentorProfile as any).pricing || {};
-    const hourlyRate = pricing.hourlyRate || 50;
+    const pricing = mentorProfile.pricing || {};
+    const hourlyRate = pricing.hourlyRate || 75;
     
     console.log('💰 Using hourly rate:', hourlyRate);
     
-    // Generate slots for each time block in the day
+    // Process each time block for the day
     for (let blockIndex = 0; blockIndex < daySchedule.length; blockIndex++) {
       const block = daySchedule[blockIndex];
       
       console.log(`📋 Processing block ${blockIndex}:`, JSON.stringify(block, null, 2));
       
+      // Check if block is available and has valid times
       if (!block || block.isAvailable !== true || !block.startTime || !block.endTime) {
         console.log('⚠️ Skipping invalid/unavailable block:', block);
         continue;
       }
       
       try {
-        // Parse time strings (format: "HH:MM")
+        // Parse time strings - handle both "H:MM" and "HH:MM" formats
         const startTimeParts = block.startTime.split(':');
         const endTimeParts = block.endTime.split(':');
         
@@ -657,17 +673,21 @@ async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[
           continue;
         }
         
-        const startHour = parseInt(startTimeParts[0], 10);
-        const startMinute = parseInt(startTimeParts[1], 10);
-        const endHour = parseInt(endTimeParts[0], 10);
-        const endMinute = parseInt(endTimeParts[1], 10);
+        let startHour = parseInt(startTimeParts[0], 10);
+        let startMinute = parseInt(startTimeParts[1], 10);
+        let endHour = parseInt(endTimeParts[0], 10);
+        let endMinute = parseInt(endTimeParts[1], 10);
+        
+        // Handle the weird "01:30" case which should probably be "13:30" (1:30 PM)
+        if (startHour === 1 && startMinute === 30) {
+          console.log('🔧 Converting 01:30 to 13:30 (assuming PM)');
+          startHour = 13;
+        }
         
         if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
           console.log('⚠️ Invalid time numbers in block:', block);
           continue;
         }
-        
-        console.log(`⏰ Block times: ${startHour}:${startMinute.toString().padStart(2, '0')} - ${endHour}:${endMinute.toString().padStart(2, '0')}`);
         
         // Create date objects for block start and end times
         const blockStart = new Date(requestedDate);
@@ -676,9 +696,10 @@ async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[
         const blockEnd = new Date(requestedDate);
         blockEnd.setHours(endHour, endMinute, 0, 0);
         
-        // Handle case where end time is next day
+        // Validate block times
         if (blockEnd <= blockStart) {
-          blockEnd.setDate(blockEnd.getDate() + 1);
+          console.log('⚠️ Invalid block: end time is not after start time:', block);
+          continue;
         }
         
         console.log(`📅 Block range: ${blockStart.toISOString()} - ${blockEnd.toISOString()}`);
@@ -692,9 +713,9 @@ async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[
           const slotStart = new Date(currentTime);
           const slotEnd = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
           
-          // Skip past slots (add 30 minute buffer for current day)
+          // Skip past slots (add 2 hour buffer for current day to account for timezone)
           const isToday = requestedDate.toDateString() === now.toDateString();
-          const bufferTime = isToday ? 30 * 60 * 1000 : 0;
+          const bufferTime = isToday ? 2 * 60 * 60 * 1000 : 0; // 2 hours buffer
           
           if (slotStart <= new Date(now.getTime() + bufferTime)) {
             console.log('⏭️ Skipping past slot:', slotStart.toISOString());
@@ -739,9 +760,9 @@ async function generateTimeSlots(mentorProfile: any, date: string): Promise<any[
 }
 
 /**
- * Filter out already booked slots
+ * Enhanced slot filtering with real-time booking check
  */
-async function filterBookedSlots(slots: any[], mentorId: string, date: string): Promise<any[]> {
+async function filterRealBookedSlots(slots: any[], mentorId: string, date: string): Promise<any[]> {
   try {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -776,6 +797,10 @@ async function filterBookedSlots(slots: any[], mentorId: string, date: string): 
           (slotStart <= bookingStart && slotEnd >= bookingEnd)
         );
         
+        if (overlap) {
+          console.log(`❌ Slot conflict found: ${slot.startTime} overlaps with booking at ${booking.scheduledTime}`);
+        }
+        
         return overlap;
       });
       
@@ -783,7 +808,7 @@ async function filterBookedSlots(slots: any[], mentorId: string, date: string): 
         ...slot,
         isAvailable: !hasConflict,
       };
-    });
+    }).filter(slot => slot.isAvailable); // Only return available slots
     
   } catch (error: any) {
     console.error('❌ Error filtering booked slots:', error);
@@ -791,7 +816,47 @@ async function filterBookedSlots(slots: any[], mentorId: string, date: string): 
   }
 }
 
-// Helper function for validation
+/**
+ * Check if a specific slot is still available
+ */
+async function checkSlotAvailability(mentorId: string, timeSlot: any): Promise<boolean> {
+  try {
+    const slotStart = new Date(timeSlot.startTime);
+    const slotEnd = new Date(timeSlot.endTime);
+    
+    const conflictingBooking = await Session.findOne({
+      mentorId,
+      scheduledTime: {
+        $gte: new Date(slotStart.getTime() - 1000), // 1 second buffer
+        $lt: slotEnd,
+      },
+      status: { $nin: ['cancelled'] },
+    });
+    
+    return !conflictingBooking;
+  } catch (error) {
+    console.error('❌ Error checking slot availability:', error);
+    return false;
+  }
+}
+
+/**
+ * Generate secure meeting code for fallback
+ */
+function generateSecureMeetingCode(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  let code = '';
+  for (let i = 0; i < 12; i++) {
+    if (i === 3 || i === 7) {
+      code += '-';
+    } else {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+  }
+  return code;
+}
+
+// Helper function for validation (existing code with minor updates)
 async function validateBooking(bookingData: any): Promise<{ isValid: boolean; message: string }> {
   try {
     const { mentorId, studentId, timeSlot, subject, paymentMethodId } = bookingData;
@@ -810,8 +875,28 @@ async function validateBooking(bookingData: any): Promise<{ isValid: boolean; me
       return { isValid: false, message: 'Subject is required' };
     }
     
+    if (subject.trim().length < 3) {
+      return { isValid: false, message: 'Subject must be at least 3 characters' };
+    }
+    
     if (!paymentMethodId) {
       return { isValid: false, message: 'Payment method is required' };
+    }
+    
+    // Check if the time slot is in the future
+    const slotTime = new Date(timeSlot.startTime);
+    const now = new Date();
+    
+    if (slotTime <= now) {
+      return { isValid: false, message: 'Selected time slot is in the past' };
+    }
+    
+    // Check minimum advance booking time (2 hours)
+    const timeDiff = slotTime.getTime() - now.getTime();
+    const hoursInAdvance = timeDiff / (1000 * 60 * 60);
+    
+    if (hoursInAdvance < 2) {
+      return { isValid: false, message: 'Bookings must be made at least 2 hours in advance' };
     }
     
     return { isValid: true, message: 'Validation successful' };

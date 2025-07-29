@@ -195,10 +195,23 @@ export default function SessionsScreen() {
     }
   };
 
-  const openMeetingLink = (meetingLink: string) => {
-    // In a real app, you would use Linking.openURL
-    console.log('Opening meeting link:', meetingLink);
-    Alert.alert('Meeting Link', meetingLink);
+      const openMeetingLink = (meetingLink: string) => {
+    if (meetingLink.includes('meet.google.com')) {
+      // For React Native, use Linking
+      import('expo-linking').then(Linking => {
+        Linking.openURL(meetingLink);
+      });
+    } else {
+      Alert.alert('Meeting Link', meetingLink, [
+        { text: 'Copy Link', onPress: () => {
+          import('expo-clipboard').then(Clipboard => {
+            Clipboard.setStringAsync(meetingLink);
+            Alert.alert('Copied!', 'Meeting link copied to clipboard');
+          });
+        }},
+        { text: 'OK' }
+      ]);
+    }
   };
 
   const formatSessionDate = (dateString: string) => {
@@ -268,7 +281,6 @@ export default function SessionsScreen() {
     const canRate = session.status === 'completed' && !session.userRating;
 
     return (
-      <View key={session.id} style={styles.sessionCard}>
         <LinearGradient
           colors={['#FFFFFF', '#F8F3EE']}
           style={styles.sessionCardGradient}
@@ -333,21 +345,23 @@ export default function SessionsScreen() {
 
           {/* Session Actions */}
           <View style={styles.sessionActions}>
-            {canJoin && session.meetingLink && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.joinButton]}
-                onPress={() => handleSessionAction(session, 'join')}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#10B981', '#059669']}
-                  style={styles.actionButtonGradient}
-                >
-                  <MaterialIcons name="videocam" size={16} color="#FFFFFF" />
-                  <Text style={styles.joinButtonText}>Join Meeting</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+             {canJoin && session.meetingLink && (
+    <TouchableOpacity
+      style={[styles.actionButton, styles.joinButton]}
+      onPress={() => openMeetingLink(session.meetingLink!)}
+      activeOpacity={0.8}
+    >
+      <LinearGradient
+        colors={['#10B981', '#059669']}
+        style={styles.actionButtonGradient}
+      >
+        <MaterialIcons name="videocam" size={16} color="#FFFFFF" />
+        <Text style={styles.joinButtonText}>
+          {statusInfo.text === 'Live Now' ? 'Join Now' : 'Join Meeting'}
+        </Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  )}
             
             {canRate && (
               <TouchableOpacity
@@ -400,9 +414,14 @@ export default function SessionsScreen() {
             </View>
           )}
         </LinearGradient>
-      </View>
     );
   };
+
+  {filteredSessions.map((session) => (
+  <View key={session.id} style={styles.sessionCard}>
+    {renderSessionCard(session)}
+  </View>
+))}
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>

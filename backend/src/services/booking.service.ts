@@ -447,6 +447,229 @@ class NotificationService {
   }
 
   /**
+ * Send meeting link email to both participants
+ */
+async sendMeetingLinkEmail(emailData: {
+  mentorEmail: string;
+  studentEmail: string;
+  mentorName: string;
+  studentName: string;
+  subject: string;
+  sessionDate: string;
+  sessionTime: string;
+  meetingLink: string;
+  sessionId: string;
+  calendarEventId: string;
+}): Promise<void> {
+  try {
+    console.log('📧 Sending meeting link emails...');
+
+    // Email to student
+    const studentEmail = {
+      to: emailData.studentEmail,
+      subject: `Your Google Meet Link: ${emailData.subject} with ${emailData.mentorName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">📺 Your Google Meet is Ready!</h1>
+            <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">Session successfully scheduled</p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${emailData.studentName},</p>
+            
+            <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
+              Your mentoring session has been confirmed! Here are all the details you need:
+            </p>
+            
+            <!-- Session Details Card -->
+            <div style="background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0;">
+              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">📚 Session Details</h3>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Mentor:</strong> 
+                <span style="color: #8B4513; font-weight: 600;">${emailData.mentorName}</span>
+              </div>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Subject:</strong> 
+                <span style="color: #2A2A2A;">${emailData.subject}</span>
+              </div>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Date:</strong> 
+                <span style="color: #2A2A2A;">${emailData.sessionDate}</span>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <strong style="color: #2A2A2A;">Time:</strong> 
+                <span style="color: #2A2A2A;">${emailData.sessionTime}</span>
+              </div>
+              
+              <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+                <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Google Meet Link:</strong>
+                <a href="${emailData.meetingLink}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
+                          color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
+                          font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                  🚀 Join Meeting Now
+                </a>
+                <p style="font-size: 12px; color: #8B7355; margin: 8px 0 0 0;">
+                  Link: <span style="word-break: break-all;">${emailData.meetingLink}</span>
+                </p>
+              </div>
+            </div>
+            
+            <!-- Instructions -->
+            <div style="background: #E8F5E8; border-left: 4px solid #10B981; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+              <h4 style="color: #166534; margin: 0 0 12px 0; font-size: 16px;">📋 What to do next:</h4>
+              <ul style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.6;">
+                <li>Click the meeting link 2-3 minutes before your session</li>
+                <li>Test your camera and microphone beforehand</li>
+                <li>Prepare any questions or materials you want to discuss</li>
+                <li>Find a quiet space with good internet connection</li>
+                <li>This event has been added to your Google Calendar</li>
+              </ul>
+            </div>
+            
+            <!-- Support -->
+            <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+              <p style="color: #92400E; margin: 0; font-size: 14px;">
+                <strong>Need help?</strong> Contact our support team if you have any technical issues.
+              </p>
+            </div>
+            
+            <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
+              Looking forward to your learning session! 🚀
+            </p>
+            
+            <p style="font-size: 16px; color: #2A2A2A;">
+              Best regards,<br>
+              <strong style="color: #8B4513;">The MentorMatch Team</strong>
+            </p>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
+            <p style="color: #8B7355; font-size: 12px; margin: 0;">
+              Session ID: ${emailData.sessionId} | Calendar Event: ${emailData.calendarEventId}
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
+    // Email to mentor
+    const mentorEmail = {
+      to: emailData.mentorEmail,
+      subject: `New Session Scheduled: ${emailData.subject} with ${emailData.studentName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">👨‍🏫 New Session Booked!</h1>
+            <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">A student has scheduled a session with you</p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${emailData.mentorName},</p>
+            
+            <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
+              Great news! A new mentoring session has been scheduled. Here are the details:
+            </p>
+            
+            <!-- Session Details Card -->
+            <div style="background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0;">
+              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">📚 Session Details</h3>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Student:</strong> 
+                <span style="color: #8B4513; font-weight: 600;">${emailData.studentName}</span>
+              </div>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Subject:</strong> 
+                <span style="color: #2A2A2A;">${emailData.subject}</span>
+              </div>
+              
+              <div style="margin-bottom: 12px;">
+                <strong style="color: #2A2A2A;">Date:</strong> 
+                <span style="color: #2A2A2A;">${emailData.sessionDate}</span>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <strong style="color: #2A2A2A;">Time:</strong> 
+                <span style="color: #2A2A2A;">${emailData.sessionTime}</span>
+              </div>
+              
+              <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+                <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Google Meet Link:</strong>
+                <a href="${emailData.meetingLink}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
+                          color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
+                          font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                  🚀 Join Meeting Now
+                </a>
+                <p style="font-size: 12px; color: #8B7355; margin: 8px 0 0 0;">
+                  Link: <span style="word-break: break-all;">${emailData.meetingLink}</span>
+                </p>
+              </div>
+            </div>
+            
+            <!-- Mentor Instructions -->
+            <div style="background: #E8F5E8; border-left: 4px solid #10B981; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+              <h4 style="color: #166534; margin: 0 0 12px 0; font-size: 16px;">👨‍🏫 Preparation checklist:</h4>
+              <ul style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.6;">
+                <li>Review the session subject and prepare relevant materials</li>
+                <li>Test your audio/video setup 10 minutes early</li>
+                <li>Join the meeting 2-3 minutes before the scheduled time</li>
+                <li>Prepare a welcoming introduction for the student</li>
+                <li>This event has been added to your Google Calendar with reminders</li>
+              </ul>
+            </div>
+            
+            <!-- Earnings -->
+            <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+              <p style="color: #92400E; margin: 0; font-size: 14px;">
+                <strong>💰 Earnings:</strong> Payment will be processed after the session is completed successfully.
+              </p>
+            </div>
+            
+            <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
+              Thank you for sharing your expertise and helping students learn! 🌟
+            </p>
+            
+            <p style="font-size: 16px; color: #2A2A2A;">
+              Best regards,<br>
+              <strong style="color: #8B4513;">The MentorMatch Team</strong>
+            </p>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
+            <p style="color: #8B7355; font-size: 12px; margin: 0;">
+              Session ID: ${emailData.sessionId} | Calendar Event: ${emailData.calendarEventId}
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
+    // Send emails (implement actual email sending)
+    await this.sendEmail(studentEmail);
+    await this.sendEmail(mentorEmail);
+
+    console.log('✅ Meeting link emails sent successfully');
+
+  } catch (error) {
+    console.error('❌ Error sending meeting link emails:', error);
+  }
+}
+
+  /**
    * Send booking confirmation emails
    */
   async sendBookingConfirmation(data: any): Promise<void> {

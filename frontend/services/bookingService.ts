@@ -215,9 +215,40 @@ class BookingService {
         throw new Error(response.message || 'Failed to fetch bookings');
       }
 
+      const formattedSessions = (response.data || []).map((session: any) => ({
+      id: session._id,
+      mentor: {
+        id: session.mentorId?._id || session.mentorId,
+        name: session.mentorId?.name || 'Unknown Mentor',
+        email: session.mentorId?.email || '',
+        avatar: session.mentorId?.avatar || '',
+      },
+      student: {
+        id: session.studentId?._id || session.studentId,
+        name: session.studentId?.name || 'Unknown Student',
+        email: session.studentId?.email || '',
+        avatar: session.studentId?.avatar || '',
+      },
+      subject: session.subject,
+      date: session.scheduledTime,
+      duration: session.duration,
+      sessionType: {
+        type: 'video' as const,
+        duration: session.duration,
+      },
+      status: session.status,
+      meetingLink: session.recordingUrl, // Meeting link from backend
+      calendarEventId: session.calendarEventId,
+      notes: session.sessionNotes,
+      userRating: session.studentRating || session.mentorRating,
+      price: session.price || 75,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    }));
+
       console.log('✅ User bookings fetched:', response.data.length);
       return {
-        sessions: response.data || [],
+        sessions: formattedSessions,
         pagination: response.pagination || {
           page: 1,
           limit: 10,

@@ -333,94 +333,107 @@ export default function BookingCalendar({
         ))}
       </View>
 
-      {/* Time Slots Section */}
-      {selectedDate && (
-        <View style={styles.timeSlotsSection}>
-          <LinearGradient
-            colors={['#F8F3EE', '#FFFFFF']}
-            style={styles.timeSlotsHeader}
-          >
-            <MaterialIcons name="schedule" size={20} color="#8B4513" />
-            <Text style={styles.timeSlotsTitle}>
-              Available Times - {selectedDate.toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'short',
-                day: 'numeric'
-              })}
-            </Text>
-          </LinearGradient>
 
-          {loadingSlots ? (
-            <View style={styles.slotsLoadingContainer}>
-              <ActivityIndicator size="small" color="#8B4513" />
-              <Text style={styles.slotsLoadingText}>Loading available times...</Text>
-            </View>
-          ) : availableSlots.length === 0 ? (
-            <View style={styles.noSlotsContainer}>
-              <MaterialIcons name="event-busy" size={32} color="#8B7355" />
-              <Text style={styles.noSlotsTitle}>No Available Times</Text>
-              <Text style={styles.noSlotsText}>
-                This mentor has no available time slots on this date. Please try another date.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView 
-              style={styles.timeSlotsScrollContainer}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.timeSlotsContent}
+{/* Time Slots Section */}
+{selectedDate && (
+  <View style={styles.timeSlotsSection}>
+    <LinearGradient
+      colors={['#F8F3EE', '#FFFFFF']}
+      style={styles.timeSlotsHeader}
+    >
+      <MaterialIcons name="schedule" size={20} color="#8B4513" />
+      <Text style={styles.timeSlotsTitle}>
+        Available Times - {selectedDate.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric'
+        })}
+      </Text>
+    </LinearGradient>
+
+    {loadingSlots ? (
+      <View style={styles.slotsLoadingContainer}>
+        <ActivityIndicator size="small" color="#8B4513" />
+        <Text style={styles.slotsLoadingText}>Loading available times...</Text>
+      </View>
+    ) : availableSlots.length === 0 ? (
+      <View style={styles.noSlotsContainer}>
+        <MaterialIcons name="event-busy" size={32} color="#8B7355" />
+        <Text style={styles.noSlotsTitle}>No Available Times</Text>
+        <Text style={styles.noSlotsText}>
+          This mentor has not configured their schedule for{' '}
+          {selectedDate.toLocaleDateString('en-US', { weekday: 'long' })}s, or all slots are already booked.
+        </Text>
+        <Text style={styles.noSlotsSubtext}>
+          Please try selecting a different date.
+        </Text>
+      </View>
+    ) : (
+      <ScrollView 
+        style={styles.timeSlotsScrollContainer}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.timeSlotsContent}
+        nestedScrollEnabled={true} // Add this for Android
+      >
+        {availableSlots.map((slot, index) => {
+          const isSelected = selectedSlot?.id === slot.id;
+          return (
+            <TouchableOpacity
+              key={`slot-${slot.id}-${index}`}
+              style={[
+                styles.timeSlot,
+                !slot.isAvailable && styles.timeSlotUnavailable,
+                isSelected && styles.timeSlotSelected
+              ]}
+              onPress={() => handleSlotSelect(slot)}
+              disabled={!slot.isAvailable}
+              activeOpacity={0.8}
             >
-              {availableSlots.map((slot, index) => (
-                <TouchableOpacity
-                  key={`${slot.id}-${index}`}
-                  style={getSlotStyle(slot)}
-                  onPress={() => handleSlotSelect(slot)}
-                  disabled={!slot.isAvailable}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={selectedSlot?.id === slot.id 
-                      ? ['#8B4513', '#D2691E'] 
-                      : ['#FFFFFF', '#F8F3EE']
-                    }
-                    style={styles.timeSlotGradient}
-                  >
-                    <View style={styles.timeSlotContent}>
-                      <View style={styles.timeSlotLeft}>
-                        <Text style={[
-                          styles.timeSlotTime,
-                          selectedSlot?.id === slot.id && styles.timeSlotTimeSelected
-                        ]}>
-                          {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                        </Text>
-                        <Text style={[
-                          styles.timeSlotDuration,
-                          selectedSlot?.id === slot.id && styles.timeSlotDurationSelected
-                        ]}>
-                          {slot.duration} minutes • Google Meet
-                        </Text>
-                      </View>
-                      
-                      <View style={styles.timeSlotRight}>
-                        <Text style={[
-                          styles.timeSlotPrice,
-                          selectedSlot?.id === slot.id && styles.timeSlotPriceSelected
-                        ]}>
-                          {formatPrice(slot.price)}
-                        </Text>
-                        <MaterialIcons 
-                          name={selectedSlot?.id === slot.id ? "radio-button-checked" : "radio-button-unchecked"}
-                          size={20} 
-                          color={selectedSlot?.id === slot.id ? "#FFFFFF" : "#8B4513"} 
-                        />
-                      </View>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      )}
+              <LinearGradient
+                colors={isSelected 
+                  ? ['#8B4513', '#D2691E'] 
+                  : ['#FFFFFF', '#F8F3EE']
+                }
+                style={styles.timeSlotGradient}
+              >
+                <View style={styles.timeSlotContent}>
+                  <View style={styles.timeSlotLeft}>
+                    <Text style={[
+                      styles.timeSlotTime,
+                      isSelected && styles.timeSlotTimeSelected
+                    ]}>
+                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                    </Text>
+                    <Text style={[
+                      styles.timeSlotDuration,
+                      isSelected && styles.timeSlotDurationSelected
+                    ]}>
+                      {slot.duration} minutes • Google Meet
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.timeSlotRight}>
+                    <Text style={[
+                      styles.timeSlotPrice,
+                      isSelected && styles.timeSlotPriceSelected
+                    ]}>
+                      ${slot.price}
+                    </Text>
+                    <MaterialIcons 
+                      name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
+                      size={20} 
+                      color={isSelected ? "#FFFFFF" : "#8B4513"} 
+                    />
+                  </View>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    )}
+  </View>
+)}
 
       {/* Integration Notice */}
       <View style={styles.integrationNotice}>
@@ -437,8 +450,12 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: CALENDAR_PADDING,
-    margin: isTablet ? 20 : 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginVertical: 16,
+    flex: 1, // Add flex: 1
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -450,8 +467,6 @@ const styles = StyleSheet.create({
         elevation: 6,
       },
     }),
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
   },
 
   // Calendar Header
@@ -540,19 +555,19 @@ const styles = StyleSheet.create({
 
   // Calendar Grid
   calendarGrid: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   calendarWeek: {
     flexDirection: 'row',
     marginBottom: 4,
   },
   dayButton: {
-    width: DAY_WIDTH,
-    height: DAY_HEIGHT,
+    width: (width - 80) / 7,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
-    marginHorizontal: 1,
+    marginHorizontal: 2,
     position: 'relative',
   },
   dayButtonInactive: {
@@ -608,7 +623,9 @@ const styles = StyleSheet.create({
   timeSlotsSection: {
     borderTopWidth: 1,
     borderTopColor: '#E8DDD1',
-    paddingTop: 20,
+    paddingTop: 16,
+    flex: 1, // Add flex
+    minHeight: 200,
   },
   timeSlotsHeader: {
     flexDirection: 'row',
@@ -640,6 +657,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8B7355',
   },
+   noSlotsSubtext: {
+    fontSize: 12,
+    color: '#8B7355',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+
+  timeSlotTime: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2A2A2A',
+    marginBottom: 4,
+  },
+
+  timeSlotTimeSelected: {
+    color: '#FFFFFF',
+  },
+
+  timeSlotDuration: {
+    fontSize: 12,
+    color: '#8B7355',
+    fontWeight: '500',
+  },
+
+  timeSlotDurationSelected: {
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+
+  timeSlotPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#8B4513',
+    marginBottom: 6,
+  },
+
+  timeSlotPriceSelected: {
+    color: '#FFFFFF',
+  },
+
+  timeSlotContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 40,
+  },
+
+  timeSlotLeft: {
+    flex: 1,
+  },
+
+  timeSlotRight: {
+    alignItems: 'flex-end',
+    marginLeft: 16,
+  },
 
   // No Slots
   noSlotsContainer: {
@@ -665,7 +738,8 @@ const styles = StyleSheet.create({
 
   // Time Slots List
   timeSlotsScrollContainer: {
-    maxHeight: isTablet ? 320 : 280,
+    maxHeight: 300,
+    flex: 1,
   },
   timeSlotsContent: {
     paddingBottom: 16,
@@ -676,6 +750,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E8DDD1',
+    backgroundColor: '#FFFFFF', // Add background color
+    minHeight: 60, // Add minimum height
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -708,46 +784,8 @@ const styles = StyleSheet.create({
     }),
   },
   timeSlotGradient: {
-    padding: isTablet ? 20 : 16,
-  },
-  timeSlotContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  timeSlotLeft: {
-    flex: 1,
-  },
-  timeSlotTime: {
-    fontSize: isTablet ? 18 : 16,
-    fontWeight: '700',
-    color: '#2A2A2A',
-    marginBottom: 4,
-  },
-  timeSlotTimeSelected: {
-    color: '#FFFFFF',
-  },
-  timeSlotDuration: {
-    fontSize: isTablet ? 14 : 12,
-    color: '#8B7355',
-    fontWeight: '500',
-  },
-  timeSlotDurationSelected: {
-    color: '#FFFFFF',
-    opacity: 0.9,
-  },
-  timeSlotRight: {
-    alignItems: 'flex-end',
-    marginLeft: 16,
-  },
-  timeSlotPrice: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#8B4513',
-    marginBottom: 6,
-  },
-  timeSlotPriceSelected: {
-    color: '#FFFFFF',
+    padding: 16,
+    minHeight: 60,
   },
 
   // Integration Notice

@@ -18,6 +18,10 @@ export interface ISession extends Document {
   studentReview?: string;
   mentorReview?: string;
   sessionNotes?: string;
+  meetingProvider?: string;
+  generationStrategy?: string;
+  conferenceData?: any;
+  meetingError?: string;
   recordingUrl?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +35,9 @@ const sessionSchema = new Schema<ISession>({
   actualStartTime: { type: Date },
   actualEndTime: { type: Date },
   calendarEventId: { type: String },
+  meetingProvider: { type: String, enum: ['google_meet', 'fallback'] },
+  conferenceData: { type: Schema.Types.Mixed },
+  meetingError: { type: String },
   duration: { type: Number, required: true, min: 15, max: 240 }, // 15 minutes to 4 hours
   sessionType: { 
     type: String, 
