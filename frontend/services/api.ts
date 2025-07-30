@@ -427,6 +427,16 @@ export class ApiEndpoints {
       NOTIFICATION_CANCEL: `${baseUrl}${apiVersion}/booking/notifications/cancellation`,
       NOTIFICATION_RESCHEDULE: `${baseUrl}${apiVersion}/booking/notifications/reschedule`,
 
+      // Notifications endpoints
+      NOTIFICATIONS_BASE: `${baseUrl}${apiVersion}/notifications`,
+      GET_NOTIFICATIONS: `${baseUrl}${apiVersion}/notifications`,
+      MARK_NOTIFICATION_READ: `${baseUrl}${apiVersion}/notifications/:notificationId/read`,
+      MARK_ALL_NOTIFICATIONS_READ: `${baseUrl}${apiVersion}/notifications/read-all`,
+      DELETE_NOTIFICATION: `${baseUrl}${apiVersion}/notifications/:notificationId`,
+      CLEAR_ALL_NOTIFICATIONS: `${baseUrl}${apiVersion}/notifications/clear-all`,
+      GET_UNREAD_COUNT: `${baseUrl}${apiVersion}/notifications/unread-count`,
+      NOTIFICATIONS_STATS: `${baseUrl}${apiVersion}/notifications/stats`,
+
     };
 
     return this._cachedEndpoints;
@@ -456,6 +466,15 @@ export class ApiService {
   private static retryCount = 0;
   private static maxRetries = 3;
   private static retryDelay = 1000; // 1 second base delay
+
+  // URL parameter replacement method for notifications
+  private static replaceUrlParams(url: string, params: Record<string, string> = {}): string {
+    let finalUrl = url;
+    Object.entries(params).forEach(([key, value]) => {
+      finalUrl = finalUrl.replace(`:${key}`, value);
+    });
+    return finalUrl;
+  }
 
   static async diagnosePsychometricConnection(): Promise<{
     success: boolean;
@@ -718,9 +737,30 @@ export class ApiService {
     );
   }
 
-  // Public API methods with enhanced error handling
-  static async get(endpoint: string, options: RequestInit = {}): Promise<any> {
-    return this.makeRequest(endpoint, { ...options, method: 'GET' });
+  // Updated public API methods with enhanced error handling and URL parameter support
+  static async get(endpoint: string, options: {
+    params?: Record<string, any>;
+    urlParams?: Record<string, string>;
+  } = {}): Promise<any> {
+    try {
+      let url = await this.resolveEndpointUrl(endpoint);
+      
+      // Replace URL parameters (like :notificationId)
+      if (options.urlParams) {
+        url = this.replaceUrlParams(url, options.urlParams);
+      }
+      
+      // Add query parameters
+      if (options.params && Object.keys(options.params).length > 0) {
+        const queryString = new URLSearchParams(options.params).toString();
+        url += `?${queryString}`;
+      }
+
+      return this.makeRequest(url, { method: 'GET' });
+    } catch (error) {
+      console.error(`❌ GET ${endpoint} failed:`, error);
+      throw this.transformError(error);
+    }
   }
 
   static async post(endpoint: string, data?: any, options: RequestInit = {}): Promise<any> {
@@ -731,12 +771,32 @@ export class ApiService {
     });
   }
 
-  static async put(endpoint: string, data?: any, options: RequestInit = {}): Promise<any> {
-    return this.makeRequest(endpoint, {
-      ...options,
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
-    });
+  static async put(endpoint: string, data?: any, options: {
+    params?: Record<string, any>;
+    urlParams?: Record<string, string>;
+  } = {}): Promise<any> {
+    try {
+      let url = await this.resolveEndpointUrl(endpoint);
+      
+      // Replace URL parameters (like :notificationId)
+      if (options.urlParams) {
+        url = this.replaceUrlParams(url, options.urlParams);
+      }
+      
+      // Add query parameters
+      if (options.params && Object.keys(options.params).length > 0) {
+        const queryString = new URLSearchParams(options.params).toString();
+        url += `?${queryString}`;
+      }
+
+      return this.makeRequest(url, {
+        method: 'PUT',
+        body: data ? JSON.stringify(data) : undefined,
+      });
+    } catch (error) {
+      console.error(`❌ PUT ${endpoint} failed:`, error);
+      throw this.transformError(error);
+    }
   }
 
   static async patch(endpoint: string, data?: any, options: RequestInit = {}): Promise<any> {
@@ -747,8 +807,29 @@ export class ApiService {
     });
   }
 
-  static async delete(endpoint: string, options: RequestInit = {}): Promise<any> {
-    return this.makeRequest(endpoint, { ...options, method: 'DELETE' });
+  static async delete(endpoint: string, options: {
+    params?: Record<string, any>;
+    urlParams?: Record<string, string>;
+  } = {}): Promise<any> {
+    try {
+      let url = await this.resolveEndpointUrl(endpoint);
+      
+      // Replace URL parameters (like :notificationId)
+      if (options.urlParams) {
+        url = this.replaceUrlParams(url, options.urlParams);
+      }
+      
+      // Add query parameters
+      if (options.params && Object.keys(options.params).length > 0) {
+        const queryString = new URLSearchParams(options.params).toString();
+        url += `?${queryString}`;
+      }
+
+      return this.makeRequest(url, { method: 'DELETE' });
+    } catch (error) {
+      console.error(`❌ DELETE ${endpoint} failed:`, error);
+      throw this.transformError(error);
+    }
   }
 
   // Direct URL methods (for backward compatibility and custom URLs)
@@ -861,6 +942,50 @@ export class ApiService {
     ApiConfig.reset();
     ApiEndpoints.clearCache();
     // Clear any other caches as needed
+  }
+
+  // Notification API methods
+  static async getNotifications(params: {
+    page?: number;
+    limit?: number;
+    unreadOnly?: boolean;
+    type?: string;
+  } = {}): Promise<any> {
+    return this.get('GET_NOTIFICATIONS', { params });
+  }
+
+  static async markNotificationAsRead(notificationId: string): Promise<any> {
+    return this.put('MARK_NOTIFICATION_READ', null, {
+      urlParams: { notificationId }
+    });
+  }
+
+  static async markAllNotificationsAsRead(): Promise<any> {
+    return this.put('MARK_ALL_NOTIFICATIONS_READ');
+  }
+
+  static async deleteNotification(notificationId: string): Promise<any> {
+    return this.delete('DELETE_NOTIFICATION', {
+      urlParams: { notificationId }
+    });
+  }
+
+  static async clearAllNotifications(): Promise<any> {
+    return this.delete('CLEAR_ALL_NOTIFICATIONS');
+  }
+
+  static async getUnreadCount(): Promise<any> {
+    return this.get('GET_UNREAD_COUNT');
+  }
+
+  static async getNotificationsByType(type: string): Promise<any> {
+    return this.get('GET_NOTIFICATIONS', {
+      params: { type }
+    });
+  }
+
+  static async getNotificationStats(): Promise<any> {
+    return this.get('NOTIFICATIONS_STATS');
   }
 }
 

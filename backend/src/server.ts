@@ -14,6 +14,7 @@ import mentorRoutes from './routes/mentor.routes.js';
 import './models/index.js'
 import psychometricRoutes from './routes/psychometric.routes.js';
 import bookingRoutes from './routes/booking.routes.js';
+import notificationRoutes from './routes/notifications.routes'
 
 const app = express();
 
@@ -188,6 +189,7 @@ app.use('/api/v1/student', studentRoutes);
 app.use('/api/v1/mentors', mentorRoutes);
 app.use('/api/v1/psychometric', psychometricRoutes);
 app.use('/api/v1/booking', bookingRoutes);
+app.use('/api/v1/notifications', notificationRoutes)
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

@@ -55,17 +55,13 @@ const menuSections = [
         badgeColor: '#7C3AED',
         iconColor: '#7C3AED'
       },
-      { id: 'personality', title: 'Personality Test', icon: 'mood', route: '/personality-test', iconColor: '#059669' },
-      { id: 'skills', title: 'Skills Evaluation', icon: 'quiz', route: '/skills-evaluation', iconColor: '#DC2626' },
     ]
   },
   {
     title: 'Account',
     items: [
       { id: 'profile', title: 'My Profile', icon: 'person', route: '/(tabs)/profile', iconColor: '#8B4513' },
-      { id: 'achievements', title: 'Achievements', icon: 'emoji-events', route: '/achievements', iconColor: '#F59E0B' },
-      { id: 'settings', title: 'Settings', icon: 'settings', route: '/settings', iconColor: '#6B7280' },
-      { id: 'help', title: 'Help & Support', icon: 'help-outline', route: '/help', iconColor: '#6B7280' },
+      { id: 'help', title: 'Help & Support', icon: 'help-outline', route: '/support/help', iconColor: '#6B7280' },
     ]
   }
 ];

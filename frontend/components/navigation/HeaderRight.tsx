@@ -1,14 +1,32 @@
-// components/navigation/HeaderRight.tsx - Fixed Header Right Component  
-import React from "react";
+// frontend/components/navigation/HeaderRight.tsx - Updated with Dynamic Notifications Badge
+import React, { useEffect } from "react";
 import { View, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { router } from "expo-router";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
-
+import { MaterialIcons } from "@expo/vector-icons";
 import { useFavoritesStore } from "@/stores/favorites-store";
+import { useNotificationsStore } from "@/stores/notificationsStore";
 
 export default function HeaderRight() {
   const { getFavoriteCount } = useFavoritesStore();
+  const { unreadCount, refreshUnreadCount, isInitialized } = useNotificationsStore();
+  
   const favoriteCount = getFavoriteCount();
+
+  // Refresh unread count when component mounts or becomes visible
+  useEffect(() => {
+    if (!isInitialized) {
+      refreshUnreadCount();
+    }
+  }, [isInitialized, refreshUnreadCount]);
+
+  // Refresh unread count periodically (every 2 minutes)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshUnreadCount();
+    }, 2 * 60 * 1000); // 2 minutes
+
+    return () => clearInterval(interval);
+  }, [refreshUnreadCount]);
 
   return (
     <View style={styles.container}>
@@ -36,10 +54,13 @@ export default function HeaderRight() {
       >
         <View style={styles.iconContainer}>
           <MaterialIcons name="notifications" size={22} color="#5d4e37" strokeWidth={2} />
-          {/* Notification badge - you can make this dynamic */}
-          <View style={[styles.badge, styles.notificationBadge]}>
-            <Text style={styles.badgeText}>3</Text>
-          </View>
+          {unreadCount > 0 && (
+            <View style={[styles.badge, styles.notificationBadge]}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount.toString()}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     </View>
@@ -75,9 +96,11 @@ const styles = StyleSheet.create({
     minWidth: 18,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#fff",
   },
   notificationBadge: {
-    backgroundColor: "#d97706",
+    backgroundColor: "#dc2626",
   },
   badgeText: {
     fontSize: 10,
