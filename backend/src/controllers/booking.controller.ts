@@ -1,23 +1,26 @@
+// backend/src/controllers/booking.controller.ts - Updated with Cal.com Integration
 import { Request, Response } from 'express';
 import { catchAsync } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { Session } from '../models/Session.model';
 import User from '../models/User.model';
 import mongoose from 'mongoose';
-import googleCalendarService from '../services/googleCalendar.service';
+import calComService from '../services/calcom.service';
 import { notificationService } from '../services/booking.service';
+import { runBookingDebug } from '../utils/bookingDebug';
+import MentorProfileService from '../services/mentorProfile.service';
 
-// Create a simple schema for mentorProfiles collection
-const mentorProfileSchema = new mongoose.Schema({}, { strict: false });
-const MentorProfile = mongoose.model('MentorProfile', mentorProfileSchema, 'mentorProfiles');
+// Remove the model creation - we'll use the service instead
+// const mentorProfileSchema = new mongoose.Schema({}, { strict: false });
+// const MentorProfile = mongoose.model('MentorProfile', mentorProfileSchema, 'mentorProfiles');
 
 /**
- * Get available time slots for a mentor on a specific date with real-time checking
+ * Get available time slots for a mentor on a specific date using Cal.com
  */
 export const getAvailableSlots = catchAsync(async (req: Request, res: Response) => {
   const { mentorId, date } = req.body;
   
-  console.log('📅 Fetching available slots:', { mentorId, date });
+  console.log('📅 Fetching available slots via Cal.com:', { mentorId, date });
 
   if (!mentorId || !date) {
     res.status(400).json({
@@ -38,15 +41,20 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Check if date is in the past
+    // Check if date is in the past (but don't throw error, just return empty slots)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     requestedDate.setHours(0, 0, 0, 0);
     
     if (requestedDate < today) {
-      res.status(400).json({
-        success: false,
-        message: 'Cannot book sessions for past dates',
+      res.status(200).json({
+        success: true,
+        message: 'Past dates are not available for booking',
+        data: [],
+        info: {
+          type: 'past_date',
+          suggestion: 'Please select tomorrow or a future date for booking'
+        }
       });
       return;
     }
@@ -56,74 +64,32 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'Mentor not found in users collection',
+        message: 'Mentor not found',
       });
       return;
     }
 
-    // Find the mentor profile in mentorProfiles collection
-    const mentorProfile = await MentorProfile.findOne({ userId: new mongoose.Types.ObjectId(mentorId) });
-    
+    // Find the mentor profile
+    const mentorProfile = await MentorProfileService.findById(mentorId);
     if (!mentorProfile) {
-      console.log('⚠️ No mentor profile found for userId:', mentorId);
-      
-      res.status(200).json({
-        success: true,
-        message: 'No mentor profile found for this user',
-        data: [],
+      res.status(404).json({
+        success: false,
+        message: 'Mentor profile not found',
       });
       return;
     }
 
-    console.log('👤 Mentor profile found:', {
-      profileId: mentorProfile._id,
-      userId: (mentorProfile as any).userId,
-      displayName: (mentorProfile as any).displayName,
-      hasWeeklySchedule: !!(mentorProfile as any).weeklySchedule,
-      hasPricing: !!(mentorProfile as any).pricing,
-    });
+    // Get available slots from Cal.com
+    const availableSlots = await calComService.getAvailableSlots(mentorId, date);
 
-    // Check if mentor profile has weekly schedule
-    if (!(mentorProfile as any).weeklySchedule || typeof (mentorProfile as any).weeklySchedule !== 'object') {
-      console.log('⚠️ Mentor profile has no weekly schedule configured');
-      
-      res.status(200).json({
-        success: true,
-        message: 'No schedule configured for this mentor',
-        data: [],
-      });
-      return;
-    }
-
-    // Generate slots based on mentor's actual schedule
-    const mentorSlots = await generateRealTimeSlots(mentorProfile, date);
-    
-    console.log('🎯 Generated mentor slots:', mentorSlots.length);
-    
-    if (mentorSlots.length === 0) {
-      const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      
-      res.status(200).json({
-        success: true,
-        message: `No available slots for ${dayName}. This mentor may not have configured their schedule for this day.`,
-        data: [],
-        debug: {
-          mentorName: (mentorProfile as any).displayName,
-          requestedDay: dayName,
-          daySchedule: (mentorProfile as any).weeklySchedule?.[dayName] || null,
-        }
-      });
-      return;
-    }
-
-    // Filter out already booked slots from database
-    const finalSlots = await filterRealBookedSlots(mentorSlots, mentorId, date);
+    // Filter out already booked slots from our database
+    const finalSlots = await filterBookedSlots(availableSlots, mentorId, date);
 
     console.log('✅ Final available slots:', finalSlots.length);
 
     res.status(200).json({
       success: true,
-      message: finalSlots.length > 0 ? 'Available slots retrieved successfully' : 'All slots are booked for this date',
+      message: finalSlots.length > 0 ? 'Available slots retrieved successfully' : 'No available slots for this date',
       data: finalSlots,
     });
 
@@ -138,20 +104,13 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
 });
 
 /**
- * Create a new booking with enhanced Google Meet integration
+ * Create a new booking with Cal.com integration
  */
 export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const {
-    mentorId,
-    timeSlot,
-    subject,
-    notes,
-    paymentMethodId,
-  } = req.body;
-
+  const { mentorId, timeSlot, subject, notes, paymentMethodId } = req.body;
   const studentId = req.userId;
 
-  console.log('🎯 Creating booking:', { mentorId, studentId, timeSlot: timeSlot.id, subject });
+  console.log('🎯 Creating booking with Cal.com:', { mentorId, studentId, timeSlot: timeSlot.id, subject });
 
   try {
     // Validate the booking request
@@ -171,7 +130,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    // Double-check slot availability before booking
+    // Double-check slot availability
     const isSlotStillAvailable = await checkSlotAvailability(mentorId, timeSlot);
     if (!isSlotStillAvailable) {
       res.status(400).json({
@@ -181,7 +140,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    // Get mentor and student details for Google Meet creation
+    // Get mentor and student details
     const [mentor, student] = await Promise.all([
       User.findById(mentorId),
       User.findById(studentId)
@@ -191,6 +150,23 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       res.status(400).json({
         success: false,
         message: 'Mentor or student not found',
+      });
+      return;
+    }
+
+    // Process payment first (mock implementation)
+    const paymentResult = await processPayment({
+      amount: timeSlot.price,
+      currency: 'USD',
+      paymentMethodId,
+      description: `Mentoring session: ${subject}`,
+      metadata: { mentorId, studentId, sessionType: 'mentoring' }
+    });
+
+    if (!paymentResult.success) {
+      res.status(400).json({
+        success: false,
+        message: 'Payment failed: ' + paymentResult.error,
       });
       return;
     }
@@ -208,41 +184,45 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       price: timeSlot.price,
     });
 
-    console.log('✅ Session created:', session._id);
+    console.log('✅ Session created in database:', session._id);
 
-    // Create Google Meet session with enhanced data
-    let meetingResult;
-    try {
-      meetingResult = await googleCalendarService.createMentoringSession({
-        mentorEmail: mentor.email,
-        studentEmail: student.email,
-        mentorName: `${mentor.firstName} ${mentor.lastName}`,
-        studentName: `${student.firstName} ${student.lastName}`,
-        subject: subject,
-        startTime: timeSlot.startTime,
-        endTime: timeSlot.endTime,
-        sessionId: session._id.toString(),
-        timezone: mentor.timezone || 'UTC',
-      });
+    // Create Cal.com booking
+    const calcomResult = await calComService.createBooking({
+      mentorId,
+      studentId,
+      timeSlot,
+      subject,
+      notes,
+      studentEmail: student.email,
+      studentName: `${student.firstName} ${student.lastName}`,
+      mentorEmail: mentor.email,
+      mentorName: `${mentor.firstName} ${mentor.lastName}`,
+    });
 
-      console.log('🎥 Google Meet result:', meetingResult);
-    } catch (meetError) {
-      console.error('❌ Google Meet creation failed:', meetError);
-      // Continue with fallback meeting link
-      meetingResult = {
-        success: false,
-        meetingLink: `https://meet.google.com/${generateSecureMeetingCode()}`,
-        error: typeof meetError === 'object' && meetError !== null && 'message' in meetError ? (meetError as any).message : 'Unknown error'
-      };
+    let meetingUrl = '';
+    let calcomBookingId = '';
+
+    if (calcomResult.success && calcomResult.booking) {
+      meetingUrl = calcomResult.meetingUrl || '';
+      calcomBookingId = calcomResult.booking.id.toString();
+      
+      // Update session with Cal.com booking details
+      session.recordingUrl = meetingUrl;
+      (session as any).calendarEventId = calcomBookingId;
+      (session as any).meetingProvider = 'calcom';
+      await session.save();
+
+      console.log('✅ Cal.com booking created:', calcomBookingId);
+    } else {
+      console.warn('⚠️ Cal.com booking failed, using fallback:', calcomResult.error);
+      meetingUrl = generateFallbackMeetingUrl();
+      
+      session.recordingUrl = meetingUrl;
+      (session as any).meetingProvider = 'fallback';
+      await session.save();
     }
 
-    // Update session with meeting link
-    session.recordingUrl = meetingResult.meetingLink; // Store meeting link in recordingUrl field
-    (session as any).calendarEventId = meetingResult.calendarEventId;
-    (session as any).meetingProvider = 'google_meet';
-    await session.save();
-
-    // Send notifications to both mentor and student
+    // Send notifications
     try {
       await notificationService.sendBookingConfirmation({
         sessionId: session._id.toString(),
@@ -255,7 +235,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         subject: subject,
         scheduledTime: timeSlot.startTime,
         duration: timeSlot.duration,
-        meetingLink: meetingResult.meetingLink,
+        meetingLink: meetingUrl,
         sessionType: 'video',
         amount: `$${timeSlot.price}`,
       });
@@ -263,29 +243,6 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       console.log('📧 Confirmation emails sent');
     } catch (emailError) {
       console.error('⚠️ Failed to send confirmation emails:', emailError);
-      // Don't fail the booking if email fails
-    }
-
-    // Set up session reminders
-    try {
-      await notificationService.setupSessionReminders({
-        sessionId: session._id.toString(),
-        mentorId: mentor._id.toString(),
-        studentId: student._id.toString(),
-        mentorEmail: mentor.email,
-        studentEmail: student.email,
-        mentorName: `${mentor.firstName} ${mentor.lastName}`,
-        studentName: `${student.firstName} ${student.lastName}`,
-        subject: subject,
-        scheduledTime: timeSlot.startTime,
-        duration: timeSlot.duration,
-        meetingLink: meetingResult.meetingLink,
-        sessionType: 'video',
-      });
-
-      console.log('🔔 Reminders set up');
-    } catch (reminderError) {
-      console.error('⚠️ Failed to set up reminders:', reminderError);
     }
 
     res.status(201).json({
@@ -294,11 +251,11 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       data: {
         bookingId: session._id,
         sessionId: session._id,
-        meetingLink: meetingResult.meetingLink,
-        calendarEventId: meetingResult.calendarEventId,
-        paymentId: `pay_${Date.now()}`,
+        meetingLink: meetingUrl,
+        calendarEventId: calcomBookingId,
+        paymentId: paymentResult.paymentId,
         reminderSet: true,
-        googleMeetCreated: meetingResult.success,
+        calcomCreated: calcomResult.success,
       },
     });
 
@@ -312,6 +269,201 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   }
 });
 
+/**
+ * Cancel a booking and associated Cal.com booking
+ */
+export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+  const { bookingId } = req.params;
+  const { reason } = req.body;
+  const userId = req.userId;
+
+  try {
+    const session = await Session.findById(bookingId)
+      .populate('studentId', 'firstName lastName email')
+      .populate('mentorId', 'firstName lastName email');
+
+    if (!session) {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+      return;
+    }
+
+    const isStudent = session.studentId._id.toString() === userId;
+    const isMentor = session.mentorId._id.toString() === userId;
+    
+    if (!isStudent && !isMentor) {
+      res.status(403).json({
+        success: false,
+        message: 'You are not authorized to cancel this booking',
+      });
+      return;
+    }
+
+    // Cancel Cal.com booking if exists
+    if ((session as any).calendarEventId && (session as any).meetingProvider === 'calcom') {
+      try {
+        await calComService.cancelBooking((session as any).calendarEventId, reason);
+        console.log('✅ Cal.com booking cancelled');
+      } catch (calcomError) {
+        console.error('⚠️ Failed to cancel Cal.com booking:', calcomError);
+      }
+    }
+
+    // Update session status
+    session.status = 'cancelled';
+    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Cancelled by ${isStudent ? 'student' : 'mentor'}: ${reason || 'No reason provided'}`;
+    await session.save();
+
+    // Process refund (mock implementation)
+    const refundAmount = (session as any).price || 0;
+    if (refundAmount > 0) {
+      try {
+        await processRefund({
+          originalPaymentId: `pay_${session._id}`,
+          amount: refundAmount,
+          reason: reason || 'Session cancelled'
+        });
+        console.log('💰 Refund processed');
+      } catch (refundError) {
+        console.error('⚠️ Refund processing failed:', refundError);
+      }
+    }
+
+    // Send cancellation notifications
+    try {
+      await notificationService.sendCancellationNotification({
+        sessionId: session._id.toString(),
+        mentorEmail: (session.mentorId as any).email,
+        studentEmail: (session.studentId as any).email,
+        mentorName: `${(session.mentorId as any).firstName} ${(session.mentorId as any).lastName}`,
+        studentName: `${(session.studentId as any).firstName} ${(session.studentId as any).lastName}`,
+        subject: session.subject,
+        scheduledTime: session.scheduledTime.toISOString(),
+        cancelledBy: isStudent ? 'student' : 'mentor',
+        reason: reason || 'No reason provided',
+        refundAmount,
+      });
+    } catch (emailError) {
+      console.error('⚠️ Failed to send cancellation emails:', emailError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking cancelled successfully',
+      data: {
+        sessionId: session._id,
+        refundEligible: refundAmount > 0,
+        refundAmount,
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ Booking cancellation failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Booking cancellation failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+/**
+ * Reschedule a booking with Cal.com
+ */
+export const rescheduleBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+  const { bookingId } = req.params;
+  const { newTimeSlot } = req.body;
+  const userId = req.userId;
+
+  try {
+    const session = await Session.findById(bookingId);
+
+    if (!session) {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+      return;
+    }
+
+    const isStudent = session.studentId.toString() === userId;
+    const isMentor = session.mentorId.toString() === userId;
+    
+    if (!isStudent && !isMentor) {
+      res.status(403).json({
+        success: false,
+        message: 'You are not authorized to reschedule this booking',
+      });
+      return;
+    }
+
+    // Check if new slot is available
+    const isNewSlotAvailable = await checkSlotAvailability(session.mentorId.toString(), newTimeSlot);
+    if (!isNewSlotAvailable) {
+      res.status(400).json({
+        success: false,
+        message: 'Selected new time slot is not available',
+      });
+      return;
+    }
+
+    const oldScheduledTime = session.scheduledTime;
+
+    // Reschedule Cal.com booking if exists
+    if ((session as any).calendarEventId && (session as any).meetingProvider === 'calcom') {
+      try {
+        const rescheduleSuccess = await calComService.rescheduleBooking(
+          (session as any).calendarEventId,
+          newTimeSlot.startTime,
+          newTimeSlot.endTime
+        );
+        
+        if (!rescheduleSuccess) {
+          throw new Error('Cal.com reschedule failed');
+        }
+        
+        console.log('✅ Cal.com booking rescheduled');
+      } catch (calcomError) {
+        console.error('⚠️ Failed to reschedule Cal.com booking:', calcomError);
+        res.status(400).json({
+          success: false,
+          message: 'Failed to reschedule with Cal.com. Please try again.',
+        });
+        return;
+      }
+    }
+
+    // Update session details
+    session.scheduledTime = new Date(newTimeSlot.startTime);
+    session.duration = newTimeSlot.duration;
+    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Rescheduled from ${oldScheduledTime.toISOString()} to ${newTimeSlot.startTime} by ${isStudent ? 'student' : 'mentor'}`;
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking rescheduled successfully',
+      data: {
+        sessionId: session._id,
+        oldScheduledTime: oldScheduledTime,
+        newScheduledTime: session.scheduledTime,
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ Booking reschedule failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Booking reschedule failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+/**
+ * Get booking details
+ */
 export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { bookingId } = req.params;
   const userId = req.userId;
@@ -359,6 +511,9 @@ export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, re
       status: session.status,
       meetingLink: session.recordingUrl,
       notes: session.sessionNotes,
+      price: (session as any).price,
+      meetingProvider: (session as any).meetingProvider,
+      calendarEventId: (session as any).calendarEventId,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };
@@ -380,144 +535,7 @@ export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, re
 });
 
 /**
- * Cancel a booking and associated Google Meet
- */
-export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { bookingId } = req.params;
-  const { reason } = req.body;
-  const userId = req.userId;
-
-  try {
-    const session = await Session.findById(bookingId)
-      .populate('studentId', 'name email')
-      .populate('mentorId', 'name email');
-
-    if (!session) {
-      res.status(404).json({
-        success: false,
-        message: 'Booking not found',
-      });
-      return;
-    }
-
-    const isStudent = session.studentId._id.toString() === userId;
-    const isMentor = session.mentorId._id.toString() === userId;
-    
-    if (!isStudent && !isMentor) {
-      res.status(403).json({
-        success: false,
-        message: 'You are not authorized to cancel this booking',
-      });
-      return;
-    }
-
-    // Cancel Google Calendar event if exists
-    if (session.calendarEventId) {
-      try {
-        await googleCalendarService.cancelMentoringSession(session.calendarEventId);
-        console.log('✅ Google Calendar event cancelled');
-      } catch (calendarError) {
-        console.error('⚠️ Failed to cancel Google Calendar event:', calendarError);
-      }
-    }
-
-    // Update session status
-    session.status = 'cancelled';
-    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Cancelled by ${isStudent ? 'student' : 'mentor'}: ${reason || 'No reason provided'}`;
-    await session.save();
-
-    // Send cancellation notifications
-    try {
-      await notificationService.sendCancellationNotification({
-        sessionId: session._id.toString(),
-        mentorEmail: (session.mentorId as any).email,
-        studentEmail: (session.studentId as any).email,
-        mentorName: (session.mentorId as any).name,
-        studentName: (session.studentId as any).name,
-        subject: session.subject,
-        scheduledTime: session.scheduledTime.toISOString(),
-        cancelledBy: isStudent ? 'student' : 'mentor',
-        reason: reason || 'No reason provided',
-        refundAmount: (session as any).price ?? 0,
-      });
-    } catch (emailError) {
-      console.error('⚠️ Failed to send cancellation emails:', emailError);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Booking cancelled successfully',
-      data: {
-        sessionId: session._id,
-        refundEligible: true,
-        refundAmount: (session as any).price ?? 0,
-      },
-    });
-
-  } catch (error: any) {
-    console.error('❌ Booking cancellation failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Booking cancellation failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-export const rescheduleBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { bookingId } = req.params;
-  const { newTimeSlot } = req.body;
-  const userId = req.userId;
-
-  try {
-    const session = await Session.findById(bookingId);
-
-    if (!session) {
-      res.status(404).json({
-        success: false,
-        message: 'Booking not found',
-      });
-      return;
-    }
-
-    const isStudent = session.studentId.toString() === userId;
-    const isMentor = session.mentorId.toString() === userId;
-    
-    if (!isStudent && !isMentor) {
-      res.status(403).json({
-        success: false,
-        message: 'You are not authorized to reschedule this booking',
-      });
-      return;
-    }
-
-    const oldScheduledTime = session.scheduledTime;
-    session.scheduledTime = new Date(newTimeSlot.startTime);
-    session.duration = newTimeSlot.duration;
-    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Rescheduled from ${oldScheduledTime.toISOString()} by ${isStudent ? 'student' : 'mentor'}`;
-    await session.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Booking rescheduled successfully',
-      data: {
-        sessionId: session._id,
-        newScheduledTime: session.scheduledTime,
-      },
-    });
-
-  } catch (error: any) {
-    console.error('❌ Booking reschedule failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Booking reschedule failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-/**
- * Get user's bookings with real-time data
+ * Get user's bookings
  */
 export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.userId;
@@ -548,8 +566,8 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
 
     const [sessions, total] = await Promise.all([
       Session.find(query)
-        .populate('studentId', 'name email avatar')
-        .populate('mentorId', 'name email avatar')
+        .populate('studentId', 'firstName lastName email avatar')
+        .populate('mentorId', 'firstName lastName email avatar')
         .sort({ scheduledTime: -1 })
         .skip(skip)
         .limit(limitNum),
@@ -560,13 +578,13 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
       id: session._id,
       mentor: {
         id: (session.mentorId as any)._id,
-        name: (session.mentorId as any).name,
+        name: `${(session.mentorId as any).firstName} ${(session.mentorId as any).lastName}`,
         email: (session.mentorId as any).email,
         avatar: (session.mentorId as any).avatar,
       },
       student: {
         id: (session.studentId as any)._id,
-        name: (session.studentId as any).name,
+        name: `${(session.studentId as any).firstName} ${(session.studentId as any).lastName}`,
         email: (session.studentId as any).email,
         avatar: (session.studentId as any).avatar,
       },
@@ -578,11 +596,12 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
         duration: session.duration,
       },
       status: session.status,
-      meetingLink: (session as any).meetingLink,
-      calendarEventId: session.calendarEventId,
+      meetingLink: session.recordingUrl,
+      calendarEventId: (session as any).calendarEventId,
       notes: session.sessionNotes,
       userRating: session.studentRating || session.mentorRating,
       price: (session as any).price || 75,
+      meetingProvider: (session as any).meetingProvider,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     }));
@@ -609,160 +628,12 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
   }
 });
 
-/**
- * Enhanced time slot generation from real mentor schedule
- */
-
-// Replace the generateRealTimeSlots function in booking.controller.ts:
-
-async function generateRealTimeSlots(mentorProfile: any, date: string): Promise<any[]> {
-  try {
-    const requestedDate = new Date(date);
-    const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    
-    console.log('🔍 DEBUGGING SLOT GENERATION:');
-    console.log('📅 Date:', date);
-    console.log('📅 Day name:', dayName);
-    console.log('👤 Mentor profile ID:', mentorProfile._id);
-    console.log('📋 Weekly schedule exists:', !!mentorProfile.weeklySchedule);
-    console.log('📋 Full weekly schedule:', JSON.stringify(mentorProfile.weeklySchedule, null, 2));
-    
-    const weeklySchedule = mentorProfile.weeklySchedule;
-    
-    if (!weeklySchedule) {
-      console.log('❌ No weekly schedule found');
-      return [];
-    }
-    
-    const daySchedule = weeklySchedule[dayName];
-    console.log('📅 Day schedule for', dayName, ':', JSON.stringify(daySchedule, null, 2));
-    
-    if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
-      console.log('❌ No schedule found for', dayName);
-      return [];
-    }
-
-    const slots: any[] = [];
-    const now = new Date();
-    
-    // Get pricing info from mentor profile
-    const pricing = mentorProfile.pricing || {};
-    const hourlyRate = pricing.hourlyRate || 75;
-    
-    console.log('💰 Using hourly rate:', hourlyRate);
-    
-    // Process each time block for the day
-    for (let blockIndex = 0; blockIndex < daySchedule.length; blockIndex++) {
-      const block = daySchedule[blockIndex];
-      
-      console.log(`📋 Processing block ${blockIndex}:`, JSON.stringify(block, null, 2));
-      
-      // Check if block is available and has valid times
-      if (!block || block.isAvailable !== true || !block.startTime || !block.endTime) {
-        console.log('⚠️ Skipping invalid/unavailable block:', block);
-        continue;
-      }
-      
-      try {
-        // Parse time strings - handle both "H:MM" and "HH:MM" formats
-        const startTimeParts = block.startTime.split(':');
-        const endTimeParts = block.endTime.split(':');
-        
-        if (startTimeParts.length !== 2 || endTimeParts.length !== 2) {
-          console.log('⚠️ Invalid time format in block:', block);
-          continue;
-        }
-        
-        let startHour = parseInt(startTimeParts[0], 10);
-        let startMinute = parseInt(startTimeParts[1], 10);
-        let endHour = parseInt(endTimeParts[0], 10);
-        let endMinute = parseInt(endTimeParts[1], 10);
-        
-        // Handle the weird "01:30" case which should probably be "13:30" (1:30 PM)
-        if (startHour === 1 && startMinute === 30) {
-          console.log('🔧 Converting 01:30 to 13:30 (assuming PM)');
-          startHour = 13;
-        }
-        
-        if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
-          console.log('⚠️ Invalid time numbers in block:', block);
-          continue;
-        }
-        
-        // Create date objects for block start and end times
-        const blockStart = new Date(requestedDate);
-        blockStart.setHours(startHour, startMinute, 0, 0);
-        
-        const blockEnd = new Date(requestedDate);
-        blockEnd.setHours(endHour, endMinute, 0, 0);
-        
-        // Validate block times
-        if (blockEnd <= blockStart) {
-          console.log('⚠️ Invalid block: end time is not after start time:', block);
-          continue;
-        }
-        
-        console.log(`📅 Block range: ${blockStart.toISOString()} - ${blockEnd.toISOString()}`);
-        
-        // Generate 60-minute slots within this block
-        const slotDuration = 60; // minutes
-        let currentTime = new Date(blockStart);
-        let slotCount = 0;
-        
-        while (currentTime.getTime() + (slotDuration * 60 * 1000) <= blockEnd.getTime()) {
-          const slotStart = new Date(currentTime);
-          const slotEnd = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
-          
-          // Skip past slots (add 2 hour buffer for current day to account for timezone)
-          const isToday = requestedDate.toDateString() === now.toDateString();
-          const bufferTime = isToday ? 2 * 60 * 60 * 1000 : 0; // 2 hours buffer
-          
-          if (slotStart <= new Date(now.getTime() + bufferTime)) {
-            console.log('⏭️ Skipping past slot:', slotStart.toISOString());
-            currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
-            continue;
-          }
-          
-          const slot = {
-            id: `${mentorProfile.userId}-${slotStart.getTime()}`,
-            startTime: slotStart.toISOString(),
-            endTime: slotEnd.toISOString(),
-            date: date,
-            isAvailable: true,
-            price: hourlyRate,
-            duration: slotDuration,
-            sessionType: 'video' as const,
-          };
-          
-          slots.push(slot);
-          slotCount++;
-          
-          console.log(`🎯 Generated slot ${slotCount}: ${slotStart.toLocaleTimeString()} - ${slotEnd.toLocaleTimeString()}`);
-          
-          currentTime = new Date(currentTime.getTime() + (slotDuration * 60 * 1000));
-        }
-        
-        console.log(`✅ Generated ${slotCount} slots from block ${blockIndex}`);
-        
-      } catch (blockError: any) {
-        console.error('❌ Error processing block:', block, blockError.message);
-        continue;
-      }
-    }
-    
-    console.log(`✅ Total generated slots: ${slots.length}`);
-    return slots;
-    
-  } catch (error: any) {
-    console.error('❌ Error generating time slots:', error.message);
-    return [];
-  }
-}
+// Helper Functions
 
 /**
- * Enhanced slot filtering with real-time booking check
+ * Filter out already booked slots from database
  */
-async function filterRealBookedSlots(slots: any[], mentorId: string, date: string): Promise<any[]> {
+async function filterBookedSlots(slots: any[], mentorId: string, date: string): Promise<any[]> {
   try {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -783,7 +654,7 @@ async function filterRealBookedSlots(slots: any[], mentorId: string, date: strin
     console.log(`📋 Found ${existingBookings.length} existing bookings for ${date}`);
     
     // Filter out conflicting slots
-    return slots.map(slot => {
+    return slots.filter(slot => {
       const slotStart = new Date(slot.startTime);
       const slotEnd = new Date(slot.endTime);
       
@@ -804,11 +675,8 @@ async function filterRealBookedSlots(slots: any[], mentorId: string, date: strin
         return overlap;
       });
       
-      return {
-        ...slot,
-        isAvailable: !hasConflict,
-      };
-    }).filter(slot => slot.isAvailable); // Only return available slots
+      return !hasConflict;
+    });
     
   } catch (error: any) {
     console.error('❌ Error filtering booked slots:', error);
@@ -841,9 +709,9 @@ async function checkSlotAvailability(mentorId: string, timeSlot: any): Promise<b
 }
 
 /**
- * Generate secure meeting code for fallback
+ * Generate fallback meeting URL
  */
-function generateSecureMeetingCode(): string {
+function generateFallbackMeetingUrl(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz';
   let code = '';
   for (let i = 0; i < 12; i++) {
@@ -853,10 +721,70 @@ function generateSecureMeetingCode(): string {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
   }
-  return code;
+  return `https://meet.google.com/${code}`;
 }
 
-// Helper function for validation (existing code with minor updates)
+/**
+ * Process payment (mock implementation)
+ */
+async function processPayment(paymentData: {
+  amount: number;
+  currency: string;
+  paymentMethodId: string;
+  description: string;
+  metadata: any;
+}): Promise<{ success: boolean; paymentId?: string; error?: string }> {
+  try {
+    console.log('💳 Processing payment:', paymentData.amount, paymentData.currency);
+    
+    // Mock payment processing
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Simulate 95% success rate
+    const isSuccessful = Math.random() > 0.05;
+    
+    if (isSuccessful) {
+      const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('✅ Payment processed successfully:', paymentId);
+      return { success: true, paymentId };
+    } else {
+      return { success: false, error: 'Payment was declined' };
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Payment processing error:', error);
+    return { success: false, error: 'Payment processing failed' };
+  }
+}
+
+/**
+ * Process refund (mock implementation)
+ */
+async function processRefund(refundData: {
+  originalPaymentId: string;
+  amount: number;
+  reason: string;
+}): Promise<{ success: boolean; refundId?: string; error?: string }> {
+  try {
+    console.log('💰 Processing refund:', refundData);
+    
+    // Mock refund processing
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const refundId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('✅ Refund processed:', refundId);
+    
+    return { success: true, refundId };
+    
+  } catch (error: any) {
+    console.error('❌ Refund processing error:', error);
+    return { success: false, error: 'Refund processing failed' };
+  }
+}
+
+/**
+ * Validate booking request
+ */
 async function validateBooking(bookingData: any): Promise<{ isValid: boolean; message: string }> {
   try {
     const { mentorId, studentId, timeSlot, subject, paymentMethodId } = bookingData;
@@ -906,6 +834,32 @@ async function validateBooking(bookingData: any): Promise<{ isValid: boolean; me
   }
 }
 
+/**
+ * Debug endpoint for troubleshooting booking issues
+ */
+export const debugBooking = catchAsync(async (req: Request, res: Response) => {
+  const { mentorId } = req.params;
+  const { date } = req.query;
+
+  try {
+    const debugInfo = await runBookingDebug(mentorId, date as string);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Debug information generated',
+      data: debugInfo,
+    });
+
+  } catch (error: any) {
+    console.error('❌ Debug endpoint failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Debug failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 export default {
   getAvailableSlots,
   createBooking,
@@ -913,4 +867,5 @@ export default {
   getBookingDetails,
   rescheduleBooking,
   cancelBooking,
+  debugBooking,
 };

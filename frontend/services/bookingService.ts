@@ -1,7 +1,6 @@
-// services/bookingService.ts - Complete Booking Service with Real API Integration
+// services/bookingService.ts - Simplified Booking Service with Cal.com Integration
 import ApiService from './api';
 
-// Types for the booking flow
 export interface TimeSlot {
   id: string;
   startTime: string;
@@ -61,6 +60,7 @@ export interface Session {
   notes?: string;
   userRating?: number;
   price: number;
+  meetingProvider?: string;
 }
 
 class BookingService {
@@ -74,38 +74,55 @@ class BookingService {
   }
 
   /**
-   * Get available time slots for a mentor on a specific date
+   * Get available time slots for a mentor (via Cal.com)
    */
   async getAvailableSlots(mentorId: string, date: string): Promise<TimeSlot[]> {
     try {
       console.log('📅 Fetching available slots:', { mentorId, date });
 
-      const response = await ApiService.post('/api/v1/booking/available-slots', {
+      const response = await ApiService.post('BOOKING_AVAILABLE_SLOTS', {
         mentorId,
         date,
       });
 
       if (!response.success) {
+        // Handle specific error types with friendly messages
+        if (response.info) {
+          const { type, suggestion } = response.info;
+          
+          switch (type) {
+            case 'past_date':
+              throw new Error('Past dates are not available for booking');
+            case 'no_profile':
+              throw new Error('This mentor hasn\'t set up their profile yet');
+            case 'no_schedule':
+              throw new Error('This mentor hasn\'t configured their schedule yet');
+            case 'no_slots':
+              throw new Error(`No available slots for ${response.info.dayName || 'this date'}`);
+            default:
+              throw new Error(response.message || 'Failed to fetch available slots');
+          }
+        }
         throw new Error(response.message || 'Failed to fetch available slots');
       }
 
-      console.log('✅ Available slots fetched successfully:', response.data.length);
+      console.log('✅ Available slots fetched:', response.data.length);
       return response.data || [];
 
     } catch (error: any) {
       console.error('❌ Error fetching available slots:', error);
-      throw new Error(error.message || 'Failed to fetch available time slots');
+      throw error; // Re-throw to preserve the specific error message
     }
   }
 
   /**
-   * Create a booking with complete flow
+   * Create a booking with Cal.com integration
    */
   async createBooking(bookingRequest: BookingRequest): Promise<BookingResponse> {
     try {
       console.log('🎯 Creating booking:', bookingRequest);
 
-      const response = await ApiService.post('/api/v1/booking/create', bookingRequest);
+      const response = await ApiService.post('BOOKING_CREATE', bookingRequest);
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to create booking');
@@ -134,8 +151,8 @@ class BookingService {
     try {
       console.log('❌ Cancelling booking:', bookingId);
 
-      const response = await ApiService.put(`/api/v1/booking/${bookingId}/cancel`, {
-        reason: reason || 'User cancelled',
+      const response = await ApiService.put('BOOKING_CANCEL', { reason }, {
+        urlParams: { bookingId }
       });
 
       if (!response.success) {
@@ -165,8 +182,10 @@ class BookingService {
     try {
       console.log('🔄 Rescheduling booking:', { bookingId, newTimeSlot });
 
-      const response = await ApiService.put(`/api/v1/booking/${bookingId}/reschedule`, {
+      const response = await ApiService.put('BOOKING_RESCHEDULE', {
         newTimeSlot,
+      }, {
+        urlParams: { bookingId }
       });
 
       if (!response.success) {
@@ -204,49 +223,32 @@ class BookingService {
     try {
       console.log('📋 Fetching user bookings:', { status, page, limit });
 
-      const queryParams = new URLSearchParams();
-      if (status) queryParams.append('status', status);
-      queryParams.append('page', page.toString());
-      queryParams.append('limit', limit.toString());
+      const params: any = { page: page.toString(), limit: limit.toString() };
+      if (status) params.status = status;
 
-      const response = await ApiService.get(`/api/v1/booking/user-bookings?${queryParams.toString()}`);
+      const response = await ApiService.get('BOOKING_USER_BOOKINGS', { params });
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to fetch bookings');
       }
 
       const formattedSessions = (response.data || []).map((session: any) => ({
-      id: session._id,
-      mentor: {
-        id: session.mentorId?._id || session.mentorId,
-        name: session.mentorId?.name || 'Unknown Mentor',
-        email: session.mentorId?.email || '',
-        avatar: session.mentorId?.avatar || '',
-      },
-      student: {
-        id: session.studentId?._id || session.studentId,
-        name: session.studentId?.name || 'Unknown Student',
-        email: session.studentId?.email || '',
-        avatar: session.studentId?.avatar || '',
-      },
-      subject: session.subject,
-      date: session.scheduledTime,
-      duration: session.duration,
-      sessionType: {
-        type: 'video' as const,
+        id: session.id,
+        mentor: session.mentor,
+        student: session.student,
+        subject: session.subject,
+        date: session.date,
         duration: session.duration,
-      },
-      status: session.status,
-      meetingLink: session.recordingUrl, // Meeting link from backend
-      calendarEventId: session.calendarEventId,
-      notes: session.sessionNotes,
-      userRating: session.studentRating || session.mentorRating,
-      price: session.price || 75,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-    }));
+        sessionType: session.sessionType,
+        status: session.status,
+        meetingLink: session.meetingLink,
+        notes: session.notes,
+        userRating: session.userRating,
+        price: session.price,
+        meetingProvider: session.meetingProvider,
+      }));
 
-      console.log('✅ User bookings fetched:', response.data.length);
+      console.log('✅ User bookings fetched:', formattedSessions.length);
       return {
         sessions: formattedSessions,
         pagination: response.pagination || {
@@ -278,7 +280,9 @@ class BookingService {
     try {
       console.log('🔍 Fetching booking details:', bookingId);
 
-      const response = await ApiService.get(`/api/v1/booking/${bookingId}`);
+      const response = await ApiService.get('BOOKING_DETAILS', {
+        urlParams: { bookingId }
+      });
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to fetch booking details');
@@ -300,7 +304,7 @@ class BookingService {
     try {
       console.log('⭐ Rating session:', { sessionId, rating });
 
-      const response = await ApiService.post(`/api/v1/booking/${sessionId}/rate`, {
+      const response = await ApiService.post(`/booking/${sessionId}/rate`, {
         rating,
         review,
       });
@@ -314,49 +318,6 @@ class BookingService {
 
     } catch (error: any) {
       console.error('❌ Error rating session:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Validate payment method
-   */
-  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
-    try {
-      const response = await ApiService.get(`/api/v1/booking/payment/validate?paymentMethodId=${paymentMethodId}`);
-      return response.success && response.data?.valid;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get upcoming sessions for notifications
-   */
-  async getUpcomingSessions(): Promise<Session[]> {
-    try {
-      const result = await this.getUserBookings('upcoming');
-      return result.sessions.filter(session => {
-        const sessionDate = new Date(session.date);
-        const now = new Date();
-        const timeDiff = sessionDate.getTime() - now.getTime();
-        const hoursUntilSession = timeDiff / (1000 * 60 * 60);
-        return hoursUntilSession <= 24 && hoursUntilSession > 0;
-      });
-    } catch (error) {
-      console.error('❌ Error fetching upcoming sessions:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Check if user has any active sessions
-   */
-  async hasActiveSession(): Promise<boolean> {
-    try {
-      const result = await this.getUserBookings('upcoming', 1, 1);
-      return result.sessions.length > 0;
-    } catch {
       return false;
     }
   }
@@ -401,6 +362,53 @@ class BookingService {
         completedSessions: 0,
         upcomingSessions: 0,
       };
+    }
+  }
+
+  /**
+   * Validate payment method
+   */
+  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
+    try {
+      const response = await ApiService.get('PAYMENT_VALIDATE', {
+        params: { paymentMethodId }
+      });
+      return response.success && response.data?.valid;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get upcoming sessions for today
+   */
+  async getTodaySessions(): Promise<Session[]> {
+    try {
+      const result = await this.getUserBookings('upcoming');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      return result.sessions.filter(session => {
+        const sessionDate = new Date(session.date);
+        return sessionDate >= today && sessionDate < tomorrow;
+      });
+    } catch (error) {
+      console.error('❌ Error fetching today sessions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if user has sessions today
+   */
+  async hasSessionsToday(): Promise<boolean> {
+    try {
+      const todaySessions = await this.getTodaySessions();
+      return todaySessions.length > 0;
+    } catch {
+      return false;
     }
   }
 }

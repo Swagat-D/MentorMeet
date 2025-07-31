@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 
 import { useFavoritesStore } from "@/stores/favorites-store";
-import { mentors } from "@/mocks/mentors";
 import MentorCard from "@/components/cards/MentorCard";
 import SecondaryHeader from "@/components/navigation/SecondaryHeader";
 
@@ -13,10 +12,7 @@ export default function FavoritesScreen() {
   const { favoriteIds } = useFavoritesStore();
   const [favoriteMentors, setFavoriteMentors] = useState<any[]>([]);
 
-  useEffect(() => {
-    const favorites = mentors.filter(mentor => favoriteIds.includes(mentor.id));
-    setFavoriteMentors(favorites);
-  }, [favoriteIds]);
+  
 
   const rightComponent = (
     <TouchableOpacity 

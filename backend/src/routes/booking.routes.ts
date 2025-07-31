@@ -1,36 +1,65 @@
-// backend/src/routes/booking.routes.ts - Updated Routes with Better Error Handling
+// backend/src/routes/booking.routes.ts - Updated Routes for Cal.com Integration
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { validateSchema } from '../validations/auth.validation';
 import bookingController from '../controllers/booking.controller';
+import calComService from '../services/calcom.service';
+import MentorProfileService from '../services/mentorProfile.service';
 import { z } from 'zod';
 import { User } from 'models';
 
 const router = Router();
 
-// Add to booking.routes.ts before authentication
+// Debug endpoint to find mentors with schedules (public access)
 router.get('/find-mentors-with-schedule', async (req, res) => {
   try {
-    const mentorsWithSchedule = await User.find({
-      weeklySchedule: { $exists: true, $ne: null },
-      role: 'mentor'
-    }).select('_id firstName lastName displayName weeklySchedule pricing');
+    // Using the mentorProfiles collection (not users collection)
+    const mentorsWithSchedule = await MentorProfileService.findMentorsWithSchedule();
     
     return res.json({
       success: true,
       mentors: mentorsWithSchedule.map(m => ({
-        id: m._id,
-        name: m.displayName || `${m.firstName} ${m.lastName}`,
+        id: m.userId, // This is the userId that links to users collection
+        profileId: m._id, // This is the mentorProfile _id
+        name: m.displayName,
         hasSchedule: !!m.weeklySchedule,
         hasPricing: !!m.pricing,
       }))
     });
   } catch (error) {
-    return res.json({ success: false, error: typeof error === 'object' && error && 'message' in error ? (error as any).message : String(error) });
+    return res.json({ 
+      success: false, 
+      error: typeof error === 'object' && error && 'message' in error ? (error as any).message : String(error) 
+    });
   }
 });
 
-// Apply authentication to all routes
+// Test endpoint to check mentor profile and schedule
+router.get('/debug/mentor/:mentorId', async (req, res) => {
+  try {
+    const { mentorId } = req.params;
+    const { date } = req.query;
+    
+    // Use the debug utility
+    const { runBookingDebug } = await import('../utils/bookingDebug');
+    const debugInfo = await runBookingDebug(mentorId, date as string);
+
+    return res.json({
+      success: true,
+      message: 'Debug information retrieved',
+      data: debugInfo,
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Debug failed',
+      error: error.message,
+    });
+  }
+});
+
+// Apply authentication to all routes below
 router.use(authenticate);
 
 // Validation schemas
@@ -53,7 +82,7 @@ const createBookingSchema = z.object({
       duration: z.number().positive(),
       sessionType: z.enum(['video', 'audio', 'in-person']),
     }),
-    sessionType: z.enum(['video', 'audio', 'in-person']),
+    sessionType: z.enum(['video', 'audio', 'in-person']).optional(),
     subject: z.string().min(3, 'Subject must be at least 3 characters').max(200, 'Subject too long'),
     notes: z.string().max(1000, 'Notes too long').optional(),
     paymentMethodId: z.string().min(1, 'Payment method is required'),
@@ -77,13 +106,6 @@ const rescheduleBookingSchema = z.object({
 const cancelBookingSchema = z.object({
   body: z.object({
     reason: z.string().max(500, 'Reason too long').optional(),
-  }),
-});
-
-const rateSessionSchema = z.object({
-  body: z.object({
-    rating: z.number().min(1, 'Rating must be at least 1').max(5, 'Rating must be at most 5'),
-    review: z.string().max(1000, 'Review too long').optional(),
   }),
 });
 
@@ -140,301 +162,82 @@ router.put(
   validateSchema(rescheduleBookingSchema),
   bookingController.rescheduleBooking
 );
-    
 
-router.post('/google/meet/create', async (req, res) => {
-  try {
-    const { mentorId, studentId, sessionDetails } = req.body;
-    
-    if (!mentorId || !studentId || !sessionDetails) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required parameters',
-      });
-    }
-
-    const googleMeetService = await import('../services/googleMeet.service');
-    const result = await googleMeetService.default.createMeeting({
-      summary: `Mentoring Session: ${sessionDetails.subject}`,
-      startTime: sessionDetails.startTime,
-      endTime: sessionDetails.endTime,
-      attendees: [
-        { email: req.body.mentorEmail || 'mentor@example.com' },
-        { email: req.body.studentEmail || 'student@example.com' },
-      ],
-    });
-
-    return res.json(result);
-  } catch (error: any) {
-    console.error('❌ Google Meet creation failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create Google Meet',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-
-
-// Payment endpoints
-router.post('/payment/process', async (req, res) => {
-  try {
-    const {
-      amount,
-      currency,
-      paymentMethodId,
-      description,
-      mentorId,
-      studentId,
-      sessionDetails,
-    } = req.body;
-    
-    if (!amount || !paymentMethodId || !mentorId || !studentId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required payment parameters',
-      });
-    }
-
-    const { paymentService } = await import('../services/booking.service');
-    const result = await paymentService.processPayment({
-      amount,
-      currency: currency || 'USD',
-      paymentMethodId,
-      description: description || 'Mentoring Session',
-      metadata: {
-        mentorId,
-        studentId,
-        sessionDetails,
-      },
-    });
-    
-    return res.json(result);
-  } catch (error: any) {
-    console.error('❌ Payment processing failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Payment processing failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-router.post('/payment/refund', async (req, res) => {
-  try {
-    const { paymentId, amount } = req.body;
-    
-    if (!paymentId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment ID is required for refund',
-      });
-    }
-
-    const { paymentService } = await import('../services/booking.service');
-    const result = await paymentService.refundPayment(paymentId, amount);
-    
-    return res.json(result);
-  } catch (error: any) {
-    console.error('❌ Refund processing failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Refund processing failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-router.get('/payment/validate', async (req, res) => {
-  try {
-    const { paymentMethodId } = req.query;
-    
-    if (!paymentMethodId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment method ID is required',
-      });
-    }
-
-    const { paymentService } = await import('../services/booking.service');
-    const isValid = await paymentService.validatePaymentMethod(paymentMethodId as string);
-    
-    return res.json({
-      success: true,
-      data: { valid: isValid },
-    });
-  } catch (error: any) {
-    console.error('❌ Payment validation failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Payment validation failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-// Notification endpoints
-router.post('/notifications/setup-reminders', async (req, res) => {
-  try {
-    const reminderData = req.body;
-    
-    if (!reminderData.sessionId || !reminderData.mentorEmail || !reminderData.studentEmail) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required reminder data',
-      });
-    }
-
-    const { notificationService } = await import('../services/booking.service');
-    await notificationService.setupSessionReminders(reminderData);
-    
-    return res.json({
-      success: true,
-      message: 'Reminders set up successfully',
-    });
-  } catch (error: any) {
-    console.error('❌ Reminder setup failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to setup reminders',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-router.post('/notifications/cancellation', async (req, res) => {
-  try {
-    const notificationData = req.body;
-    
-    const { notificationService } = await import('../services/booking.service');
-    await notificationService.sendCancellationNotification(notificationData);
-    
-    return res.json({
-      success: true,
-      message: 'Cancellation notifications sent',
-    });
-  } catch (error: any) {
-    console.error('❌ Cancellation notification failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to send cancellation notifications',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-router.post('/notifications/reschedule', async (req, res) => {
-  try {
-    const notificationData = req.body;
-    
-    const { notificationService } = await import('../services/booking.service');
-    await notificationService.sendRescheduleNotification(notificationData);
-    
-    return res.json({
-      success: true,
-      message: 'Reschedule notifications sent',
-    });
-  } catch (error: any) {
-    console.error('❌ Reschedule notification failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to send reschedule notifications',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-// Debug endpoints
-router.get('/debug', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Booking routes are working',
-    availableRoutes: [
-      'POST /api/v1/booking/available-slots',
-      'POST /api/v1/booking/create',
-      'GET /api/v1/booking/user-bookings',
-      'GET /api/v1/booking/:bookingId',
-      'PUT /api/v1/booking/:bookingId/cancel',
-      'PUT /api/v1/booking/:bookingId/reschedule',
-      'POST /api/v1/booking/:sessionId/rate',
-    ],
-    timestamp: new Date().toISOString()
-  });
-});
-
-router.get('/debug/mentor/:mentorId', async (req, res) => {
+// Cal.com integration endpoints
+router.post('/calcom/sync-mentor/:mentorId', async (req, res) => {
   try {
     const { mentorId } = req.params;
-    const { date } = req.query;
     
-    const User = (await import('../models/User.model')).default;
-    const mentor = await User.findById(mentorId).select('weeklySchedule timezone pricing name displayName');
-    
-    if (!mentor) {
-      return res.status(404).json({
+    if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
         success: false,
-        message: 'Mentor not found',
+        message: 'Invalid mentor ID format',
       });
     }
 
-    const testDate = (date as string) || new Date().toISOString().split('T')[0];
-    const dayName = new Date(testDate).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const result = await calComService.syncMentorAvailability(mentorId);
     
-    const debugInfo: {
-      mentor: {
-        id: string;
-        name: string;
-        timezone: string;
-        pricing: any;
-      };
-      schedule: {
-        fullWeek: any;
-        requestedDay: string;
-        daySchedule: any;
-      };
-      testDate: string;
-      slotsGenerated: number;
-      generatedSlots: any[];
-      slotGenerationError: string | null;
-    } = {
-      mentor: {
-        id: mentor._id.toString(),
-        name: mentor.name,
-        timezone: mentor.timezone ?? 'UTC',
-        pricing: mentor.pricing,
-      },
-      schedule: {
-        fullWeek: mentor.weeklySchedule,
-        requestedDay: dayName,
-        daySchedule: mentor.weeklySchedule?.[dayName] || null,
-      },
-      testDate,
-      slotsGenerated: 0,
-      generatedSlots: [],
-      slotGenerationError: null,
-    };
+    return res.json({
+      success: result,
+      message: result ? 'Mentor availability synced with Cal.com' : 'Failed to sync with Cal.com',
+    });
+  } catch (error: any) {
+    console.error('❌ Cal.com sync failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync with Cal.com',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
 
-    // Test slot generation
-    try {
-      const { bookingService } = await import('../services/booking.service');
-      const slots = await bookingService.generateTimeSlots(mentor, testDate);
-      debugInfo.slotsGenerated = slots.length;
-      debugInfo.generatedSlots = slots;
-    } catch (error: any) {
-      debugInfo.slotGenerationError = error.message;
+router.post('/calcom/create-event-type/:mentorId', async (req, res) => {
+  try {
+    const { mentorId } = req.params;
+    
+    if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid mentor ID format',
+      });
     }
 
+    const eventType = await calComService.createMentorEventType(mentorId);
+    
+    return res.json({
+      success: !!eventType,
+      message: eventType ? 'Event type created in Cal.com' : 'Failed to create event type',
+      data: eventType,
+    });
+  } catch (error: any) {
+    console.error('❌ Cal.com event type creation failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create Cal.com event type',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+// Test Cal.com connection
+router.get('/calcom/test', async (req, res) => {
+  try {
+    const hasApiKey = !!process.env.CALCOM_API_KEY;
+    const apiUrl = process.env.CALCOM_API_URL || 'https://api.cal.com/v1';
+    
     return res.json({
       success: true,
-      message: 'Debug information retrieved',
-      data: debugInfo,
+      message: 'Cal.com configuration',
+      data: {
+        configured: hasApiKey,
+        apiUrl,
+        apiKeyLength: process.env.CALCOM_API_KEY?.length || 0,
+      },
     });
-
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: 'Debug failed',
+      message: 'Cal.com test failed',
       error: error.message,
     });
   }
@@ -444,13 +247,12 @@ router.get('/debug/mentor/:mentorId', async (req, res) => {
 router.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'Booking system is operational',
+    message: 'Booking system operational',
     timestamp: new Date().toISOString(),
-    database: 'connected',
-    googleCalendar: 'available',
-    googleMeet: 'available',
-    payment: 'available',
-    notifications: 'available',
+    integrations: {
+      database: 'connected',
+      calcom: !!process.env.CALCOM_API_KEY,
+    },
   });
 });
 

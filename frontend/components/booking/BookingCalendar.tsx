@@ -1,4 +1,4 @@
-// components/booking/BookingCalendar.tsx - Enhanced Responsive Calendar
+// components/booking/BookingCalendar.tsx - Simplified Professional Calendar
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -16,33 +16,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import bookingService, { TimeSlot } from '@/services/bookingService';
 import { MentorProfile } from '@/services/mentorService';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 const isTablet = width > 768;
-const isSmallScreen = width < 375;
-
-// Responsive calculations
-const CONTAINER_PADDING = isTablet ? 40 : 20;
-const CALENDAR_PADDING = 20;
-const CALENDAR_WIDTH = width - (CONTAINER_PADDING * 2) - (CALENDAR_PADDING * 2);
-const DAY_WIDTH = CALENDAR_WIDTH / 7;
-const DAY_HEIGHT = isTablet ? 52 : 44;
 
 interface BookingCalendarProps {
   mentor: MentorProfile;
   onSlotSelect: (slot: TimeSlot) => void;
   selectedSlot?: TimeSlot | null;
-}
-
-interface CalendarDay {
-  date: Date;
-  dateString: string;
-  dayNumber: number;
-  isCurrentMonth: boolean;
-  isToday: boolean;
-  isPast: boolean;
-  isSelected: boolean;
-  hasSlots: boolean;
-  dayOfWeek: number;
 }
 
 export default function BookingCalendar({ 
@@ -55,37 +35,28 @@ export default function BookingCalendar({
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
-  // Get today's date for comparison (fixed timezone handling)
   const today = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
   }, []);
 
-  // Generate calendar days with correct day alignment
+  // Generate calendar days
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
-    // First day of the month
     const firstDayOfMonth = new Date(year, month, 1);
-    
-    // Last day of the month
     const lastDayOfMonth = new Date(year, month + 1, 0);
-    
-    // First day to show (start of calendar grid) - properly aligned
     const firstDayToShow = new Date(firstDayOfMonth);
-    const dayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const dayOfWeek = firstDayOfMonth.getDay();
     firstDayToShow.setDate(firstDayOfMonth.getDate() - dayOfWeek);
     
-    // Generate exactly 42 days (6 weeks) for consistent grid
-    const days: CalendarDay[] = [];
-    
+    const days = [];
     for (let i = 0; i < 42; i++) {
       const date = new Date(firstDayToShow);
       date.setDate(firstDayToShow.getDate() + i);
       
-      const dateString = date.toISOString().split('T')[0];
       const isCurrentMonth = date.getMonth() === month;
       const isToday = date.toDateString() === today.toDateString();
       const isPast = date < today;
@@ -94,14 +65,11 @@ export default function BookingCalendar({
       
       days.push({
         date: new Date(date),
-        dateString,
         dayNumber: date.getDate(),
         isCurrentMonth,
         isToday,
         isPast,
         isSelected,
-        hasSlots: false, // Will be updated when we check availability
-        dayOfWeek: date.getDay(),
       });
     }
     
@@ -125,7 +93,7 @@ export default function BookingCalendar({
       
       const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
       
-      // Filter out past slots for today
+      // Filter out past slots
       const now = new Date();
       const filteredSlots = slots.filter(slot => {
         const slotTime = new Date(slot.startTime);
@@ -137,20 +105,53 @@ export default function BookingCalendar({
       
     } catch (error: any) {
       console.error('❌ Error loading slots:', error);
-      Alert.alert(
-        'Error Loading Slots',
-        'Unable to load available time slots. Please check your connection and try again.',
-        [{ text: 'OK' }]
-      );
+      
+      // Check if it's a friendly message (not an error)
+      if (error.message && (
+        error.message.includes('Past dates are not available') ||
+        error.message.includes('No available slots') ||
+        error.message.includes('No mentor profile') ||
+        error.message.includes('No schedule configured')
+      )) {
+        // Show friendly message instead of error
+        Alert.alert(
+          'No Available Times',
+          error.message.includes('Past dates') 
+            ? 'Please select tomorrow or a future date for booking'
+            : error.message.includes('No available slots')
+            ? 'This mentor doesn\'t have available slots for this date. Try selecting a different date.'
+            : 'This mentor hasn\'t set up their availability yet.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', 'Unable to load available time slots. Please try again.');
+      }
     } finally {
       setLoadingSlots(false);
     }
   };
 
-  const handleDateSelect = (day: CalendarDay) => {
-    if (day.isPast || !day.isCurrentMonth) return;
+  const handleDateSelect = (day: any) => {
+    if (!day.isCurrentMonth) return;
     
-    // If clicking the same date, deselect it
+    // Check if it's today and show friendly message
+    if (day.isPast) {
+      if (day.isToday) {
+        Alert.alert(
+          'Select Future Date',
+          'For the best experience, please book sessions at least 2 hours in advance. Try selecting tomorrow or a future date.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Past Date Selected',
+          'Please select tomorrow or a future date for booking.',
+          [{ text: 'OK' }]
+        );
+      }
+      return;
+    }
+    
     if (selectedDate && day.date.toDateString() === selectedDate.toDateString()) {
       setSelectedDate(null);
       setAvailableSlots([]);
@@ -166,22 +167,14 @@ export default function BookingCalendar({
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newDate = new Date(currentDate);
-    
     if (direction === 'prev') {
       newDate.setMonth(newDate.getMonth() - 1);
     } else {
       newDate.setMonth(newDate.getMonth() + 1);
     }
-    
     setCurrentDate(newDate);
     setSelectedDate(null);
     setAvailableSlots([]);
-  };
-
-  const goToToday = () => {
-    const now = new Date();
-    setCurrentDate(now);
-    setSelectedDate(now);
   };
 
   const formatTime = (dateString: string) => {
@@ -193,52 +186,6 @@ export default function BookingCalendar({
     });
   };
 
-  const formatPrice = (price: number) => {
-    return `$${price}`;
-  };
-
-  const getDayStyle = (day: CalendarDay) => {
-    const baseStyle = [styles.dayButton];
-    
-    if (!day.isCurrentMonth) {
-      baseStyle.push(styles.dayButtonInactive as any);
-    } else if (day.isPast) {
-      baseStyle.push(styles.dayButtonPast as any);
-    } else if (day.isSelected) {
-      baseStyle.push(styles.dayButtonSelected as any);
-    } else if (day.isToday) {
-      baseStyle.push(styles.dayButtonToday as any);
-    }
-    
-    return baseStyle;
-  };
-
-  const getDayTextStyle = (day: CalendarDay) => {
-    const baseStyle = [styles.dayText];
-    
-    if (!day.isCurrentMonth || day.isPast) {
-      baseStyle.push(styles.dayTextInactive as any);
-    } else if (day.isSelected) {
-      baseStyle.push(styles.dayTextSelected as any);
-    } else if (day.isToday) {
-      baseStyle.push(styles.dayTextToday as any);
-    }
-    
-    return baseStyle;
-  };
-
-  const getSlotStyle = (slot: TimeSlot) => {
-    const baseStyle = [styles.timeSlot];
-    
-    if (!slot.isAvailable) {
-      baseStyle.push(styles.timeSlotUnavailable as any);
-    } else if (selectedSlot?.id === slot.id) {
-      baseStyle.push(styles.timeSlotSelected as any);
-    }
-    
-    return baseStyle;
-  };
-
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
@@ -246,7 +193,6 @@ export default function BookingCalendar({
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Split calendar into weeks for better layout
   const calendarWeeks = useMemo(() => {
     const weeks = [];
     for (let i = 0; i < calendarDays.length; i += 7) {
@@ -258,7 +204,7 @@ export default function BookingCalendar({
   return (
     <View style={styles.container}>
       {/* Calendar Header */}
-      <View style={styles.calendarHeader}>
+      <View style={styles.header}>
         <TouchableOpacity
           style={styles.navButton}
           onPress={() => navigateMonth('prev')}
@@ -267,18 +213,11 @@ export default function BookingCalendar({
           <MaterialIcons name="chevron-left" size={24} color="#8B4513" />
         </TouchableOpacity>
         
-        <TouchableOpacity 
-          style={styles.monthYearContainer}
-          onPress={goToToday}
-          activeOpacity={0.7}
-        >
+        <View style={styles.monthContainer}>
           <Text style={styles.monthText}>
-            {monthNames[currentDate.getMonth()]}
+            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </Text>
-          <Text style={styles.yearText}>
-            {currentDate.getFullYear()}
-          </Text>
-        </TouchableOpacity>
+        </View>
         
         <TouchableOpacity
           style={styles.navButton}
@@ -289,17 +228,7 @@ export default function BookingCalendar({
         </TouchableOpacity>
       </View>
 
-      {/* Today Button */}
-      <TouchableOpacity 
-        style={styles.todayButton}
-        onPress={goToToday}
-        activeOpacity={0.7}
-      >
-        <MaterialIcons name="today" size={16} color="#8B4513" />
-        <Text style={styles.todayButtonText}>Go to Today</Text>
-      </TouchableOpacity>
-
-      {/* Day Names Header */}
+      {/* Day Names */}
       <View style={styles.dayNamesContainer}>
         {dayNames.map((day, index) => (
           <View key={index} style={styles.dayNameItem}>
@@ -308,140 +237,128 @@ export default function BookingCalendar({
         ))}
       </View>
 
-      {/* Calendar Grid - Week by Week */}
+      {/* Calendar Grid */}
       <View style={styles.calendarGrid}>
         {calendarWeeks.map((week, weekIndex) => (
           <View key={weekIndex} style={styles.calendarWeek}>
             {week.map((day, dayIndex) => (
               <TouchableOpacity
-                key={`${day.dateString}-${dayIndex}`}
-                style={getDayStyle(day)}
+                key={`${day.date.toISOString()}-${dayIndex}`}
+                style={[
+                  styles.dayButton,
+                  !day.isCurrentMonth && styles.dayButtonInactive,
+                  day.isPast && styles.dayButtonPast,
+                  day.isSelected && styles.dayButtonSelected,
+                  day.isToday && !day.isSelected && styles.dayButtonToday,
+                ]}
                 onPress={() => handleDateSelect(day)}
                 disabled={day.isPast || !day.isCurrentMonth}
                 activeOpacity={0.7}
               >
-                <Text style={getDayTextStyle(day)}>
+                <Text style={[
+                  styles.dayText,
+                  (!day.isCurrentMonth || day.isPast) && styles.dayTextInactive,
+                  day.isSelected && styles.dayTextSelected,
+                  day.isToday && !day.isSelected && styles.dayTextToday,
+                ]}>
                   {day.dayNumber}
                 </Text>
-                {/* Availability indicator */}
-                {day.isCurrentMonth && !day.isPast && day.hasSlots && (
-                  <View style={styles.slotIndicator} />
-                )}
               </TouchableOpacity>
             ))}
           </View>
         ))}
       </View>
 
+      {/* Time Slots Section */}
+      {selectedDate && (
+        <View style={styles.timeSlotsSection}>
+          <View style={styles.slotsHeader}>
+            <MaterialIcons name="schedule" size={20} color="#8B4513" />
+            <Text style={styles.slotsTitle}>
+              Available Times - {selectedDate.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric'
+              })}
+            </Text>
+          </View>
 
-{/* Time Slots Section */}
-{selectedDate && (
-  <View style={styles.timeSlotsSection}>
-    <LinearGradient
-      colors={['#F8F3EE', '#FFFFFF']}
-      style={styles.timeSlotsHeader}
-    >
-      <MaterialIcons name="schedule" size={20} color="#8B4513" />
-      <Text style={styles.timeSlotsTitle}>
-        Available Times - {selectedDate.toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'short',
-          day: 'numeric'
-        })}
-      </Text>
-    </LinearGradient>
-
-    {loadingSlots ? (
-      <View style={styles.slotsLoadingContainer}>
-        <ActivityIndicator size="small" color="#8B4513" />
-        <Text style={styles.slotsLoadingText}>Loading available times...</Text>
-      </View>
-    ) : availableSlots.length === 0 ? (
-      <View style={styles.noSlotsContainer}>
-        <MaterialIcons name="event-busy" size={32} color="#8B7355" />
-        <Text style={styles.noSlotsTitle}>No Available Times</Text>
-        <Text style={styles.noSlotsText}>
-          This mentor has not configured their schedule for{' '}
-          {selectedDate.toLocaleDateString('en-US', { weekday: 'long' })}s, or all slots are already booked.
-        </Text>
-        <Text style={styles.noSlotsSubtext}>
-          Please try selecting a different date.
-        </Text>
-      </View>
-    ) : (
-      <ScrollView 
-        style={styles.timeSlotsScrollContainer}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.timeSlotsContent}
-        nestedScrollEnabled={true} // Add this for Android
-      >
-        {availableSlots.map((slot, index) => {
-          const isSelected = selectedSlot?.id === slot.id;
-          return (
-            <TouchableOpacity
-              key={`slot-${slot.id}-${index}`}
-              style={[
-                styles.timeSlot,
-                !slot.isAvailable && styles.timeSlotUnavailable,
-                isSelected && styles.timeSlotSelected
-              ]}
-              onPress={() => handleSlotSelect(slot)}
-              disabled={!slot.isAvailable}
-              activeOpacity={0.8}
+          {loadingSlots ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#8B4513" />
+              <Text style={styles.loadingText}>Loading available times...</Text>
+            </View>
+          ) : availableSlots.length === 0 ? (
+            <View style={styles.noSlotsContainer}>
+              <MaterialIcons name="event-busy" size={32} color="#8B7355" />
+              <Text style={styles.noSlotsTitle}>No Available Times</Text>
+              <Text style={styles.noSlotsText}>
+                This mentor doesn't have available slots for this date.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView 
+              style={styles.slotsScrollContainer}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
             >
-              <LinearGradient
-                colors={isSelected 
-                  ? ['#8B4513', '#D2691E'] 
-                  : ['#FFFFFF', '#F8F3EE']
-                }
-                style={styles.timeSlotGradient}
-              >
-                <View style={styles.timeSlotContent}>
-                  <View style={styles.timeSlotLeft}>
-                    <Text style={[
-                      styles.timeSlotTime,
-                      isSelected && styles.timeSlotTimeSelected
-                    ]}>
-                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                    </Text>
-                    <Text style={[
-                      styles.timeSlotDuration,
-                      isSelected && styles.timeSlotDurationSelected
-                    ]}>
-                      {slot.duration} minutes • Google Meet
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.timeSlotRight}>
-                    <Text style={[
-                      styles.timeSlotPrice,
-                      isSelected && styles.timeSlotPriceSelected
-                    ]}>
-                      ${slot.price}
-                    </Text>
-                    <MaterialIcons 
-                      name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
-                      size={20} 
-                      color={isSelected ? "#FFFFFF" : "#8B4513"} 
-                    />
-                  </View>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    )}
-  </View>
-)}
-
-      {/* Integration Notice */}
-      <View style={styles.integrationNotice}>
-        <MaterialIcons name="info" size={14} color="#10B981" />
-        <Text style={styles.integrationNoticeText}>
-          Sessions are automatically scheduled with Google Meet and Calendar
-        </Text>
-      </View>
+              {availableSlots.map((slot, index) => {
+                const isSelected = selectedSlot?.id === slot.id;
+                return (
+                  <TouchableOpacity
+                    key={`slot-${slot.id}-${index}`}
+                    style={[
+                      styles.timeSlot,
+                      isSelected && styles.timeSlotSelected
+                    ]}
+                    onPress={() => handleSlotSelect(slot)}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={isSelected 
+                        ? ['#8B4513', '#D2691E'] 
+                        : ['#FFFFFF', '#F8F3EE']
+                      }
+                      style={styles.timeSlotGradient}
+                    >
+                      <View style={styles.timeSlotContent}>
+                        <View style={styles.timeSlotLeft}>
+                          <Text style={[
+                            styles.timeSlotTime,
+                            isSelected && styles.timeSlotTimeSelected
+                          ]}>
+                            {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                          </Text>
+                          <Text style={[
+                            styles.timeSlotDuration,
+                            isSelected && styles.timeSlotDurationSelected
+                          ]}>
+                            {slot.duration} minutes
+                          </Text>
+                        </View>
+                        
+                        <View style={styles.timeSlotRight}>
+                          <Text style={[
+                            styles.timeSlotPrice,
+                            isSelected && styles.timeSlotPriceSelected
+                          ]}>
+                            ${slot.price}
+                          </Text>
+                          <MaterialIcons 
+                            name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
+                            size={20} 
+                            color={isSelected ? "#FFFFFF" : "#8B4513"} 
+                          />
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -451,9 +368,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
-    marginHorizontal: 20,
-    marginVertical: 16,
-    flex: 1, // Add flex: 1
+    margin: 20,
     borderWidth: 1,
     borderColor: '#E8DDD1',
     ...Platform.select({
@@ -469,106 +384,64 @@ const styles = StyleSheet.create({
     }),
   },
 
-  // Calendar Header
-  calendarHeader: {
+  // Header
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: isTablet ? 8 : 4,
+    marginBottom: 20,
   },
   navButton: {
-    width: isTablet ? 48 : 40,
-    height: isTablet ? 48 : 40,
-    borderRadius: isTablet ? 24 : 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#F8F3EE',
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#8B4513',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
-  monthYearContainer: {
-    alignItems: 'center',
+  monthContainer: {
     flex: 1,
-    paddingVertical: 8,
+    alignItems: 'center',
   },
   monthText: {
     fontSize: isTablet ? 22 : 20,
     fontWeight: 'bold',
     color: '#2A2A2A',
-    textAlign: 'center',
-  },
-  yearText: {
-    fontSize: isTablet ? 16 : 14,
-    color: '#8B7355',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-
-  // Today Button
-  todayButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#F8F3EE',
-    borderRadius: 20,
-    marginBottom: 16,
-    alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
-  },
-  todayButtonText: {
-    fontSize: 12,
-    color: '#8B4513',
-    fontWeight: '600',
-    marginLeft: 6,
   },
 
   // Day Names
   dayNamesContainer: {
     flexDirection: 'row',
     marginBottom: 12,
-    paddingHorizontal: 2,
   },
   dayNameItem: {
-    width: DAY_WIDTH,
+    flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
   },
   dayNameText: {
-    fontSize: isTablet ? 14 : 12,
+    fontSize: 12,
     fontWeight: '600',
     color: '#8B7355',
-    textAlign: 'center',
   },
 
   // Calendar Grid
   calendarGrid: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   calendarWeek: {
     flexDirection: 'row',
     marginBottom: 4,
   },
   dayButton: {
-    width: (width - 80) / 7,
+    flex: 1,
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
     marginHorizontal: 2,
-    position: 'relative',
   },
   dayButtonInactive: {
     opacity: 0.3,
@@ -596,10 +469,9 @@ const styles = StyleSheet.create({
     borderColor: '#8B4513',
   },
   dayText: {
-    fontSize: isTablet ? 16 : 14,
+    fontSize: 14,
     fontWeight: '600',
     color: '#2A2A2A',
-    textAlign: 'center',
   },
   dayTextInactive: {
     color: '#C0C0C0',
@@ -610,108 +482,38 @@ const styles = StyleSheet.create({
   dayTextToday: {
     color: '#8B4513',
   },
-  slotIndicator: {
-    position: 'absolute',
-    bottom: 4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#10B981',
-  },
 
   // Time Slots Section
   timeSlotsSection: {
     borderTopWidth: 1,
     borderTopColor: '#E8DDD1',
-    paddingTop: 16,
-    flex: 1, // Add flex
-    minHeight: 200,
+    paddingTop: 20,
+    maxHeight: 300,
   },
-  timeSlotsHeader: {
+  slotsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E8DDD1',
+    paddingHorizontal: 8,
   },
-  timeSlotsTitle: {
-    fontSize: isTablet ? 18 : 16,
+  slotsTitle: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginLeft: 8,
-    flex: 1,
   },
 
-  // Slots Loading
-  slotsLoadingContainer: {
+  // Loading State
+  loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
   },
-  slotsLoadingText: {
+  loadingText: {
     marginLeft: 12,
     fontSize: 14,
     color: '#8B7355',
-  },
-   noSlotsSubtext: {
-    fontSize: 12,
-    color: '#8B7355',
-    textAlign: 'center',
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-
-  timeSlotTime: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2A2A2A',
-    marginBottom: 4,
-  },
-
-  timeSlotTimeSelected: {
-    color: '#FFFFFF',
-  },
-
-  timeSlotDuration: {
-    fontSize: 12,
-    color: '#8B7355',
-    fontWeight: '500',
-  },
-
-  timeSlotDurationSelected: {
-    color: '#FFFFFF',
-    opacity: 0.9,
-  },
-
-  timeSlotPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#8B4513',
-    marginBottom: 6,
-  },
-
-  timeSlotPriceSelected: {
-    color: '#FFFFFF',
-  },
-
-  timeSlotContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: 40,
-  },
-
-  timeSlotLeft: {
-    flex: 1,
-  },
-
-  timeSlotRight: {
-    alignItems: 'flex-end',
-    marginLeft: 16,
   },
 
   // No Slots
@@ -721,28 +523,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   noSlotsTitle: {
-    fontSize: isTablet ? 18 : 16,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#2A2A2A',
     marginTop: 12,
     marginBottom: 8,
-    textAlign: 'center',
   },
   noSlotsText: {
     fontSize: 14,
     color: '#8B7355',
     textAlign: 'center',
     lineHeight: 20,
-    maxWidth: 280,
   },
 
-  // Time Slots List
-  timeSlotsScrollContainer: {
-    maxHeight: 300,
-    flex: 1,
-  },
-  timeSlotsContent: {
-    paddingBottom: 16,
+  // Time Slots
+  slotsScrollContainer: {
+    maxHeight: 200,
   },
   timeSlot: {
     borderRadius: 12,
@@ -750,8 +546,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E8DDD1',
-    backgroundColor: '#FFFFFF', // Add background color
-    minHeight: 60, // Add minimum height
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -763,10 +557,6 @@ const styles = StyleSheet.create({
         elevation: 2,
       },
     }),
-  },
-  timeSlotUnavailable: {
-    opacity: 0.6,
-    borderColor: '#E5E7EB',
   },
   timeSlotSelected: {
     borderColor: '#8B4513',
@@ -785,32 +575,44 @@ const styles = StyleSheet.create({
   },
   timeSlotGradient: {
     padding: 16,
-    minHeight: 60,
   },
-
-  // Integration Notice
-  integrationNotice: {
+  timeSlotContent: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    backgroundColor: '#F0FDF4',
-    marginHorizontal: -20,
-    marginBottom: -20,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
   },
-  integrationNoticeText: {
-    fontSize: 11,
-    color: '#166534',
-    marginLeft: 6,
-    fontWeight: '500',
-    textAlign: 'center',
+  timeSlotLeft: {
     flex: 1,
+  },
+  timeSlotTime: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2A2A2A',
+    marginBottom: 4,
+  },
+  timeSlotTimeSelected: {
+    color: '#FFFFFF',
+  },
+  timeSlotDuration: {
+    fontSize: 12,
+    color: '#8B7355',
+    fontWeight: '500',
+  },
+  timeSlotDurationSelected: {
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  timeSlotRight: {
+    alignItems: 'flex-end',
+    marginLeft: 16,
+  },
+  timeSlotPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#8B4513',
+    marginBottom: 6,
+  },
+  timeSlotPriceSelected: {
+    color: '#FFFFFF',
   },
 });

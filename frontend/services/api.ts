@@ -405,18 +405,18 @@ export class ApiEndpoints {
       BOOKING_BASE: `${baseUrl}${apiVersion}/booking`,
       BOOKING_AVAILABLE_SLOTS: `${baseUrl}${apiVersion}/booking/available-slots`,
       BOOKING_CREATE: `${baseUrl}${apiVersion}/booking/create`,
-      BOOKING_CANCEL: `${baseUrl}${apiVersion}/booking/cancel`,
-      BOOKING_RESCHEDULE: `${baseUrl}${apiVersion}/booking/reschedule`,
+      BOOKING_CANCEL: `${baseUrl}${apiVersion}/booking/:bookingId/cancel`,
+      BOOKING_RESCHEDULE: `${baseUrl}${apiVersion}/booking/:bookingId/reschedule`,
       BOOKING_USER_BOOKINGS: `${baseUrl}${apiVersion}/booking/user-bookings`,
-      BOOKING_DETAILS: `${baseUrl}${apiVersion}/booking`,
+      BOOKING_DETAILS: `${baseUrl}${apiVersion}/booking/:bookingId`,
 
-      // Google integration endpoints
-      GOOGLE_CALENDAR_CHECK: `${baseUrl}${apiVersion}/booking/google/calendar/check-availability`,
-      GOOGLE_MEET_CREATE: `${baseUrl}${apiVersion}/booking/google/meet/create`,
-      GOOGLE_CALENDAR_CREATE: `${baseUrl}${apiVersion}/booking/google/calendar/create-event`,
-      GOOGLE_CALENDAR_UPDATE: `${baseUrl}${apiVersion}/booking/google/calendar/update-event`,
-      GOOGLE_CALENDAR_DELETE: `${baseUrl}${apiVersion}/booking/google/calendar/delete-event`,
-    
+      // Cal.com integration endpoints
+      CALCOM_BASE: `${baseUrl}${apiVersion}/calcom`,
+      CALCOM_EVENT_TYPES: `${baseUrl}${apiVersion}/calcom/event-types`,
+      CALCOM_AVAILABILITY: `${baseUrl}${apiVersion}/calcom/availability`,
+      CALCOM_BOOKINGS: `${baseUrl}${apiVersion}/calcom/bookings`,
+      CALCOM_SYNC: `${baseUrl}${apiVersion}/calcom/sync-mentor`,
+
       // Payment endpoints - FIXED
       PAYMENT_PROCESS: `${baseUrl}${apiVersion}/booking/payment/process`,
       PAYMENT_REFUND: `${baseUrl}${apiVersion}/booking/payment/refund`,
