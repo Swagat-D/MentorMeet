@@ -20,7 +20,7 @@ import MentorProfileService from '../services/mentorProfile.service';
 export const getAvailableSlots = catchAsync(async (req: Request, res: Response) => {
   const { mentorId, date } = req.body;
   
-  console.log('📅 Fetching available slots via Cal.com:', { mentorId, date });
+  console.log('📅 Fetching available slots:', { mentorId, date });
 
   if (!mentorId || !date) {
     res.status(400).json({
@@ -41,7 +41,7 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Check if date is in the past (but don't throw error, just return empty slots)
+    // Check if date is in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     requestedDate.setHours(0, 0, 0, 0);
@@ -59,18 +59,8 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Find the user in users collection
-    const user = await User.findById(mentorId);
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Mentor not found',
-      });
-      return;
-    }
-
     // Find the mentor profile
-    const mentorProfile = await MentorProfileService.findById(mentorId);
+    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     if (!mentorProfile) {
       res.status(404).json({
         success: false,
@@ -79,8 +69,35 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Get available slots from Cal.com
-    const availableSlots = await calComService.getAvailableSlots(mentorId, date);
+    console.log('✅ Mentor profile found:', {
+      profileId: mentorProfile._id,
+      displayName: mentorProfile.displayName,
+      hasSchedule: !!mentorProfile.weeklySchedule
+    });
+
+    // Try Cal.com first, fallback to local generation if it fails
+    let availableSlots: any[] = [];
+    
+    try {
+      // Check if Cal.com is properly configured
+      const hasCalcomConfig = !!process.env.CALCOM_API_KEY;
+      console.log('🔧 Cal.com config check:', { hasCalcomConfig });
+      
+      if (hasCalcomConfig) {
+        console.log('📅 Attempting to get slots from Cal.com...');
+        availableSlots = await calComService.getAvailableSlots(mentorId, date);
+        console.log('✅ Cal.com slots retrieved:', availableSlots.length);
+      } else {
+        console.log('⚠️ Cal.com not configured, using local schedule generation');
+        throw new Error('Cal.com not configured');
+      }
+    } catch (calcomError: any) {
+      console.log('⚠️ Cal.com failed, falling back to local generation:', calcomError.message);
+      
+      // Generate slots from mentor's weekly schedule
+      availableSlots = await generateSlotsFromWeeklySchedule(mentorProfile, date);
+      console.log('✅ Local slots generated:', availableSlots.length);
+    }
 
     // Filter out already booked slots from our database
     const finalSlots = await filterBookedSlots(availableSlots, mentorId, date);
@@ -102,6 +119,82 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
     });
   }
 });
+
+// Add this helper function
+async function generateSlotsFromWeeklySchedule(mentorProfile: any, date: string): Promise<any[]> {
+  try {
+    const requestedDate = new Date(date);
+    const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    
+    console.log('📅 Generating slots for:', { date, dayName });
+    
+    const daySchedule = mentorProfile.weeklySchedule?.[dayName];
+    
+    if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
+      console.log('⚠️ No schedule found for', dayName);
+      return [];
+    }
+
+    const slots: any[] = [];
+    const now = new Date();
+    const hourlyRate = mentorProfile.pricing?.hourlyRate || 75;
+    const sessionLength = parseInt(mentorProfile.preferences?.sessionLength?.replace(' minutes', '') || '60');
+
+    for (const block of daySchedule) {
+      if (!block || !block.isAvailable || !block.startTime || !block.endTime) {
+        continue;
+      }
+      
+      try {
+        const [startHour, startMinute] = block.startTime.split(':').map(Number);
+        const [endHour, endMinute] = block.endTime.split(':').map(Number);
+        
+        const blockStart = new Date(requestedDate);
+        blockStart.setHours(startHour, startMinute, 0, 0);
+        
+        const blockEnd = new Date(requestedDate);
+        blockEnd.setHours(endHour, endMinute, 0, 0);
+        
+        let currentTime = new Date(blockStart);
+        
+        while (currentTime.getTime() + (sessionLength * 60 * 1000) <= blockEnd.getTime()) {
+          const slotStart = new Date(currentTime);
+          const slotEnd = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
+          
+          // Skip past slots (add 2 hour buffer)
+          if (slotStart <= new Date(now.getTime() + 2 * 60 * 60 * 1000)) {
+            currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
+            continue;
+          }
+          
+          const slot = {
+            id: `slot-${mentorProfile._id}-${slotStart.getTime()}`,
+            startTime: slotStart.toISOString(),
+            endTime: slotEnd.toISOString(),
+            date,
+            isAvailable: true,
+            price: hourlyRate,
+            duration: sessionLength,
+            sessionType: 'video' as const,
+          };
+          
+          slots.push(slot);
+          currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
+        }
+      } catch (blockError) {
+        console.error('❌ Error processing block:', block, blockError);
+        continue;
+      }
+    }
+    
+    console.log(`✅ Generated ${slots.length} slots for ${dayName}`);
+    return slots;
+    
+  } catch (error) {
+    console.error('❌ Error generating slots from schedule:', error);
+    return [];
+  }
+}
 
 /**
  * Create a new booking with Cal.com integration
@@ -187,20 +280,54 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     console.log('✅ Session created in database:', session._id);
 
     // Create Cal.com booking
-    const calcomResult = await calComService.createBooking({
-      mentorId,
-      studentId,
-      timeSlot,
-      subject,
-      notes,
-      studentEmail: student.email,
-      studentName: `${student.firstName} ${student.lastName}`,
-      mentorEmail: mentor.email,
-      mentorName: `${mentor.firstName} ${mentor.lastName}`,
-    });
+    // Create Cal.com booking
+const calcomResult = await calComService.createBooking({
+  mentorId,
+  studentId,
+  timeSlot,
+  subject,
+  notes,
+  studentEmail: student.email,
+  studentName: `${student.firstName} ${student.lastName}`,
+  mentorEmail: mentor.email,
+  mentorName: `${mentor.firstName} ${mentor.lastName}`,
+});
 
-    let meetingUrl = '';
-    let calcomBookingId = '';
+let meetingUrl = '';
+let calcomBookingId = '';
+
+if (calcomResult.success && calcomResult.booking) {
+  meetingUrl = calcomResult.meetingUrl || '';
+  calcomBookingId = calcomResult.booking.id.toString();
+  
+  // Update session with Cal.com booking details
+  session.recordingUrl = meetingUrl;
+  (session as any).calendarEventId = calcomBookingId;
+  (session as any).meetingProvider = 'calcom';
+  await session.save();
+
+  console.log('✅ Cal.com booking created with Google Meet:', {
+    calcomBookingId,
+    hasGoogleMeetUrl: !!meetingUrl
+  });
+} else {
+  console.error('❌ Cal.com booking failed:', calcomResult.error);
+  
+  // For production, you might want to fail the booking instead of using fallback
+  res.status(400).json({
+    success: false,
+    message: 'Failed to create meeting room. Please try again or contact support.',
+    error: calcomResult.error
+  });
+  return;
+  
+  // Alternative: If you want to allow fallback for testing
+  // console.warn('⚠️ Using fallback meeting URL for testing');
+  // meetingUrl = generateFallbackMeetingUrl();
+  // session.recordingUrl = meetingUrl;
+  // (session as any).meetingProvider = 'fallback';
+  // await session.save();
+}
 
     if (calcomResult.success && calcomResult.booking) {
       meetingUrl = calcomResult.meetingUrl || '';
@@ -709,9 +836,12 @@ async function checkSlotAvailability(mentorId: string, timeSlot: any): Promise<b
 }
 
 /**
- * Generate fallback meeting URL
+ * Generate fallback meeting URL (only for absolute emergencies)
  */
 function generateFallbackMeetingUrl(): string {
+  // In production, this should rarely be used
+  console.warn('⚠️ FALLBACK: Generating emergency meeting URL - Cal.com integration should be fixed');
+  
   const chars = 'abcdefghijklmnopqrstuvwxyz';
   let code = '';
   for (let i = 0; i < 12; i++) {

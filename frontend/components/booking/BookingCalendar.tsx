@@ -84,52 +84,57 @@ export default function BookingCalendar({
   }, [selectedDate, mentor._id]);
 
   const loadAvailableSlots = async (date: Date) => {
-    try {
-      setLoadingSlots(true);
-      setAvailableSlots([]);
-      
-      const dateString = date.toISOString().split('T')[0];
-      console.log('📅 Loading slots for:', dateString);
-      
-      const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
-      
-      // Filter out past slots
-      const now = new Date();
-      const filteredSlots = slots.filter(slot => {
-        const slotTime = new Date(slot.startTime);
-        return slotTime > now && slot.isAvailable;
-      });
-      
-      setAvailableSlots(filteredSlots);
-      console.log('✅ Loaded available slots:', filteredSlots.length);
-      
-    } catch (error: any) {
-      console.error('❌ Error loading slots:', error);
-      
-      // Check if it's a friendly message (not an error)
-      if (error.message && (
-        error.message.includes('Past dates are not available') ||
-        error.message.includes('No available slots') ||
-        error.message.includes('No mentor profile') ||
-        error.message.includes('No schedule configured')
-      )) {
-        // Show friendly message instead of error
-        Alert.alert(
-          'No Available Times',
-          error.message.includes('Past dates') 
-            ? 'Please select tomorrow or a future date for booking'
-            : error.message.includes('No available slots')
-            ? 'This mentor doesn\'t have available slots for this date. Try selecting a different date.'
-            : 'This mentor hasn\'t set up their availability yet.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert('Error', 'Unable to load available time slots. Please try again.');
-      }
-    } finally {
-      setLoadingSlots(false);
+  try {
+    setLoadingSlots(true);
+    setAvailableSlots([]);
+    
+    // Fix timezone issue - use local date string without timezone conversion
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+    
+    console.log('📅 Loading slots for:', dateString);
+    
+    const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
+    
+    // Filter out past slots
+    const now = new Date();
+    const filteredSlots = slots.filter(slot => {
+      const slotTime = new Date(slot.startTime);
+      return slotTime > now && slot.isAvailable;
+    });
+    
+    setAvailableSlots(filteredSlots);
+    console.log('✅ Loaded available slots:', filteredSlots.length);
+    
+  } catch (error: any) {
+    console.error('❌ Error loading slots:', error);
+    
+    // Check if it's a friendly message (not an error)
+    if (error.message && (
+      error.message.includes('Past dates are not available') ||
+      error.message.includes('No available slots') ||
+      error.message.includes('No mentor profile') ||
+      error.message.includes('No schedule configured')
+    )) {
+      // Show friendly message instead of error
+      Alert.alert(
+        'No Available Times',
+        error.message.includes('Past dates') 
+          ? 'Please select tomorrow or a future date for booking'
+          : error.message.includes('No available slots')
+          ? 'This mentor doesn\'t have available slots for this date. Try selecting a different date.'
+          : 'This mentor hasn\'t set up their availability yet.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('Error', 'Unable to load available time slots. Please try again.');
     }
-  };
+  } finally {
+    setLoadingSlots(false);
+  }
+};
 
   const handleDateSelect = (day: any) => {
     if (!day.isCurrentMonth) return;

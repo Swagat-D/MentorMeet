@@ -125,9 +125,7 @@ export async function debugMentorBooking(mentorId: string, date?: string) {
         debugInfo.checks.hasPricing = true;
         debugInfo.pricing = {
           hourlyRate: pricing.hourlyRate,
-          currency: pricing.currency,
-          trialSessionEnabled: pricing.trialSessionEnabled,
-          trialSessionRate: pricing.trialSessionRate
+          currency: pricing.currency
         };
         
         if (!pricing.hourlyRate || pricing.hourlyRate <= 0) {

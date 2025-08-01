@@ -34,27 +34,54 @@ router.get('/find-mentors-with-schedule', async (req, res) => {
   }
 });
 
-// Test endpoint to check mentor profile and schedule
-router.get('/debug/mentor/:mentorId', async (req, res) => {
+// Debug endpoint to check mentor profile lookup
+router.get('/debug/profile/:mentorId', async (req, res) => {
   try {
     const { mentorId } = req.params;
-    const { date } = req.query;
     
-    // Use the debug utility
-    const { runBookingDebug } = await import('../utils/bookingDebug');
-    const debugInfo = await runBookingDebug(mentorId, date as string);
-
-    return res.json({
-      success: true,
-      message: 'Debug information retrieved',
-      data: debugInfo,
-    });
-
+    console.log('🔍 Debug: Looking for mentor profile with ID:', mentorId);
+    
+    // Check if it's a valid ObjectId
+    if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.json({
+        success: false,
+        error: 'Invalid ObjectId format',
+        mentorId,
+        format: 'Expected 24 character hex string'
+      });
+    }
+    
+    // Try to find mentor profile
+    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
+    
+    if (mentorProfile) {
+      return res.json({
+        success: true,
+        found: true,
+        profile: {
+          _id: mentorProfile._id,
+          userId: mentorProfile.userId,
+          displayName: mentorProfile.displayName,
+          hasWeeklySchedule: !!mentorProfile.weeklySchedule,
+          hasPricing: !!mentorProfile.pricing,
+          scheduleKeys: Object.keys(mentorProfile.weeklySchedule || {}),
+          monday: mentorProfile.weeklySchedule?.monday?.length || 0
+        }
+      });
+    } else {
+      return res.json({
+        success: false,
+        found: false,
+        mentorId,
+        suggestion: 'Check if mentor has completed profile setup on mentor website'
+      });
+    }
+    
   } catch (error: any) {
-    return res.status(500).json({
+    return res.json({
       success: false,
-      message: 'Debug failed',
       error: error.message,
+      stack: error.stack
     });
   }
 });
@@ -191,6 +218,57 @@ router.post('/calcom/sync-mentor/:mentorId', async (req, res) => {
   }
 });
 
+// Check Cal.com integration status
+router.get('/calcom/integration-status', async (req, res) => {
+  try {
+    const hasApiKey = !!process.env.CALCOM_API_KEY;
+    
+    if (!hasApiKey) {
+      return res.json({
+        success: false,
+        message: 'Cal.com API key not configured',
+        integration: 'disabled'
+      });
+    }
+
+    // Test Cal.com connection
+    const axios = require('axios');
+    const response = await axios.get('https://api.cal.com/v1/me', {
+      headers: {
+        'Authorization': `Bearer ${process.env.CALCOM_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    const user = response.data;
+    
+    return res.json({
+      success: true,
+      integration: 'active',
+      calcomUser: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        timeZone: user.timeZone
+      },
+      features: {
+        googleMeetIntegration: 'check your Cal.com integrations page',
+        eventTypesCount: 'check /calcom/event-types endpoint'
+      }
+    });
+
+  } catch (error: any) {
+    return res.json({
+      success: false,
+      integration: 'error',
+      error: error.message,
+      status: error.response?.status,
+      suggestion: 'Check your Cal.com API key and account permissions'
+    });
+  }
+});
+
 router.post('/calcom/create-event-type/:mentorId', async (req, res) => {
   try {
     const { mentorId } = req.params;
@@ -254,6 +332,109 @@ router.get('/health', (req, res) => {
       calcom: !!process.env.CALCOM_API_KEY,
     },
   });
+});
+
+// Add this to your booking.routes.ts
+router.get('/debug/calcom-test', async (req, res) => {
+  try {
+    const apiKey = process.env.CALCOM_API_KEY;
+    
+    console.log('🔍 Cal.com API Key Debug:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length || 0,
+      keyFormat: apiKey ? {
+        startsWithCal: apiKey.startsWith('cal_'),
+        hasLive: apiKey.includes('live'),
+        preview: `${apiKey.substring(0, 15)}...`
+      } : 'NO KEY'
+    });
+
+    if (!apiKey) {
+      return res.json({
+        success: false,
+        error: 'No Cal.com API key found',
+        envKeys: Object.keys(process.env).filter(k => k.toLowerCase().includes('cal'))
+      });
+    }
+
+    // Test different Cal.com endpoints
+    const axios = require('axios');
+    const testResults: {
+      userInfo?: any;
+      eventTypes?: any;
+    } = {};
+
+    // Test 1: Get user info
+    try {
+      const userResponse = await axios.get('https://api.cal.com/v1/me', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+      testResults.userInfo = {
+        success: true,
+        status: userResponse.status,
+        user: {
+          id: userResponse.data.id,
+          username: userResponse.data.username,
+          email: userResponse.data.email
+        }
+      };
+    } catch (error) {
+      const err = error as any;
+      testResults.userInfo = {
+        success: false,
+        status: err.response?.status,
+        error: err.response?.data || err.message
+      };
+    }
+
+    // Test 2: Get event types
+    try {
+      const eventTypesResponse = await axios.get('https://api.cal.com/v1/event-types', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+      testResults.eventTypes = {
+        success: true,
+        status: eventTypesResponse.status,
+        count: eventTypesResponse.data?.length || 0,
+        types: eventTypesResponse.data?.map((et: { id: string; title: string; slug: string }) => ({
+          id: et.id,
+          title: et.title,
+          slug: et.slug
+        })) || []
+      };
+    } catch (error) {
+      const err = error as any;
+      testResults.eventTypes = {
+        success: false,
+        status: err.response?.status,
+        error: err.response?.data || err.message
+      };
+    }
+
+    return res.json({
+      success: true,
+      apiKey: {
+        format: 'valid',
+        length: apiKey.length,
+        preview: `${apiKey.substring(0, 15)}...`
+      },
+      tests: testResults
+    });
+
+  } catch (error) {
+    return res.json({
+      success: false,
+      error: typeof error === 'object' && error && 'message' in error ? (error as any).message : String(error)
+    });
+  }
 });
 
 export default router;
