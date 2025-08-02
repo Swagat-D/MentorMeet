@@ -14,6 +14,7 @@ export interface ISession extends Document {
   sessionType: 'video' | 'audio' | 'chat';
   status: 'scheduled' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
   studentRating?: number;
+  meetingUrl?: string;
   mentorRating?: number;
   studentReview?: string;
   mentorReview?: string;

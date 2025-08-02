@@ -1,17 +1,38 @@
-// backend/src/services/calcom.service.ts - Cal.com Integration Service
-import axios from 'axios';
+// backend/src/services/calcom.service.ts - Production Cal.com Integration
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { Session } from '../models/Session.model';
 import User from '../models/User.model';
-import mongoose from 'mongoose';
 import MentorProfileService from './mentorProfile.service';
+
+interface CalComConfig {
+  apiKey: string;
+  baseUrl: string;
+  webhookSecret?: string;
+  retryAttempts: number;
+  retryDelay: number;
+}
 
 interface CalComEventType {
   id: number;
   title: string;
   slug: string;
   length: number;
-  eventName?: string;
-  link: string;
+  description?: string;
+  price?: number;
+  currency?: string;
+  locations: Array<{
+    type: string;
+    displayLocationPublicly?: boolean;
+  }>;
+  bookingFields?: Array<{
+    name: string;
+    type: string;
+    label: string;
+    required: boolean;
+    placeholder?: string;
+    options?: string[];
+  }>;
+  metadata?: any;
 }
 
 interface CalComBooking {
@@ -23,141 +44,252 @@ interface CalComBooking {
   attendees: Array<{
     email: string;
     name: string;
+    timeZone?: string;
   }>;
-  metadata?: any;
+  location?: any;
   meetingUrl?: string;
+  metadata?: any;
+  references?: Array<{
+    type: string;
+    uid: string;
+    meetingUrl?: string;
+  }>;
 }
 
-interface CalComAvailability {
+interface TimeSlot {
+  id: string;
+  startTime: string;
+  endTime: string;
   date: string;
-  slots: Array<{
-    time: string;
-    attendees?: number;
-    bookingUid?: string;
-  }>;
+  isAvailable: boolean;
+  price: number;
+  duration: number;
+  sessionType: 'video';
+  eventTypeId: number;
 }
 
 class CalComService {
-  private apiKey: string;
-  private baseUrl: string;
+  private config: CalComConfig;
+  private client!: AxiosInstance;
+  private eventTypeCache: Map<string, CalComEventType> = new Map();
+  private cacheExpiry: Map<string, number> = new Map();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
-  // Load environment variables directly
-  this.apiKey = process.env.CALCOM_API_KEY || '';
-  this.baseUrl = process.env.CALCOM_API_URL || 'https://api.cal.com/v1';
-  
-  // Enhanced debug logging
-  console.log('🔧 Cal.com Service Initialization:', {
-    hasApiKey: !!this.apiKey,
-    apiKeyLength: this.apiKey?.length || 0,
-    apiKeyPreview: this.apiKey ? `${this.apiKey.substring(0, 12)}...` : 'NOT SET',
-    baseUrl: this.baseUrl,
-    nodeEnv: process.env.NODE_ENV,
-    // Test if we can actually use the key
-    keyValidFormat: this.apiKey.startsWith('cal_') && this.apiKey.length > 20
-  });
-  
-  if (!this.apiKey) {
-    console.warn('⚠️ Cal.com API key not configured - Cal.com features will be disabled');
-    console.warn('📋 Available Cal.com related env vars:', 
-      Object.keys(process.env).filter(key => key.toLowerCase().includes('cal'))
+    this.config = {
+      apiKey: process.env.CALCOM_API_KEY || '',
+      baseUrl: process.env.CALCOM_API_URL || 'https://api.cal.com/v1',
+      webhookSecret: process.env.CALCOM_WEBHOOK_SECRET,
+      retryAttempts: 3,
+      retryDelay: 1000
+    };
+
+    this.validateConfig();
+    this.initializeClient();
+  }
+
+  private validateConfig(): void {
+    if (!this.config.apiKey) {
+      throw new Error('CALCOM_API_KEY environment variable is required');
+    }
+
+    if (!this.config.apiKey.startsWith('cal_')) {
+      throw new Error('Invalid Cal.com API key format. Should start with "cal_"');
+    }
+
+    console.log('✅ Cal.com service initialized with valid configuration');
+  }
+
+  private initializeClient(): void {
+    this.client = axios.create({
+      baseURL: this.config.baseUrl,
+      timeout: 30000,
+      headers: {
+        'Authorization': `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'MentorMatch/1.0'
+      }
+    });
+
+    // Request interceptor for logging
+    this.client.interceptors.request.use(
+      (config) => {
+        console.log(`🔗 Cal.com API Request: ${config.method?.toUpperCase()} ${config.url}`);
+        return config;
+      },
+      (error) => {
+        console.error('❌ Cal.com API Request Error:', error);
+        return Promise.reject(error);
+      }
     );
-  } else if (!this.apiKey.startsWith('cal_')) {
-    console.warn('⚠️ Cal.com API key format looks incorrect - should start with "cal_"');
+
+    // Response interceptor for error handling
+    this.client.interceptors.response.use(
+      (response: AxiosResponse) => {
+        console.log(`✅ Cal.com API Response: ${response.status} ${response.config.url}`);
+        return response;
+      },
+      async (error) => {
+        console.error('❌ Cal.com API Error:', {
+          status: error.response?.status,
+          message: error.response?.data?.message || error.message,
+          url: error.config?.url
+        });
+
+        // Handle specific error cases
+        if (error.response?.status === 401) {
+          throw new Error('Cal.com API authentication failed. Please check your API key.');
+        }
+
+        if (error.response?.status === 429) {
+          console.warn('⚠️ Cal.com API rate limit hit, implementing retry...');
+          return this.handleRateLimit(error);
+        }
+
+        if (error.response?.status >= 500) {
+          throw new Error('Cal.com service is temporarily unavailable. Please try again later.');
+        }
+
+        throw error;
+      }
+    );
   }
-}
-  private getHeaders() {
-  console.log('🔧 Cal.com Headers Debug:', {
-    hasApiKey: !!this.apiKey,
-    apiKeyLength: this.apiKey?.length || 0,
-    apiKeyPreview: this.apiKey ? `${this.apiKey.substring(0, 15)}...` : 'NOT SET',
-    apiKeyFormat: this.apiKey ? {
-      startsWithCal: this.apiKey.startsWith('cal_'),
-      hasUnderscore: this.apiKey.includes('_'),
-      totalLength: this.apiKey.length
-    } : null
-  });
 
-  if (!this.apiKey) {
-    throw new Error('Cal.com API key not configured');
+  private async handleRateLimit(error: any): Promise<any> {
+    const retryAfter = error.response?.headers['retry-after'] || this.config.retryDelay / 1000;
+    await this.delay(retryAfter * 1000);
+    return this.client.request(error.config);
   }
 
-  // Ensure clean API key (no whitespace)
-  const cleanApiKey = this.apiKey.trim();
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-  const headers = {
-    'Authorization': `Bearer ${cleanApiKey}`,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'User-Agent': 'MentorMatch/1.0'
-  };
+  private async retryOperation<T>(
+    operation: () => Promise<T>,
+    context: string
+  ): Promise<T> {
+    let lastError: Error;
 
-  console.log('📡 Final headers being sent:', {
-    hasAuth: !!headers.Authorization,
-    authPreview: headers.Authorization.substring(0, 20) + '...',
-    contentType: headers['Content-Type']
-  });
+    for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+        
+        if (attempt === this.config.retryAttempts) {
+          break;
+        }
 
-  return headers;
-}
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          break; // Don't retry auth errors
+        }
+
+        const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
+        console.log(`⏱️ Retrying ${context} in ${delay}ms (attempt ${attempt}/${this.config.retryAttempts})`);
+        await this.delay(delay);
+      }
+    }
+
+    throw lastError!;
+  }
 
   /**
- * Create or update mentor's event type in Cal.com
- */
-async createMentorEventType(mentorId: string): Promise<CalComEventType | null> {
-  try {
+   * Get or create event type for mentor
+   */
+  async getOrCreateMentorEventType(mentorId: string, forceRefresh = false): Promise<CalComEventType> {
+    const cacheKey = `mentor-${mentorId}`;
+    
+    // Check cache first
+    if (!forceRefresh && this.eventTypeCache.has(cacheKey)) {
+      const cachedTime = this.cacheExpiry.get(cacheKey) || 0;
+      if (Date.now() - cachedTime < this.CACHE_TTL) {
+        return this.eventTypeCache.get(cacheKey)!;
+      }
+    }
+
+    return this.retryOperation(async () => {
+      // First, try to find existing event type
+      const existingEventType = await this.findMentorEventType(mentorId);
+      
+      if (existingEventType) {
+        console.log(`✅ Found existing Cal.com event type for mentor ${mentorId}: ${existingEventType.id}`);
+        this.cacheEventType(cacheKey, existingEventType);
+        return existingEventType;
+      }
+
+      // Create new event type
+      const eventType = await this.createMentorEventType(mentorId);
+      this.cacheEventType(cacheKey, eventType);
+      return eventType;
+    }, `get/create event type for mentor ${mentorId}`);
+  }
+
+  private cacheEventType(key: string, eventType: CalComEventType): void {
+    this.eventTypeCache.set(key, eventType);
+    this.cacheExpiry.set(key, Date.now());
+  }
+
+  private async findMentorEventType(mentorId: string): Promise<CalComEventType | null> {
+    try {
+      const response = await this.client.get('/event-types');
+      const eventTypes = response.data?.event_types || response.data || [];
+      
+      return eventTypes.find((et: CalComEventType) => 
+        et.slug === `mentor-${mentorId}` || 
+        et.metadata?.mentorId === mentorId
+      ) || null;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch event types:', error);
+      return null;
+    }
+  }
+
+  private async createMentorEventType(mentorId: string): Promise<CalComEventType> {
     const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     if (!mentorProfile) {
-      throw new Error('Mentor profile not found');
+      throw new Error(`Mentor profile not found for ID: ${mentorId}`);
     }
 
-    // Check if event type already exists
-    const existingEventType = await this.getMentorEventType(mentorId);
-    if (existingEventType) {
-      console.log('✅ Cal.com event type already exists:', existingEventType.id);
-      return existingEventType;
+    const user = await User.findById(mentorId);
+    if (!user) {
+      throw new Error(`User not found for mentor ID: ${mentorId}`);
     }
 
-    const sessionLength = parseInt(mentorProfile.preferences?.sessionLength?.replace(' minutes', '') || '60');
+    const sessionLength = parseInt(
+      mentorProfile.preferences?.sessionLength?.replace(' minutes', '') || '60'
+    );
     const hourlyRate = mentorProfile.pricing?.hourlyRate || 75;
 
     const eventTypeData = {
-      title: `Mentoring Session with ${mentorProfile.displayName}`,
+      title: `Mentoring with ${mentorProfile.displayName}`,
       slug: `mentor-${mentorId}`,
       length: sessionLength,
-      description: `Professional mentoring session with ${mentorProfile.displayName}. 
-      
-Expertise: ${mentorProfile.expertise?.join(', ') || 'General Mentoring'}
-Subjects: ${mentorProfile.subjects?.map((s: string | { name: string }) => typeof s === 'string' ? s : s.name).join(', ') || 'Various Topics'}
-
-This is a one-on-one mentoring session focused on your learning goals and questions.`,
-      
-      // Pricing configuration
+      description: this.generateEventDescription(mentorProfile),
       price: hourlyRate,
       currency: mentorProfile.pricing?.currency || 'USD',
       
-      // Meeting configuration
+      // Google Meet integration
       locations: [
         {
           type: 'integrations:google:meet',
           displayLocationPublicly: true
         }
       ],
-      
-      // Booking settings
+
+      // Booking configuration
       schedulingType: 'ROUND_ROBIN',
       requiresConfirmation: false,
       disableGuests: true,
+      minimumBookingNotice: this.parseAdvanceBooking(mentorProfile.preferences?.advanceBooking),
       
-      // Email and notification settings
-      successRedirectUrl: process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/booking-success` : undefined,
-      
-      // Custom fields for booking
+      // Custom booking fields
       bookingFields: [
         {
           name: 'subject',
           type: 'text',
-          label: 'Session Topic/Subject',
+          label: 'Session Topic',
           required: true,
           placeholder: 'What would you like to focus on in this session?'
         },
@@ -169,587 +301,514 @@ This is a one-on-one mentoring session focused on your learning goals and questi
           options: ['Beginner', 'Intermediate', 'Advanced']
         },
         {
-          name: 'specific_questions',
+          name: 'specific_goals',
           type: 'textarea',
-          label: 'Specific Questions or Goals',
+          label: 'Specific Learning Goals',
           required: false,
-          placeholder: 'Any specific questions or learning goals for this session?'
+          placeholder: 'Any specific goals or questions for this session?'
         }
       ],
-      
-      // Metadata
+
+      // Metadata for tracking
       metadata: {
         mentorId,
         mentorName: mentorProfile.displayName,
-        subjects: mentorProfile.subjects,
-        expertise: mentorProfile.expertise,
+        subjects: mentorProfile.subjects?.map((s: any) => 
+          typeof s === 'string' ? s : s.name
+        ) || [],
+        expertise: mentorProfile.expertise || [],
         platform: 'MentorMatch',
-        sessionType: 'mentoring'
-      },
+        version: '1.0'
+      }
     };
 
-    console.log('📝 Creating Cal.com event type:', {
-      title: eventTypeData.title,
-      length: eventTypeData.length,
-      price: eventTypeData.price
-    });
+    console.log(`📝 Creating Cal.com event type for mentor ${mentorId}`);
+    
+    const response = await this.client.post('/event-types', eventTypeData);
+    const eventType = response.data;
 
-    const response = await axios.post(
-      `${this.baseUrl}/event-types`,
-      eventTypeData,
-      { headers: this.getHeaders() }
-    );
-
-    console.log('✅ Cal.com event type created successfully:', response.data.id);
-    return response.data;
-
-  } catch (error: any) {
-    console.error('❌ Error creating Cal.com event type:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data
-    });
-    return null;
+    console.log(`✅ Created Cal.com event type: ${eventType.id} for mentor ${mentorId}`);
+    return eventType;
   }
-}
+
+  private generateEventDescription(mentorProfile: any): string {
+    const subjects = mentorProfile.subjects?.map((s: any) => 
+      typeof s === 'string' ? s : s.name
+    ).join(', ') || 'Various Topics';
+
+    const expertise = mentorProfile.expertise?.join(', ') || 'General Mentoring';
+
+    return `Professional one-on-one mentoring session with ${mentorProfile.displayName}.
+
+🎯 Expertise: ${expertise}
+📚 Subjects: ${subjects}
+⏱️ Session Length: ${mentorProfile.preferences?.sessionLength || '60 minutes'}
+🌍 Location: ${mentorProfile.location || 'Online'}
+
+This is a personalized mentoring session focused on your learning goals and questions. Come prepared with specific topics you'd like to discuss!
+
+About ${mentorProfile.displayName}:
+${mentorProfile.bio || 'Experienced mentor ready to help you achieve your goals.'}`;
+  }
+
+  private parseAdvanceBooking(advanceBooking?: string): number {
+    if (!advanceBooking) return 1440; // 24 hours default
+    
+    const match = advanceBooking.match(/(\d+)\s*(day|hour|minute)/i);
+    if (!match) return 1440;
+
+    const value = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+
+    switch (unit) {
+      case 'minute': return value;
+      case 'hour': return value * 60;
+      case 'day': return value * 1440;
+      default: return 1440;
+    }
+  }
 
   /**
- * Get available slots for a mentor on a specific date
- */
-async getAvailableSlots(mentorId: string, date: string): Promise<any[]> {
-  try {
-    console.log('📅 Fetching available slots from Cal.com:', { mentorId, date });
+   * Get available slots for a mentor on a specific date
+   */
+  async getAvailableSlots(mentorId: string, date: string): Promise<TimeSlot[]> {
+    return this.retryOperation(async () => {
+      console.log(`📅 Fetching available slots for mentor ${mentorId} on ${date}`);
 
-    if (!this.apiKey) {
-      console.log('⚠️ Cal.com API key not configured, skipping Cal.com integration');
-      return this.generateSlotsFromMentorSchedule(mentorId, date);
-    }
+      // Get mentor's event type
+      const eventType = await this.getOrCreateMentorEventType(mentorId);
 
-    // Get mentor's event type
-    const eventType = await this.getMentorEventType(mentorId);
-    if (!eventType) {
-      console.log('⚠️ No Cal.com event type found for mentor, creating one...');
-      const newEventType = await this.createMentorEventType(mentorId);
-      if (!newEventType) {
-        console.log('❌ Failed to create Cal.com event type, falling back to local generation');
-        return this.generateSlotsFromMentorSchedule(mentorId, date);
-      }
-      // Use the newly created event type
-      return this.fetchAvailabilityFromCalCom(newEventType.id, date, mentorId);
-    }
+      // Format date for Cal.com API
+      const dateFrom = `${date}T00:00:00.000Z`;
+      const dateTo = `${date}T23:59:59.999Z`;
 
-    return this.fetchAvailabilityFromCalCom(eventType.id, date, mentorId);
-
-  } catch (error: any) {
-    console.error('❌ Error fetching Cal.com availability:', error.message);
-    
-    // Fallback: Generate slots from mentor's weekly schedule
-    return this.generateSlotsFromMentorSchedule(mentorId, date);
-  }
-}
-
-/**
- * Fetch availability from Cal.com API
- */
-private async fetchAvailabilityFromCalCom(eventTypeId: number, date: string, mentorId: string): Promise<any[]> {
-  try {
-    const headers = this.getHeaders();
-    
-    // Get availability for the date
-    const response = await axios.get(
-      `${this.baseUrl}/availability?dateFrom=${date}&dateTo=${date}&eventTypeId=${eventTypeId}`,
-      { 
-        headers,
-        timeout: 10000
-      }
-    );
-
-    console.log('📅 Cal.com availability response:', {
-      status: response.status,
-      hasData: !!response.data
-    });
-
-    const availability: CalComAvailability[] = response.data || [];
-    const dayAvailability = availability.find(day => day.date === date);
-
-    if (!dayAvailability || !dayAvailability.slots.length) {
-      console.log('📅 No Cal.com availability found for date:', date);
-      return [];
-    }
-
-    // Convert Cal.com slots to our format
-    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
-    const hourlyRate = mentorProfile?.pricing?.hourlyRate || 75;
-    const sessionLength = parseInt(mentorProfile?.preferences?.sessionLength?.replace(' minutes', '') || '60');
-
-    const slots = dayAvailability.slots.map((slot, index) => {
-      const startTime = new Date(`${date}T${slot.time}`);
-      const endTime = new Date(startTime.getTime() + (sessionLength * 60 * 1000));
-
-      return {
-        id: `calcom-${mentorId}-${startTime.getTime()}`,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        date,
-        isAvailable: true,
-        price: hourlyRate,
-        duration: sessionLength,
-        sessionType: 'video' as const,
-        calcomSlotTime: slot.time,
-        eventTypeId: eventTypeId,
-      };
-    });
-
-    console.log(`✅ Found ${slots.length} available slots from Cal.com`);
-    return slots;
-
-  } catch (error: any) {
-    console.error('❌ Error fetching Cal.com availability:', error.message);
-    throw error;
-  }
-}
-
-
-  /**
- * Create a booking via Cal.com with proper mentoring session details
- */
-async createBooking(bookingData: {
-  mentorId: string;
-  studentId: string;
-  timeSlot: any;
-  subject: string;
-  notes?: string;
-  studentEmail: string;
-  studentName: string;
-  mentorEmail: string;
-  mentorName: string;
-}): Promise<{ success: boolean; booking?: CalComBooking; meetingUrl?: string; error?: string }> {
-  try {
-    console.log('📝 Creating Cal.com mentoring session booking:', {
-      mentor: bookingData.mentorName,
-      student: bookingData.studentName,
-      subject: bookingData.subject,
-      time: bookingData.timeSlot.startTime
-    });
-
-    const eventType = await this.getMentorEventType(bookingData.mentorId);
-    if (!eventType) {
-      throw new Error('Event type not found for mentor - please set up Cal.com integration first');
-    }
-
-    const bookingPayload = {
-      eventTypeId: eventType.id,
-      start: bookingData.timeSlot.startTime,
-      end: bookingData.timeSlot.endTime,
-      
-      // Attendee information
-      name: bookingData.studentName,
-      email: bookingData.studentEmail,
-      
-      // Meeting details
-      title: `Mentoring: ${bookingData.subject}`,
-      notes: `Mentoring Session: ${bookingData.subject}
-
-👨‍🏫 Mentor: ${bookingData.mentorName}
-👨‍🎓 Student: ${bookingData.studentName}
-⏰ Duration: ${bookingData.timeSlot.duration} minutes
-
-${bookingData.notes ? `Student Notes: ${bookingData.notes}` : ''}
-
-This is a professional mentoring session via MentorMatch platform.`,
-      
-      // Responses for custom fields if your event type has them
-      responses: {
-        subject: bookingData.subject,
-        notes: bookingData.notes || '',
-        platform: 'MentorMatch'
-      },
-      
-      // Metadata for tracking
-      metadata: {
-        mentorId: bookingData.mentorId,
-        studentId: bookingData.studentId,
-        subject: bookingData.subject,
-        sessionType: 'mentoring',
-        platform: 'MentorMatch'
-      },
-      
-      // Timezone
-      timeZone: 'UTC',
-      language: 'en'
-    };
-
-    console.log('📡 Sending booking request to Cal.com...');
-
-    const response = await axios.post(
-      `${this.baseUrl}/bookings`,
-      bookingPayload,
-      { 
-        headers: this.getHeaders(),
-        timeout: 15000
-      }
-    );
-
-    const booking = response.data;
-
-    console.log('✅ Cal.com booking response:', {
-      bookingId: booking.id,
-      status: booking.status,
-      hasAttendees: !!booking.attendees?.length,
-      hasMeetingUrl: !!booking.meetingUrl,
-      hasReferences: !!booking.references?.length
-    });
-
-    // Extract Google Meet URL from Cal.com response
-    let meetingUrl = null;
-
-    // Method 1: Direct meetingUrl from booking
-    if (booking.meetingUrl) {
-      meetingUrl = booking.meetingUrl;
-      console.log('✅ Meeting URL found in booking.meetingUrl');
-    }
-
-    // Method 2: Check in references (Cal.com often puts it here)
-    if (!meetingUrl && booking.references && Array.isArray(booking.references)) {
-      const meetingRef = booking.references.find((ref: any) => 
-        ref.type === 'google_calendar' || 
-        ref.type === 'google_meet' ||
-        ref.meetingUrl ||
-        (ref.uid && ref.uid.includes('meet.google.com'))
-      );
-      
-      if (meetingRef) {
-        meetingUrl = meetingRef.meetingUrl || meetingRef.uid;
-        console.log('✅ Meeting URL found in references');
-      }
-    }
-
-    // Method 3: Check in location field
-    if (!meetingUrl && booking.location) {
-      if (booking.location.includes('meet.google.com')) {
-        meetingUrl = booking.location;
-        console.log('✅ Meeting URL found in location field');
-      }
-    }
-
-    // Method 4: Check in attendees data
-    if (!meetingUrl && booking.attendees && Array.isArray(booking.attendees)) {
-      booking.attendees.forEach((attendee: any) => {
-        if (attendee.bookingReference && attendee.bookingReference.meetingUrl) {
-          meetingUrl = attendee.bookingReference.meetingUrl;
-          console.log('✅ Meeting URL found in attendee reference');
+      // Fetch availability from Cal.com
+      const response = await this.client.get('/slots/available', {
+        params: {
+          eventTypeId: eventType.id,
+          dateFrom,
+          dateTo,
+          timeZone: 'UTC'
         }
       });
-    }
 
-    console.log('🔍 Meeting URL extraction result:', {
-      found: !!meetingUrl,
-      url: meetingUrl ? meetingUrl.substring(0, 30) + '...' : 'NOT FOUND'
-    });
-
-    // If Cal.com didn't provide a meeting URL, this means the integration isn't set up correctly
-    if (!meetingUrl) {
-      console.warn('⚠️ Cal.com did not provide a Google Meet URL - integration may not be configured properly');
-      console.warn('📋 Full booking response for debugging:', JSON.stringify(booking, null, 2));
+      const availability = response.data?.slots || [];
       
-      // Don't generate random URL - throw error instead
-      throw new Error('Cal.com booking created but no meeting URL was provided. Please check your Cal.com Google Meet integration.');
-    }
+      console.log(`📊 Cal.com returned ${availability.length} available slots`);
 
-    return {
-      success: true,
-      booking,
-      meetingUrl,
-    };
+      // Transform Cal.com slots to our format
+      const slots: TimeSlot[] = availability.map((slot: any, index: number) => {
+        const startTime = new Date(slot.time);
+        const endTime = new Date(startTime.getTime() + (eventType.length * 60 * 1000));
 
-  } catch (error: any) {
-    console.error('❌ Cal.com booking creation failed:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data
-    });
-    
-    return {
-      success: false,
-      error: error.response?.data?.message || error.message || 'Booking creation failed',
-    };
+        return {
+          id: `calcom-${eventType.id}-${startTime.getTime()}-${index}`,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          date,
+          isAvailable: true,
+          price: eventType.price || 75,
+          duration: eventType.length,
+          sessionType: 'video' as const,
+          eventTypeId: eventType.id
+        };
+      });
+
+      // Filter out slots that conflict with our database bookings
+      const filteredSlots = await this.filterConflictingSlots(slots, mentorId, date);
+
+      console.log(`✅ Returning ${filteredSlots.length} available slots after filtering`);
+      return filteredSlots;
+
+    }, `get available slots for mentor ${mentorId} on ${date}`);
   }
+
+  private async filterConflictingSlots(
+    slots: TimeSlot[], 
+    mentorId: string, 
+    date: string
+  ): Promise<TimeSlot[]> {
+    try {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get existing bookings from our database
+      const existingBookings = await Session.find({
+        mentorId,
+        scheduledTime: {
+          $gte: startOfDay,
+          $lte: endOfDay,
+        },
+        status: { $nin: ['cancelled'] },
+      });
+
+      return slots.filter(slot => {
+        const slotStart = new Date(slot.startTime);
+        const slotEnd = new Date(slot.endTime);
+
+        const hasConflict = existingBookings.some(booking => {
+          const bookingStart = new Date(booking.scheduledTime);
+          const bookingEnd = new Date(
+            booking.scheduledTime.getTime() + (booking.duration * 60 * 1000)
+          );
+
+          return (
+            (slotStart >= bookingStart && slotStart < bookingEnd) ||
+            (slotEnd > bookingStart && slotEnd <= bookingEnd) ||
+            (slotStart <= bookingStart && slotEnd >= bookingEnd)
+          );
+        });
+
+        return !hasConflict;
+      });
+
+    } catch (error) {
+      console.error('❌ Error filtering conflicting slots:', error);
+      return slots; // Return unfiltered slots if database check fails
+    }
+  }
+
+  /**
+   * Create a booking in Cal.com with full integration
+   */
+  async createBooking(bookingData: {
+    mentorId: string;
+    studentId: string;
+    timeSlot: TimeSlot;
+    subject: string;
+    notes?: string;
+    studentEmail: string;
+    studentName: string;
+    mentorEmail: string;
+    mentorName: string;
+    experienceLevel?: string;
+    specificGoals?: string;
+  }): Promise<{
+    success: boolean;
+    booking?: CalComBooking;
+    meetingUrl?: string;
+    calendarEvent?: any;
+    error?: string;
+  }> {
+    return this.retryOperation(async () => {
+      console.log(`📝 Creating Cal.com booking for mentor ${bookingData.mentorId}`);
+
+      // Get mentor's event type
+      const eventType = await this.getOrCreateMentorEventType(bookingData.mentorId);
+
+      // Validate that the slot is still available
+      const currentSlots = await this.getAvailableSlots(bookingData.mentorId, bookingData.timeSlot.date);
+      const slotStillAvailable = currentSlots.some(slot => 
+        slot.startTime === bookingData.timeSlot.startTime
+      );
+
+      if (!slotStillAvailable) {
+        throw new Error('Selected time slot is no longer available. Please select another slot.');
+      }
+
+      // Prepare booking payload
+      const bookingPayload = {
+        eventTypeId: eventType.id,
+        start: bookingData.timeSlot.startTime,
+        end: bookingData.timeSlot.endTime,
+        
+        // Attendee information
+        responses: {
+          name: bookingData.studentName,
+          email: bookingData.studentEmail,
+          subject: bookingData.subject,
+          experience_level: bookingData.experienceLevel || 'Intermediate',
+          specific_goals: bookingData.specificGoals || bookingData.notes || ''
+        },
+
+        // Meeting metadata
+        metadata: {
+          mentorId: bookingData.mentorId,
+          studentId: bookingData.studentId,
+          subject: bookingData.subject,
+          platform: 'MentorMatch',
+          bookingTime: new Date().toISOString()
+        },
+
+        // Timezone and language
+        timeZone: 'UTC',
+        language: 'en'
+      };
+
+      console.log(`🚀 Sending booking request to Cal.com...`);
+
+      // Create the booking
+      const response = await this.client.post('/bookings', bookingPayload);
+      const booking = response.data;
+
+      console.log(`✅ Cal.com booking created: ${booking.id}`);
+
+      // Extract meeting URL
+      const meetingUrl = this.extractMeetingUrl(booking);
+
+      if (!meetingUrl) {
+        console.warn('⚠️ No meeting URL found in Cal.com response');
+        console.log('📋 Booking response:', JSON.stringify(booking, null, 2));
+        
+        throw new Error(
+          'Cal.com booking created but no Google Meet URL was provided. ' +
+          'Please ensure Google Meet integration is properly configured in your Cal.com account.'
+        );
+      }
+
+      console.log(`🎥 Google Meet URL extracted: ${meetingUrl.substring(0, 30)}...`);
+
+      return {
+        success: true,
+        booking,
+        meetingUrl,
+        calendarEvent: booking.references?.find((ref: any) => ref.type === 'google_calendar')
+      };
+
+    }, `create booking for mentor ${bookingData.mentorId}`);
+  }
+
+  private extractMeetingUrl(booking: CalComBooking): string | null {
+  // Method 1: Direct meetingUrl field
+  if (booking.meetingUrl) {
+    return booking.meetingUrl;
+  }
+
+  // Method 2: Check references for Google Meet
+  if (booking.references && Array.isArray(booking.references)) {
+    for (const ref of booking.references) {
+      if (ref.meetingUrl && ref.meetingUrl.includes('meet.google.com')) {
+        return ref.meetingUrl;
+      }
+      if (ref.uid && ref.uid.includes('meet.google.com')) {
+        return ref.uid;
+      }
+    }
+  }
+
+  // Method 3: Check location field
+  if (booking.location) {
+    if (typeof booking.location === 'string' && booking.location.includes('meet.google.com')) {
+      return booking.location;
+    }
+    if (booking.location.link && booking.location.link.includes('meet.google.com')) {
+      return booking.location.link;
+    }
+  }
+
+  // Method 4: Check attendees (FIXED - remove meetingUrl check)
+  if (booking.attendees && Array.isArray(booking.attendees)) {
+    for (const attendee of booking.attendees) {
+      // Check if attendee has booking reference with meeting URL
+      if ((attendee as any).bookingReference?.meetingUrl) {
+        return (attendee as any).bookingReference.meetingUrl;
+      }
+      // Check if attendee has nested meeting data
+      if ((attendee as any).meetingData?.url) {
+        return (attendee as any).meetingData.url;
+      }
+    }
+  }
+
+  // Method 5: Check metadata for meeting URL
+  if (booking.metadata && booking.metadata.meetingUrl) {
+    return booking.metadata.meetingUrl;
+  }
+
+  return null;
 }
 
   /**
    * Cancel a Cal.com booking
    */
-  async cancelBooking(bookingId: string, reason?: string): Promise<boolean> {
-    try {
-      console.log('❌ Cancelling Cal.com booking:', bookingId);
+  async cancelBooking(
+    calcomBookingId: string, 
+    reason?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.retryOperation(async () => {
+      console.log(`❌ Cancelling Cal.com booking: ${calcomBookingId}`);
 
-      await axios.delete(
-        `${this.baseUrl}/bookings/${bookingId}`,
-        { 
-          headers: this.getHeaders(),
-          data: { reason: reason || 'Cancelled by user' }
+      await this.client.delete(`/bookings/${calcomBookingId}`, {
+        data: { 
+          reason: reason || 'Cancelled by user',
+          cancellationReason: reason || 'User requested cancellation'
         }
-      );
+      });
 
-      console.log('✅ Cal.com booking cancelled successfully');
-      return true;
+      console.log(`✅ Cal.com booking ${calcomBookingId} cancelled successfully`);
+      return { success: true };
 
-    } catch (error: any) {
-      console.error('❌ Cal.com booking cancellation failed:', error.response?.data || error.message);
-      return false;
-    }
+    }, `cancel booking ${calcomBookingId}`);
   }
 
   /**
    * Reschedule a Cal.com booking
    */
-  async rescheduleBooking(bookingId: string, newStartTime: string, newEndTime: string): Promise<boolean> {
-    try {
-      console.log('🔄 Rescheduling Cal.com booking:', { bookingId, newStartTime });
+  async rescheduleBooking(
+    calcomBookingId: string,
+    newStartTime: string,
+    newEndTime: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.retryOperation(async () => {
+      console.log(`🔄 Rescheduling Cal.com booking: ${calcomBookingId}`);
 
-      const response = await axios.patch(
-        `${this.baseUrl}/bookings/${bookingId}`,
-        {
-          start: newStartTime,
-          end: newEndTime,
-        },
-        { headers: this.getHeaders() }
+      await this.client.patch(`/bookings/${calcomBookingId}`, {
+        start: newStartTime,
+        end: newEndTime,
+        rescheduleReason: 'User requested reschedule'
+      });
+
+      console.log(`✅ Cal.com booking ${calcomBookingId} rescheduled successfully`);
+      return { success: true };
+
+    }, `reschedule booking ${calcomBookingId}`);
+  }
+
+  /**
+   * Get booking details from Cal.com
+   */
+  async getBookingDetails(calcomBookingId: string): Promise<CalComBooking | null> {
+    return this.retryOperation(async () => {
+      console.log(`🔍 Fetching Cal.com booking details: ${calcomBookingId}`);
+
+      const response = await this.client.get(`/bookings/${calcomBookingId}`);
+      const booking = response.data;
+
+      console.log(`✅ Cal.com booking details retrieved: ${booking.id}`);
+      return booking;
+
+    }, `get booking details ${calcomBookingId}`);
+  }
+
+  /**
+   * Health check for Cal.com service
+   */
+  async healthCheck(): Promise<{
+    healthy: boolean;
+    details: any;
+    suggestions?: string[];
+  }> {
+    try {
+      console.log('🏥 Performing Cal.com health check...');
+
+      // Test 1: Basic API connectivity
+      const response = await this.client.get('/me');
+      const user = response.data;
+
+      // Test 2: Check Google Meet integration
+      const integrations = await this.client.get('/integrations').catch(() => ({ data: [] }));
+      const hasGoogleMeet = integrations.data?.some((i: any) => 
+        i.type === 'google_calendar' || i.type === 'google_meet'
       );
 
-      console.log('✅ Cal.com booking rescheduled successfully');
-      return true;
+      // Test 3: Check event types
+      const eventTypes = await this.client.get('/event-types').catch(() => ({ data: [] }));
+      const eventTypeCount = Array.isArray(eventTypes.data) ? eventTypes.data.length : 
+                            eventTypes.data?.event_types?.length || 0;
+
+      const details = {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          timeZone: user.timeZone
+        },
+        integrations: {
+          hasGoogleMeet,
+          totalIntegrations: integrations.data?.length || 0
+        },
+        eventTypes: {
+          count: eventTypeCount
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      const suggestions = [];
+      if (!hasGoogleMeet) {
+        suggestions.push('Install Google Meet integration in your Cal.com account');
+      }
+      if (eventTypeCount === 0) {
+        suggestions.push('Create at least one event type in your Cal.com account');
+      }
+
+      const healthy = !!user && hasGoogleMeet;
+
+      console.log(`${healthy ? '✅' : '⚠️'} Cal.com health check completed - ${healthy ? 'Healthy' : 'Issues detected'}`);
+
+      return {
+        healthy,
+        details,
+        suggestions: suggestions.length > 0 ? suggestions : undefined
+      };
 
     } catch (error: any) {
-      console.error('❌ Cal.com booking reschedule failed:', error.response?.data || error.message);
-      return false;
+      console.error('❌ Cal.com health check failed:', error);
+      return {
+        healthy: false,
+        details: {
+          error: error.message,
+          status: error.response?.status,
+          timestamp: new Date().toISOString()
+        },
+        suggestions: [
+          'Check your Cal.com API key',
+          'Verify Cal.com service status',
+          'Ensure proper network connectivity'
+        ]
+      };
     }
   }
 
   /**
- * Get mentor's event type from Cal.com
- */
-private async getMentorEventType(mentorId: string): Promise<CalComEventType | null> {
-  try {
-    console.log('🔍 Fetching Cal.com event types for mentor:', mentorId);
-    
-    if (!this.apiKey) {
-      throw new Error('Cal.com API key not configured');
-    }
-
-    const headers = this.getHeaders();
-
-    console.log('📡 Making Cal.com API request:', {
-      url: `${this.baseUrl}/event-types`,
-      method: 'GET',
-      hasAuthHeader: !!headers.Authorization
-    });
-
-    const response = await axios.get(
-      `${this.baseUrl}/event-types`,
-      { 
-        headers,
-        timeout: 15000,
-        validateStatus: (status) => status < 500 // Don't throw on 4xx errors
-      }
-    );
-
-    console.log('📡 Cal.com event types response:', {
-      status: response.status,
-      statusText: response.statusText,
-      eventTypesCount: Array.isArray(response.data) ? response.data.length : 'Not an array',
-      hasData: !!response.data
-    });
-
-    // Handle different response formats
-    if (response.status === 401) {
-      console.error('❌ Cal.com API returned 401 - API key is invalid or expired');
-      throw new Error('Cal.com API authentication failed. Please check your API key.');
-    }
-
-    if (response.status !== 200) {
-      console.error('❌ Cal.com API returned non-200 status:', response.status, response.data);
-      throw new Error(`Cal.com API returned status ${response.status}`);
-    }
-
-    // Handle different response structures
-    let eventTypes = [];
-    if (Array.isArray(response.data)) {
-      eventTypes = response.data;
-    } else if (response.data && Array.isArray(response.data.event_types)) {
-      eventTypes = response.data.event_types;
-    } else if (response.data && Array.isArray(response.data.eventTypes)) {
-      eventTypes = response.data.eventTypes;
-    } else {
-      console.warn('⚠️ Unexpected Cal.com response format:', response.data);
-      eventTypes = [];
-    }
-
-    const mentorEventType = eventTypes.find((et: CalComEventType) => et.slug === `mentor-${mentorId}`);
-    
-    console.log('🔍 Looking for event type with slug:', `mentor-${mentorId}`);
-    console.log('📋 Available event types:', eventTypes.map((et: CalComEventType) => ({ id: et.id, slug: et.slug, title: et.title })));
-    console.log('📋 Found mentor event type:', !!mentorEventType);
-    
-    return mentorEventType || null;
-
-  } catch (error: any) {
-    if (error.code === 'ECONNABORTED') {
-      console.error('❌ Cal.com API timeout');
-    } else if (error.response) {
-      console.error('❌ Cal.com API error response:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    } else if (error.request) {
-      console.error('❌ Cal.com API network error:', error.message);
-    } else {
-      console.error('❌ Cal.com API unknown error:', error.message);
-    }
-    
-    throw error;
-  }
-}
-
-  /**
-   * Get mentor profile from database (using service)
+   * Sync mentor availability to Cal.com
    */
-  private async getMentorProfile(mentorId: string): Promise<any> {
-    return await MentorProfileService.findMentorProfile(mentorId);
-  }
-
-  /**
-   * Fallback: Generate slots from mentor's weekly schedule
-   */
-  private async generateSlotsFromMentorSchedule(mentorId: string, date: string): Promise<any[]> {
-    try {
-      console.log('🔄 Falling back to mentor schedule generation');
-      
-      const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
-      if (!mentorProfile?.weeklySchedule) {
-        return [];
-      }
-
-      const requestedDate = new Date(date);
-      const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const daySchedule = mentorProfile.weeklySchedule[dayName];
-
-      if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
-        return [];
-      }
-
-      const slots: any[] = [];
-      const now = new Date();
-      const hourlyRate = mentorProfile.pricing?.hourlyRate || 75;
-      const sessionLength = parseInt(mentorProfile.preferences?.sessionLength?.replace(' minutes', '') || '60');
-
-      for (const block of daySchedule) {
-        if (!block.isAvailable) continue;
-
-        const [startHour, startMinute] = block.startTime.split(':').map(Number);
-        const [endHour, endMinute] = block.endTime.split(':').map(Number);
-
-        const blockStart = new Date(requestedDate);
-        blockStart.setHours(startHour, startMinute, 0, 0);
-
-        const blockEnd = new Date(requestedDate);
-        blockEnd.setHours(endHour, endMinute, 0, 0);
-
-        let currentTime = new Date(blockStart);
-
-        while (currentTime.getTime() + (sessionLength * 60 * 1000) <= blockEnd.getTime()) {
-          const slotStart = new Date(currentTime);
-          const slotEnd = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-
-          // Skip past slots
-          if (slotStart <= new Date(now.getTime() + 2 * 60 * 60 * 1000)) {
-            currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-            continue;
-          }
-
-          slots.push({
-            id: `fallback-${mentorId}-${slotStart.getTime()}`,
-            startTime: slotStart.toISOString(),
-            endTime: slotEnd.toISOString(),
-            date,
-            isAvailable: true,
-            price: hourlyRate,
-            duration: sessionLength,
-            sessionType: 'video' as const,
-          });
-
-          currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-        }
-      }
-
-      return slots;
-
-    } catch (error) {
-      console.error('❌ Error generating fallback slots:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Generate meeting URL for booking
-   */
-  private generateMeetingUrl(bookingId: number | string): string {
-    return `https://meet.google.com/${this.generateMeetingCode()}-${bookingId}`;
-  }
-
-  /**
-   * Generate meeting code
-   */
-  private generateMeetingCode(): string {
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    let code = '';
-    for (let i = 0; i < 10; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-      if (i === 2 || i === 6) code += '-';
-    }
-    return code;
-  }
-
-  /**
-   * Sync mentor availability with Cal.com
-   */
-  async syncMentorAvailability(mentorId: string): Promise<boolean> {
-    try {
-      console.log('🔄 Syncing mentor availability with Cal.com');
+  async syncMentorAvailability(mentorId: string): Promise<{
+    success: boolean;
+    message: string;
+    details?: any;
+  }> {
+    return this.retryOperation(async () => {
+      console.log(`🔄 Syncing mentor availability for ${mentorId}`);
 
       const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
       if (!mentorProfile?.weeklySchedule) {
-        return false;
+        throw new Error('Mentor profile or weekly schedule not found');
       }
 
-      const eventType = await this.getMentorEventType(mentorId);
-      if (!eventType) {
-        await this.createMentorEventType(mentorId);
-        return true;
-      }
+      // Get or create event type
+      const eventType = await this.getOrCreateMentorEventType(mentorId, true);
 
-      // Convert weekly schedule to Cal.com format
+      // Convert mentor's weekly schedule to Cal.com availability format
       const availability = this.convertWeeklyScheduleToCalCom(mentorProfile.weeklySchedule);
 
-      const response = await axios.patch(
-        `${this.baseUrl}/event-types/${eventType.id}`,
-        { availability },
-        { headers: this.getHeaders() }
-      );
+      // Update event type with new availability
+      await this.client.patch(`/event-types/${eventType.id}`, {
+        schedule: availability,
+        metadata: {
+          ...eventType.metadata,
+          lastSync: new Date().toISOString(),
+          syncSource: 'MentorMatch'
+        }
+      });
 
-      console.log('✅ Mentor availability synced with Cal.com');
-      return true;
+      console.log(`✅ Mentor availability synced successfully for ${mentorId}`);
 
-    } catch (error: any) {
-      console.error('❌ Error syncing mentor availability:', error.response?.data || error.message);
-      return false;
-    }
+      return {
+        success: true,
+        message: 'Mentor availability synced successfully',
+        details: {
+          eventTypeId: eventType.id,
+          availabilityBlocks: availability.length,
+          syncTime: new Date().toISOString()
+        }
+      };
+
+    }, `sync mentor availability for ${mentorId}`);
   }
 
-  /**
-   * Convert weekly schedule to Cal.com format
-   */
   private convertWeeklyScheduleToCalCom(weeklySchedule: any): any[] {
     const calcomAvailability: any[] = [];
     const dayMap = {
@@ -765,11 +824,12 @@ private async getMentorEventType(mentorId: string): Promise<CalComEventType | nu
     Object.entries(weeklySchedule).forEach(([day, blocks]: [string, any]) => {
       if (Array.isArray(blocks) && blocks.length > 0) {
         blocks.forEach((block: any) => {
-          if (block.isAvailable) {
+          if (block.isAvailable && block.startTime && block.endTime) {
             calcomAvailability.push({
               days: [dayMap[day as keyof typeof dayMap]],
               startTime: block.startTime,
               endTime: block.endTime,
+              date: null // Recurring availability
             });
           }
         });
@@ -777,6 +837,25 @@ private async getMentorEventType(mentorId: string): Promise<CalComEventType | nu
     });
 
     return calcomAvailability;
+  }
+
+  /**
+   * Clear cache for mentor
+   */
+  clearMentorCache(mentorId: string): void {
+    const cacheKey = `mentor-${mentorId}`;
+    this.eventTypeCache.delete(cacheKey);
+    this.cacheExpiry.delete(cacheKey);
+    console.log(`🗑️ Cleared cache for mentor ${mentorId}`);
+  }
+
+  /**
+   * Clear all caches
+   */
+  clearAllCaches(): void {
+    this.eventTypeCache.clear();
+    this.cacheExpiry.clear();
+    console.log('🗑️ Cleared all Cal.com caches');
   }
 }
 

@@ -174,6 +174,322 @@ class EmailService {
     }
   }
 
+  // Add these methods to your EmailService class:
+
+/**
+ * Get booking confirmation template
+ */
+private getBookingConfirmationTemplate(data: any): EmailTemplate {
+  const isForMentor = data.isForMentor;
+  const recipientName = isForMentor ? data.mentorName : data.studentName;
+  const otherPartyName = isForMentor ? data.studentName : data.mentorName;
+  
+  const subject = `${isForMentor ? 'New Session Booked' : 'Booking Confirmed'}: ${data.subject}`;
+  
+  const text = `
+Hi ${recipientName},
+
+${isForMentor ? 'Great news! A new session has been booked.' : 'Your session has been confirmed!'}
+
+Session Details:
+- ${isForMentor ? 'Student' : 'Mentor'}: ${otherPartyName}
+- Subject: ${data.subject}
+- Date: ${data.sessionDate}
+- Time: ${data.sessionTime}
+- Duration: ${data.duration} minutes
+${data.meetingLink ? `- Meeting Link: ${data.meetingLink}` : ''}
+
+${isForMentor ? 'Please prepare for the session and join on time.' : 'Looking forward to your learning session!'}
+
+Best regards,
+MentorMatch Team
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: #8b4513; color: white; padding: 20px; text-align: center; }
+    .content { padding: 30px; }
+    .details { background: #f8f3ee; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .meeting-link { background: #10b981; color: white; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
+    .footer { background: #f0f0f0; padding: 15px; text-align: center; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>MentorMatch</h1>
+      <h2>${isForMentor ? '📚 New Session Booked!' : '🎉 Booking Confirmed!'}</h2>
+    </div>
+    
+    <div class="content">
+      <p>Hi ${recipientName},</p>
+      <p>${isForMentor ? 'Great news! A new mentoring session has been booked.' : 'Your mentoring session has been confirmed!'}</p>
+      
+      <div class="details">
+        <h3>📋 Session Details</h3>
+        <p><strong>${isForMentor ? 'Student' : 'Mentor'}:</strong> ${otherPartyName}</p>
+        <p><strong>Subject:</strong> ${data.subject}</p>
+        <p><strong>Date:</strong> ${data.sessionDate}</p>
+        <p><strong>Time:</strong> ${data.sessionTime}</p>
+        <p><strong>Duration:</strong> ${data.duration} minutes</p>
+      </div>
+      
+      ${data.meetingLink ? `
+      <div class="meeting-link">
+        <h3>🎥 Meeting Link</h3>
+        <a href="${data.meetingLink}" style="color: white; text-decoration: none;">
+          <strong>Join Google Meet</strong>
+        </a>
+      </div>
+      ` : ''}
+      
+      <p>${isForMentor ? 'Please prepare for the session and join on time.' : 'Looking forward to your learning session!'}</p>
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+/**
+ * Get cancellation template
+ */
+private getCancellationTemplate(data: any): EmailTemplate {
+  const subject = `Session Cancelled: ${data.subject}`;
+  
+  const text = `
+Hi there,
+
+The following session has been cancelled:
+
+Subject: ${data.subject}
+Date: ${data.sessionDate}
+Time: ${data.sessionTime}
+Cancelled by: ${data.cancelledBy}
+Reason: ${data.reason}
+
+${data.refundAmount ? `A refund of $${data.refundAmount} will be processed.` : ''}
+
+Best regards,
+MentorMatch Team
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: #dc2626; color: white; padding: 20px; text-align: center; }
+    .content { padding: 30px; }
+    .details { background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; }
+    .footer { background: #f0f0f0; padding: 15px; text-align: center; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>MentorMatch</h1>
+      <h2>❌ Session Cancelled</h2>
+    </div>
+    
+    <div class="content">
+      <p>Hi there,</p>
+      <p>The following session has been cancelled:</p>
+      
+      <div class="details">
+        <p><strong>Subject:</strong> ${data.subject}</p>
+        <p><strong>Date:</strong> ${data.sessionDate}</p>
+        <p><strong>Time:</strong> ${data.sessionTime}</p>
+        <p><strong>Cancelled by:</strong> ${data.cancelledBy}</p>
+        <p><strong>Reason:</strong> ${data.reason}</p>
+      </div>
+      
+      ${data.refundAmount ? `<p>💰 A refund of $${data.refundAmount} will be processed within 3-5 business days.</p>` : ''}
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+/**
+ * Get reschedule template
+ */
+private getRescheduleTemplate(data: any): EmailTemplate {
+  const subject = `Session Rescheduled: ${data.subject}`;
+  
+  const text = `
+Hi there,
+
+Your session has been rescheduled:
+
+Subject: ${data.subject}
+Old Time: ${data.oldDate} at ${data.oldTime}
+New Time: ${data.newDate} at ${data.newTime}
+
+${data.meetingLink ? `Meeting Link: ${data.meetingLink}` : ''}
+
+Best regards,
+MentorMatch Team
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: #f59e0b; color: white; padding: 20px; text-align: center; }
+    .content { padding: 30px; }
+    .old-time { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 10px 0; }
+    .new-time { background: #d1fae5; padding: 15px; border-radius: 8px; margin: 10px 0; }
+    .footer { background: #f0f0f0; padding: 15px; text-align: center; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>MentorMatch</h1>
+      <h2>🔄 Session Rescheduled</h2>
+    </div>
+    
+    <div class="content">
+      <p>Hi there,</p>
+      <p>Your session <strong>"${data.subject}"</strong> has been rescheduled:</p>
+      
+      <div class="old-time">
+        <h4>Previous Time:</h4>
+        <p>${data.oldDate} at ${data.oldTime}</p>
+      </div>
+      
+      <div class="new-time">
+        <h4>New Time:</h4>
+        <p>${data.newDate} at ${data.newTime}</p>
+      </div>
+      
+      ${data.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${data.meetingLink}">Join Meeting</a></p>` : ''}
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+/**
+ * Get reminder template
+ */
+private getReminderTemplate(data: any): EmailTemplate {
+  const isForMentor = data.isForMentor;
+  const recipientName = isForMentor ? data.mentorName : data.studentName;
+  
+  const subject = `Reminder: Session starts ${data.timeUntilSession}`;
+  
+  const text = `
+Hi ${recipientName},
+
+This is a reminder that your session starts ${data.timeUntilSession}:
+
+Subject: ${data.subject}
+Date: ${data.sessionDate}
+Time: ${data.sessionTime}
+Duration: ${data.duration} minutes
+
+${data.meetingLink ? `Meeting Link: ${data.meetingLink}` : ''}
+
+${isForMentor ? 'Please prepare your materials and join on time.' : 'Get ready for your learning session!'}
+
+Best regards,
+MentorMatch Team
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: #8b4513; color: white; padding: 20px; text-align: center; }
+    .content { padding: 30px; }
+    .reminder { background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+    .meeting-link { background: #10b981; color: white; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
+    .footer { background: #f0f0f0; padding: 15px; text-align: center; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>MentorMatch</h1>
+      <h2>⏰ Session Reminder</h2>
+    </div>
+    
+    <div class="content">
+      <p>Hi ${recipientName},</p>
+      
+      <div class="reminder">
+        <h3>🔔 Your session starts ${data.timeUntilSession}!</h3>
+        <p><strong>Subject:</strong> ${data.subject}</p>
+        <p><strong>Date:</strong> ${data.sessionDate}</p>
+        <p><strong>Time:</strong> ${data.sessionTime}</p>
+        <p><strong>Duration:</strong> ${data.duration} minutes</p>
+      </div>
+      
+      ${data.meetingLink ? `
+      <div class="meeting-link">
+        <a href="${data.meetingLink}" style="color: white; text-decoration: none;">
+          <strong>🎥 Join Meeting Now</strong>
+        </a>
+      </div>
+      ` : ''}
+      
+      <p>${isForMentor ? 'Please prepare your materials and join on time.' : 'Get ready for your learning session!'}</p>
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
   /**
    * Get OTP email template
    */
