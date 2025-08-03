@@ -1,4 +1,4 @@
-// services/bookingService.ts - Simplified Booking Service with Cal.com Integration
+// services/bookingService.ts - Updated with Cal.com API v2 Integration
 import ApiService from './api';
 
 export interface TimeSlot {
@@ -9,13 +9,14 @@ export interface TimeSlot {
   isAvailable: boolean;
   price: number;
   duration: number;
-  sessionType: 'video' | 'audio' | 'in-person';
+  sessionType: 'video';
+  eventTypeId: number; // Cal.com event type ID
 }
 
 export interface BookingRequest {
   mentorId: string;
   timeSlot: TimeSlot;
-  sessionType: 'video' | 'audio' | 'in-person';
+  sessionType: 'video';
   subject: string;
   notes?: string;
   paymentMethodId: string;
@@ -29,9 +30,11 @@ export interface BookingResponse {
     sessionId: string;
     paymentId: string;
     meetingLink?: string;
-    calendarEventId: string;
+    calComBookingUid: string;
     reminderSet: boolean;
+    paymentProcessed: boolean;
   };
+  code?: string;
 }
 
 export interface Session {
@@ -52,7 +55,7 @@ export interface Session {
   date: string;
   duration: number;
   sessionType: {
-    type: 'video' | 'audio' | 'in-person';
+    type: 'video';
     duration: number;
   };
   status: 'scheduled' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
@@ -60,7 +63,9 @@ export interface Session {
   notes?: string;
   userRating?: number;
   price: number;
+  currency: string;
   meetingProvider?: string;
+  calComBookingUid?: string;
 }
 
 class BookingService {
@@ -74,11 +79,11 @@ class BookingService {
   }
 
   /**
-   * Get available time slots for a mentor (via Cal.com)
+   * Get available time slots for a mentor via Cal.com API v2
    */
   async getAvailableSlots(mentorId: string, date: string): Promise<TimeSlot[]> {
     try {
-      console.log('📅 Fetching available slots:', { mentorId, date });
+      console.log('📅 Fetching available slots via Cal.com:', { mentorId, date });
 
       const response = await ApiService.post('BOOKING_AVAILABLE_SLOTS', {
         mentorId,
@@ -92,13 +97,15 @@ class BookingService {
           
           switch (type) {
             case 'past_date':
-              throw new Error('Past dates are not available for booking');
+              throw new Error('Past dates are not available for booking. Please select tomorrow or a future date.');
             case 'no_profile':
-              throw new Error('This mentor hasn\'t set up their profile yet');
-            case 'no_schedule':
-              throw new Error('This mentor hasn\'t configured their schedule yet');
-            case 'no_slots':
-              throw new Error(`No available slots for ${response.info.dayName || 'this date'}`);
+              throw new Error('This mentor hasn\'t completed their profile setup yet.');
+            case 'no_calcom_setup':
+              throw new Error('This mentor hasn\'t set up their Cal.com integration yet.');
+            case 'no_event_types':
+              throw new Error('This mentor hasn\'t configured any session types yet.');
+            case 'calcom_unavailable':
+              throw new Error('Unable to fetch availability. Please try again in a few minutes.');
             default:
               throw new Error(response.message || 'Failed to fetch available slots');
           }
@@ -106,8 +113,13 @@ class BookingService {
         throw new Error(response.message || 'Failed to fetch available slots');
       }
 
-      console.log('✅ Available slots fetched:', response.data.length);
-      return response.data || [];
+      const slots = response.data || [];
+      console.log('✅ Available slots fetched:', slots.length);
+      
+      // Sort slots by start time
+      return slots.sort((a: TimeSlot, b: TimeSlot) => 
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
 
     } catch (error: any) {
       console.error('❌ Error fetching available slots:', error);
@@ -116,22 +128,40 @@ class BookingService {
   }
 
   /**
-   * Create a booking with Cal.com integration
+   * Create a booking with payment-first flow
    */
   async createBooking(bookingRequest: BookingRequest): Promise<BookingResponse> {
     try {
-      console.log('🎯 Creating booking:', bookingRequest);
+      console.log('🎯 Creating booking with payment-first flow:', bookingRequest);
 
       const response = await ApiService.post('BOOKING_CREATE', bookingRequest);
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to create booking');
+        // Handle specific error codes
+        const errorCode = response.code;
+        let errorMessage = response.message || 'Failed to create booking';
+        
+        switch (errorCode) {
+          case 'PAYMENT_FAILED':
+            errorMessage = 'Payment processing failed. Please check your payment method and try again.';
+            break;
+          case 'SLOT_UNAVAILABLE':
+            errorMessage = 'This time slot is no longer available. Please select another time.';
+            break;
+          case 'CALCOM_BOOKING_FAILED':
+            errorMessage = 'Unable to create the meeting. Your payment has been refunded. Please try again.';
+            break;
+          default:
+            break;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       console.log('✅ Booking created successfully:', response.data);
       return {
         success: true,
-        message: 'Booking created successfully',
+        message: 'Booking created successfully! Check your email for meeting details.',
         data: response.data,
       };
 
@@ -139,7 +169,7 @@ class BookingService {
       console.error('❌ Booking creation failed:', error);
       return {
         success: false,
-        message: error.message || 'Booking creation failed',
+        message: error.message || 'Booking creation failed. Please try again.',
       };
     }
   }
@@ -162,7 +192,7 @@ class BookingService {
       console.log('✅ Booking cancelled successfully');
       return {
         success: true,
-        message: 'Booking cancelled successfully',
+        message: 'Booking cancelled successfully. Refund will be processed within 3-5 business days.',
         data: response.data,
       };
 
@@ -245,7 +275,9 @@ class BookingService {
         notes: session.notes,
         userRating: session.userRating,
         price: session.price,
+        currency: session.currency || 'INR',
         meetingProvider: session.meetingProvider,
+        calComBookingUid: session.calendarEventId,
       }));
 
       console.log('✅ User bookings fetched:', formattedSessions.length);
@@ -289,11 +321,123 @@ class BookingService {
       }
 
       console.log('✅ Booking details fetched successfully');
-      return response.data;
+      return {
+        ...response.data,
+        currency: response.data.currency || 'INR',
+        calComBookingUid: response.data.calendarEventId
+      };
 
     } catch (error: any) {
       console.error('❌ Error fetching booking details:', error);
       return null;
+    }
+  }
+
+  /**
+   * Validate payment method before booking
+   */
+  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
+    try {
+      const response = await ApiService.get('PAYMENT_VALIDATE', {
+        params: { paymentMethodId }
+      });
+      return response.success && response.data?.valid;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get session statistics
+   */
+  async getSessionStats(): Promise<{
+    totalSessions: number;
+    completedSessions: number;
+    upcomingSessions: number;
+    totalSpent: number;
+    averageRating?: number;
+  }> {
+    try {
+      const [completed, upcoming] = await Promise.all([
+        this.getUserBookings('completed', 1, 100),
+        this.getUserBookings('upcoming', 1, 100),
+      ]);
+
+      const completedSessions = completed.sessions;
+      const upcomingSessions = upcoming.sessions;
+
+      const ratingsWithValues = completedSessions
+        .map(s => s.userRating)
+        .filter((rating): rating is number => rating !== undefined);
+
+      const averageRating = ratingsWithValues.length > 0
+        ? ratingsWithValues.reduce((sum, rating) => sum + rating, 0) / ratingsWithValues.length
+        : undefined;
+
+      const totalSpent = completedSessions.reduce((sum, session) => sum + session.price, 0);
+
+      return {
+        totalSessions: completedSessions.length + upcomingSessions.length,
+        completedSessions: completedSessions.length,
+        upcomingSessions: upcomingSessions.length,
+        totalSpent,
+        averageRating,
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching session stats:', error);
+      return {
+        totalSessions: 0,
+        completedSessions: 0,
+        upcomingSessions: 0,
+        totalSpent: 0,
+      };
+    }
+  }
+
+  /**
+   * Get upcoming sessions for today
+   */
+  async getTodaySessions(): Promise<Session[]> {
+    try {
+      const result = await this.getUserBookings('upcoming');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      return result.sessions.filter(session => {
+        const sessionDate = new Date(session.date);
+        return sessionDate >= today && sessionDate < tomorrow;
+      });
+    } catch (error) {
+      console.error('❌ Error fetching today sessions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get next upcoming session
+   */
+  async getNextSession(): Promise<Session | null> {
+    try {
+      const result = await this.getUserBookings('upcoming', 1, 1);
+      return result.sessions.length > 0 ? result.sessions[0] : null;
+    } catch (error) {
+      console.error('❌ Error fetching next session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if user has sessions today
+   */
+  async hasSessionsToday(): Promise<boolean> {
+    try {
+      const todaySessions = await this.getTodaySessions();
+      return todaySessions.length > 0;
+    } catch {
+      return false;
     }
   }
 
@@ -323,92 +467,37 @@ class BookingService {
   }
 
   /**
-   * Get session statistics
+   * Join a session (for tracking purposes)
    */
-  async getSessionStats(): Promise<{
-    totalSessions: number;
-    completedSessions: number;
-    upcomingSessions: number;
-    averageRating?: number;
-  }> {
+  async joinSession(sessionId: string): Promise<{ meetingUrl?: string; success: boolean }> {
     try {
-      const [completed, upcoming] = await Promise.all([
-        this.getUserBookings('completed', 1, 100),
-        this.getUserBookings('upcoming', 1, 100),
-      ]);
+      const session = await this.getBookingDetails(sessionId);
+      
+      if (!session) {
+        return { success: false };
+      }
 
-      const completedSessions = completed.sessions;
-      const upcomingSessions = upcoming.sessions;
+      if (!session.meetingLink) {
+        console.warn('⚠️ No meeting link found for session:', sessionId);
+        return { success: false };
+      }
 
-      const ratingsWithValues = completedSessions
-        .map(s => s.userRating)
-        .filter((rating): rating is number => rating !== undefined);
-
-      const averageRating = ratingsWithValues.length > 0
-        ? ratingsWithValues.reduce((sum, rating) => sum + rating, 0) / ratingsWithValues.length
-        : undefined;
+      // Track session join (optional)
+      try {
+        await ApiService.post(`/booking/${sessionId}/join`);
+      } catch (trackingError) {
+        console.warn('⚠️ Failed to track session join:', trackingError);
+        // Don't fail the join for tracking issues
+      }
 
       return {
-        totalSessions: completedSessions.length + upcomingSessions.length,
-        completedSessions: completedSessions.length,
-        upcomingSessions: upcomingSessions.length,
-        averageRating,
+        meetingUrl: session.meetingLink,
+        success: true
       };
 
-    } catch (error) {
-      console.error('❌ Error fetching session stats:', error);
-      return {
-        totalSessions: 0,
-        completedSessions: 0,
-        upcomingSessions: 0,
-      };
-    }
-  }
-
-  /**
-   * Validate payment method
-   */
-  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
-    try {
-      const response = await ApiService.get('PAYMENT_VALIDATE', {
-        params: { paymentMethodId }
-      });
-      return response.success && response.data?.valid;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get upcoming sessions for today
-   */
-  async getTodaySessions(): Promise<Session[]> {
-    try {
-      const result = await this.getUserBookings('upcoming');
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      return result.sessions.filter(session => {
-        const sessionDate = new Date(session.date);
-        return sessionDate >= today && sessionDate < tomorrow;
-      });
-    } catch (error) {
-      console.error('❌ Error fetching today sessions:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Check if user has sessions today
-   */
-  async hasSessionsToday(): Promise<boolean> {
-    try {
-      const todaySessions = await this.getTodaySessions();
-      return todaySessions.length > 0;
-    } catch {
-      return false;
+    } catch (error: any) {
+      console.error('❌ Error joining session:', error);
+      return { success: false };
     }
   }
 }

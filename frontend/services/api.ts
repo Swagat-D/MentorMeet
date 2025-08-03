@@ -54,6 +54,8 @@ class ApiConfig {
     }
   }
 
+  
+
 
   private static async initializeBaseUrl(): Promise<string> {
     try {
@@ -987,6 +989,55 @@ export class ApiService {
   static async getNotificationStats(): Promise<any> {
     return this.get('NOTIFICATIONS_STATS');
   }
+
+  static async getAvailableSlots(mentorId: string, date: string): Promise<any> {
+  return await this.post('BOOKING_AVAILABLE_SLOTS', {
+    mentorId,
+    date
+  });
+}
+
+// Create a new booking
+static async createBooking(bookingData: {
+  mentorId: string;
+  timeSlot: any;
+  sessionType: 'video';
+  subject: string;
+  notes?: string;
+  paymentMethodId: string;
+}): Promise<any> {
+  return await this.post('BOOKING_CREATE', bookingData);
+}
+
+// Get user's bookings
+static async getUserBookings(params: {
+  status?: 'upcoming' | 'completed' | 'cancelled';
+  page?: number;
+  limit?: number;
+} = {}): Promise<any> {
+  return await this.get('BOOKING_USER_BOOKINGS', { params });
+}
+
+// Get booking details
+static async getBookingDetails(bookingId: string): Promise<any> {
+  return await this.get('BOOKING_DETAILS', {
+    urlParams: { bookingId }
+  });
+}
+
+// Cancel a booking
+static async cancelBooking(bookingId: string, reason?: string): Promise<any> {
+  return await this.put('BOOKING_CANCEL', { reason }, {
+    urlParams: { bookingId }
+  });
+}
+
+// Validate payment method
+static async validatePaymentMethod(paymentMethodId: string): Promise<any> {
+  return await this.get('PAYMENT_VALIDATE', {
+    params: { paymentMethodId }
+  });
+}
 }
 
 // Custom error class for better error handling

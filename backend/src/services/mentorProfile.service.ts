@@ -1,198 +1,368 @@
-// backend/src/services/mentorProfile.service.ts - Service to handle mentorProfiles collection
+// backend/src/services/mentorProfile.service.ts - Use Existing mentorProfiles Collection
 import mongoose from 'mongoose';
 
-// Create the schema only once using a singleton pattern
+// Interface for mentor profile based on your actual data structure
 interface MentorProfile {
   _id: mongoose.Types.ObjectId;
-  userId?: mongoose.Types.ObjectId;
-  displayName?: string;
-  weeklySchedule?: { [key: string]: any[] };
-  pricing?: { hourlyRate?: number; currency?: string };
-  isProfileComplete?: boolean;
-  applicationSubmitted?: boolean;
-  bio?: string;
-  location?: string;
-  expertise?: string[];
-  updatedAt?: Date;
-  [key: string]: any;
+  userId: mongoose.Types.ObjectId;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  bio: string;
+  location: string;
+  timezone: string;
+  languages: string[];
+  expertise: string[];
+  subjects?: Array<{ 
+    name: string; 
+    level: string;
+    experience: string;
+  }>;
+  teachingStyles: string[];
+  specializations: string[];
+  
+  // Cal.com Integration Fields (from your existing data)
+  hourlyRateINR: number;
+  calComUsername: string;
+  calComEventTypes: Array<{
+    id: number;
+    title: string;
+    slug: string;
+    duration: number;
+  }>;
+  calComVerified: boolean;
+  
+  // Profile Status
+  isProfileComplete: boolean;
+  profileStep: string;
+  applicationSubmitted: boolean;
+  submittedAt: Date;
+  
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 class MentorProfileService {
-  private static mentorProfileModel: mongoose.Model<any> | null = null;
+  private static instance: MentorProfileService;
 
-  private static getMentorProfileModel() {
-    if (!this.mentorProfileModel) {
-      // Check if model already exists
-      if (mongoose.models.MentorProfile) {
-        this.mentorProfileModel = mongoose.models.MentorProfile;
-      } else {
-        // Create schema for existing collection
-        const mentorProfileSchema = new mongoose.Schema({}, { 
-          strict: false,
-          collection: 'mentorProfiles' // Explicitly set collection name
-        });
-        
-        this.mentorProfileModel = mongoose.model('MentorProfile', mentorProfileSchema);
-      }
+  public static getInstance(): MentorProfileService {
+    if (!MentorProfileService.instance) {
+      MentorProfileService.instance = new MentorProfileService();
     }
-    return this.mentorProfileModel;
+    return MentorProfileService.instance;
   }
 
   /**
-   * Find mentor profile by userId
+   * Get the mentorProfiles collection directly
    */
-  static async findByUserId(userId: string) {
-    try {
-      console.log('🔍 Searching mentorProfiles by userId:', userId);
-      
-      // Validate ObjectId format
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-        console.log('❌ Invalid ObjectId format:', userId);
-        return null;
+  private getMentorProfilesCollection() {
+    if (!mongoose.connection.db) {
+        throw new Error('Database connection is not established.');
       }
+    return mongoose.connection.db.collection('mentorProfiles');
+  }
 
-      const MentorProfile = this.getMentorProfileModel();
-      const mentorProfile = await MentorProfile.findOne({ 
+  /**
+   * Find mentor profile by user ID
+   */
+  async findMentorProfile(userId: string): Promise<MentorProfile | null> {
+    try {
+      const collection = this.getMentorProfilesCollection();
+      const profile = await collection.findOne({ 
         userId: new mongoose.Types.ObjectId(userId) 
-      }).lean().exec();
-      
-      console.log('📋 Query result:', {
-        found: !!mentorProfile,
-        searchedUserId: userId,
-        foundProfileId: (!Array.isArray(mentorProfile) && mentorProfile?._id) ? mentorProfile._id.toString() : undefined,
-        foundUserId: (!Array.isArray(mentorProfile) && mentorProfile?.userId) ? mentorProfile.userId.toString() : undefined,
-        displayName: (!Array.isArray(mentorProfile) && mentorProfile?.displayName) ? mentorProfile.displayName : undefined
       });
       
-      return mentorProfile;
+      return profile as MentorProfile | null;
     } catch (error) {
-      console.error('❌ Error finding mentor profile by userId:', error);
+      console.error('Error finding mentor profile:', error);
       return null;
     }
   }
 
   /**
-   * Find mentor profile by _id
+   * Find mentor profile by Cal.com username
    */
-  static async findById(profileId: string) {
+  async findMentorByCalComUsername(calComUsername: string): Promise<MentorProfile | null> {
     try {
-      console.log('🔍 Searching mentorProfiles by _id:', profileId);
-      
-      // Validate ObjectId format
-      if (!mongoose.Types.ObjectId.isValid(profileId)) {
-        console.log('❌ Invalid ObjectId format:', profileId);
-        return null;
-      }
-
-      const MentorProfile = this.getMentorProfileModel();
-      const mentorProfile = await MentorProfile.findById(profileId).lean().exec();
-      
-      console.log('📋 Query result:', {
-        found: !!mentorProfile,
-        searchedId: profileId,
-        foundProfileId: (!Array.isArray(mentorProfile) && mentorProfile?._id) ? mentorProfile._id.toString() : undefined,
-        displayName: (!Array.isArray(mentorProfile) && mentorProfile?.displayName) ? mentorProfile.displayName : undefined
+      const collection = this.getMentorProfilesCollection();
+      const profile = await collection.findOne({ 
+        calComUsername: calComUsername.toLowerCase().trim()
       });
       
-      return mentorProfile;
+      return profile as MentorProfile | null;
     } catch (error) {
-      console.error('❌ Error finding mentor profile by _id:', error);
+      console.error('Error finding mentor by Cal.com username:', error);
       return null;
     }
   }
 
   /**
-   * Find mentor profile (primary method - tries userId first, then _id)
+   * Get mentor profile with user data by user ID
    */
-  static async findMentorProfile(mentorId: string) {
+  async getMentorWithUserData(userId: string): Promise<any> {
     try {
-      console.log('🔍 Looking for mentor profile with mentorId:', mentorId);
-
-      // Validate input
-      if (!mentorId || typeof mentorId !== 'string') {
-        console.log('❌ Invalid mentorId provided:', mentorId);
-        return null;
+      const collection = this.getMentorProfilesCollection();
+      if (!mongoose.connection.db) {
+        throw new Error('Database connection is not established.');
       }
-
-      // Validate ObjectId format
-      if (!mongoose.Types.ObjectId.isValid(mentorId)) {
-        console.log('❌ Invalid ObjectId format:', mentorId);
-        return null;
-      }
-
-      // First try to find by userId (this is the correct way for booking)
-      let mentorProfile = await this.findByUserId(mentorId);
+      const usersCollection = mongoose.connection.db.collection('users');
       
-      if (mentorProfile && !Array.isArray(mentorProfile)) {
-        const mp = mentorProfile as MentorProfile;
-        console.log('✅ Mentor profile found by userId:', {
-          profileId: mp._id?.toString(),
-          userId: mp.userId?.toString(),
-          displayName: mp.displayName,
-          hasWeeklySchedule: !!mp.weeklySchedule,
-          hasPricing: !!mp.pricing,
-          isProfileComplete: mp.isProfileComplete,
-          applicationSubmitted: mp.applicationSubmitted
-        });
-        return mp;
-      }
-
-      // If not found by userId, try by _id as fallback
-      console.log('🔄 Not found by userId, trying by _id...');
-      mentorProfile = await this.findById(mentorId);
-      
-      if (mentorProfile && !Array.isArray(mentorProfile)) {
-        const mp = mentorProfile as MentorProfile;
-        console.log('⚠️ Mentor profile found by _id (unusual case):', {
-          profileId: mp._id?.toString(),
-          userId: mp.userId?.toString(),
-          displayName: mp.displayName,
-          hasWeeklySchedule: !!mp.weeklySchedule,
-          hasPricing: !!mp.pricing
-        });
-        return mp;
-      }
-
-      console.log('❌ Mentor profile not found by userId or _id');
-      
-      // Additional debugging - let's see what profiles exist
-      const totalProfiles = await this.getMentorProfileModel().countDocuments();
-      console.log('📊 Debug info:', {
-        totalProfilesInCollection: totalProfiles,
-        searchedMentorId: mentorId,
-        mentorIdType: typeof mentorId,
-        mentorIdLength: mentorId.length
+      // Get mentor profile
+      const profile = await collection.findOne({ 
+        userId: new mongoose.Types.ObjectId(userId) 
       });
       
-      return null;
-      
+      if (!profile) return null;
+
+      // Get user data
+      const user = await usersCollection.findOne({
+        _id: new mongoose.Types.ObjectId(userId)
+      });
+
+      // Transform for frontend compatibility
+      return {
+        _id: profile._id,
+        userId: profile.userId,
+        displayName: profile.displayName,
+        bio: profile.bio,
+        location: profile.location,
+        timezone: profile.timezone,
+        languages: profile.languages || [],
+        expertise: profile.expertise || [],
+        subjects: profile.subjects || [],
+        teachingStyles: profile.teachingStyles || [],
+        specializations: profile.specializations || [],
+        
+        // Cal.com data
+        hourlyRateINR: profile.hourlyRateINR,
+        calComUsername: profile.calComUsername,
+        calComEventTypes: profile.calComEventTypes || [],
+        calComVerified: profile.calComVerified,
+        
+        // User data
+        firstName: profile.firstName || user?.firstName,
+        lastName: profile.lastName || user?.lastName,
+        email: user?.email,
+        avatar: user?.avatar,
+        
+        // Computed fields for backward compatibility
+        rating: 4.8, // Placeholder - implement proper rating system
+        totalSessions: 0, // Placeholder - implement from sessions collection
+        isOnline: true, // Placeholder - implement real online status
+        
+        // Legacy pricing for backward compatibility
+        pricing: {
+          hourlyRate: Math.round(profile.hourlyRateINR * 0.012), // Convert to USD
+          currency: 'USD'
+        },
+        
+        isProfileComplete: profile.isProfileComplete,
+        profileStep: profile.profileStep,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt
+      };
     } catch (error) {
-      console.error('❌ Error in findMentorProfile:', error);
+      console.error('Error getting mentor with user data:', error);
       return null;
     }
   }
 
   /**
-   * Find all mentors with weekly schedules
+   * Find mentors with Cal.com setup (for listing)
    */
-  static async findMentorsWithSchedule() {
+  async findMentorsWithSchedule(): Promise<MentorProfile[]> {
     try {
-      console.log('🔍 Finding mentors with schedules...');
-      
-      const MentorProfile = this.getMentorProfileModel();
-      const mentors = await MentorProfile.find({
-        weeklySchedule: { $exists: true, $ne: null },
+      const collection = this.getMentorProfilesCollection();
+      const profiles = await collection.find({
+        calComVerified: true,
         isProfileComplete: true,
-        applicationSubmitted: true
-      })
-      .select('userId displayName weeklySchedule pricing isProfileComplete applicationSubmitted')
-      .lean()
-      .exec();
+        calComUsername: { $exists: true, $ne: '' }
+      }).toArray();
       
-      console.log('✅ Found mentors with schedules:', mentors.length);
-      return mentors;
+      return profiles as MentorProfile[];
     } catch (error) {
-      console.error('❌ Error finding mentors with schedule:', error);
+      console.error('Error finding mentors with schedule:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Search mentors by expertise or subjects
+   */
+  async searchMentors(query: {
+    expertise?: string[];
+    subjects?: string[];
+    location?: string;
+    maxRate?: number;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    mentors: any[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    try {
+      const {
+        expertise = [],
+        subjects = [],
+        location,
+        maxRate,
+        page = 1,
+        limit = 10
+      } = query;
+
+      const collection = this.getMentorProfilesCollection();
+      if (!mongoose.connection.db) {
+        throw new Error('Database connection is not established.');
+      }
+      const usersCollection = mongoose.connection.db.collection('users');
+
+      // Build search filter
+      const filter: any = {
+        calComVerified: true,
+        isProfileComplete: true
+      };
+
+      if (expertise.length > 0) {
+        filter.expertise = { $in: expertise };
+      }
+
+      if (subjects.length > 0) {
+        filter['subjects.name'] = { $in: subjects };
+      }
+
+      if (location) {
+        filter.location = new RegExp(location, 'i');
+      }
+
+      if (maxRate) {
+        filter.hourlyRateINR = { $lte: maxRate };
+      }
+
+      const skip = (page - 1) * limit;
+
+      // Execute search
+      const [mentors, total] = await Promise.all([
+        collection.find(filter).skip(skip).limit(limit).toArray(),
+        collection.countDocuments(filter)
+      ]);
+
+      // Get user data for each mentor
+      const mentorIds = mentors.map(mentor => mentor.userId);
+      const users = await usersCollection.find({
+        _id: { $in: mentorIds }
+      }).toArray();
+      
+      const userMap = new Map(users.map(user => [user._id.toString(), user]));
+
+      // Transform results
+      const transformedMentors = mentors.map(mentor => {
+        const user = userMap.get(mentor.userId.toString());
+        
+        return {
+          _id: mentor._id,
+          userId: mentor.userId,
+          displayName: mentor.displayName,
+          bio: mentor.bio,
+          location: mentor.location,
+          expertise: mentor.expertise || [],
+          subjects: mentor.subjects || [],
+          
+          // Cal.com data
+          hourlyRateINR: mentor.hourlyRateINR,
+          calComUsername: mentor.calComUsername,
+          calComEventTypes: mentor.calComEventTypes || [],
+          
+          // User data
+          firstName: mentor.firstName || user?.firstName,
+          lastName: mentor.lastName || user?.lastName,
+          email: user?.email,
+          avatar: user?.avatar,
+          
+          // Computed fields
+          rating: 4.8,
+          totalSessions: 0,
+          isOnline: true,
+          
+          // Legacy pricing
+          pricing: {
+            hourlyRate: Math.round(mentor.hourlyRateINR * 0.012),
+            currency: 'USD'
+          }
+        };
+      });
+
+      return {
+        mentors: transformedMentors,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit)
+      };
+
+    } catch (error) {
+      console.error('Error searching mentors:', error);
+      return {
+        mentors: [],
+        total: 0,
+        page: 1,
+        totalPages: 0
+      };
+    }
+  }
+
+  /**
+   * Get featured mentors
+   */
+  async getFeaturedMentors(limit = 6): Promise<any[]> {
+    try {
+      const collection = this.getMentorProfilesCollection();
+      if (!mongoose.connection.db) {
+        throw new Error('Database connection is not established.');
+      }
+      const usersCollection = mongoose.connection.db.collection('users');
+      
+      const mentors = await collection.find({
+        calComVerified: true,
+        isProfileComplete: true
+      })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+      // Get user data for each mentor
+      const mentorIds = mentors.map(mentor => mentor.userId);
+      const users = await usersCollection.find({
+        _id: { $in: mentorIds }
+      }).toArray();
+      
+      const userMap = new Map(users.map(user => [user._id.toString(), user]));
+
+      return mentors.map(mentor => {
+        const user = userMap.get(mentor.userId.toString());
+        
+        return {
+          _id: mentor._id,
+          userId: mentor.userId,
+          displayName: mentor.displayName,
+          bio: mentor.bio,
+          expertise: mentor.expertise || [],
+          hourlyRateINR: mentor.hourlyRateINR,
+          calComUsername: mentor.calComUsername,
+          
+          // User data
+          firstName: mentor.firstName || user?.firstName,
+          lastName: mentor.lastName || user?.lastName,
+          
+          // Computed fields
+          rating: 4.8,
+          totalSessions: 0,
+          isOnline: true
+        };
+      });
+
+    } catch (error) {
+      console.error('Error getting featured mentors:', error);
       return [];
     }
   }
@@ -200,264 +370,79 @@ class MentorProfileService {
   /**
    * Update mentor profile
    */
-  static async updateProfile(profileId: string, updateData: any) {
+  async updateProfile(
+    userId: string, 
+    updateData: any
+  ): Promise<MentorProfile | null> {
     try {
-      console.log('📝 Updating mentor profile:', profileId);
+      const collection = this.getMentorProfilesCollection();
       
-      if (!mongoose.Types.ObjectId.isValid(profileId)) {
-        console.log('❌ Invalid profileId format:', profileId);
-        return null;
-      }
-
-      const MentorProfile = this.getMentorProfileModel();
-      const updatedProfile = await MentorProfile.findByIdAndUpdate(
-        profileId, 
-        { 
-          ...updateData,
-          updatedAt: new Date()
-        }, 
-        { 
-          new: true,
-          lean: true
-        }
-      ).exec();
-      
-      if (updatedProfile) {
-        console.log('✅ Mentor profile updated successfully');
-      } else {
-        console.log('❌ Mentor profile not found for update');
-      }
-      const mentorProfileResult = await this.findMentorProfile(profileId);
-      const mentorProfile = mentorProfileResult as MentorProfile | null;
-      if (!mentorProfile) {
-        console.log('❌ Mentor profile not found for stats');
-        return null;
-      }
-
-      const stats = {
-        hasProfile: true,
-        hasWeeklySchedule: !!(mentorProfile.weeklySchedule && Object.keys(mentorProfile.weeklySchedule).length > 0),
-        hasPricing: !!(mentorProfile.pricing?.hourlyRate && mentorProfile.pricing?.hourlyRate > 0),
-        isProfileComplete: mentorProfile.isProfileComplete || false,
-        applicationSubmitted: mentorProfile.applicationSubmitted || false,
-        totalAvailableSlots: 0,
-        daysWithAvailability: 0,
-        hourlyRate: mentorProfile.pricing?.hourlyRate || 0,
-        currency: mentorProfile.pricing?.currency || 'USD'
-      };
-
-      // Calculate available slots
-      if (mentorProfile.weeklySchedule) {
-        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        
-        daysOfWeek.forEach(day => {
-          const daySchedule = mentorProfile.weeklySchedule?.[day];
-          if (Array.isArray(daySchedule) && daySchedule.length > 0) {
-            const availableSlots = daySchedule.filter(slot => slot.isAvailable === true);
-            if (availableSlots.length > 0) {
-              stats.daysWithAvailability++;
-              stats.totalAvailableSlots += availableSlots.length;
-            }
+      const result = await collection.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(userId) },
+        {
+          $set: {
+            ...updateData,
+            updatedAt: new Date()
           }
-        });
-      }
-      // Calculate available slots
-      if (mentorProfile.weeklySchedule) {
-        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        
-        daysOfWeek.forEach(day => {
-          const daySchedule = mentorProfile.weeklySchedule?.[day];
-          if (Array.isArray(daySchedule) && daySchedule.length > 0) {
-            const availableSlots = daySchedule.filter(slot => slot.isAvailable === true);
-            if (availableSlots.length > 0) {
-              stats.daysWithAvailability++;
-              stats.totalAvailableSlots += availableSlots.length;
-            }
-          }
-        });
-      }
+        },
+        { returnDocument: 'after' }
+      );
 
-      console.log('✅ Profile stats calculated:', stats);
-      return stats;
+      return result?.value as MentorProfile | null;
     } catch (error) {
-      console.error('❌ Error getting profile stats:', error);
+      console.error('Error updating mentor profile:', error);
       return null;
     }
   }
 
   /**
-   * Get profile statistics for a mentor
+   * Validate Cal.com integration
    */
-  static async getProfileStats(mentorId: string) {
+  async validateCalComIntegration(userId: string): Promise<{
+    isValid: boolean;
+    issues: string[];
+  }> {
     try {
-      const mentorProfileResult = await this.findMentorProfile(mentorId);
-      const mentorProfile = mentorProfileResult as MentorProfile | null;
-      if (!mentorProfile) {
-        return null;
-      }
-
-      const stats = {
-        hasProfile: true,
-        hasWeeklySchedule: !!(mentorProfile.weeklySchedule && Object.keys(mentorProfile.weeklySchedule).length > 0),
-        hasPricing: !!(mentorProfile.pricing?.hourlyRate && mentorProfile.pricing?.hourlyRate > 0),
-        isProfileComplete: mentorProfile.isProfileComplete || false,
-        applicationSubmitted: mentorProfile.applicationSubmitted || false,
-        totalAvailableSlots: 0,
-        daysWithAvailability: 0,
-        hourlyRate: mentorProfile.pricing?.hourlyRate || 0,
-        currency: mentorProfile.pricing?.currency || 'USD'
-      };
-
-      // Calculate available slots
-      if (mentorProfile.weeklySchedule) {
-        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        daysOfWeek.forEach(day => {
-          const daySchedule = mentorProfile.weeklySchedule?.[day];
-          if (Array.isArray(daySchedule) && daySchedule.length > 0) {
-            const availableSlots = daySchedule.filter(slot => slot.isAvailable === true);
-            if (availableSlots.length > 0) {
-              stats.daysWithAvailability++;
-              stats.totalAvailableSlots += availableSlots.length;
-            }
-          }
-        });
-      }
-
-      return stats;
-    } catch (error) {
-      console.error('❌ Error getting profile stats:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Check if mentor profile exists and is ready for bookings
-   */
-  static async isBookingReady(mentorId: string) {
-    try {
-      const stats = await this.getProfileStats(mentorId);
-      if (!stats) return false;
+      const profile = await this.findMentorProfile(userId);
       
-      const isReady = stats.hasProfile && 
-                     stats.hasWeeklySchedule && 
-                     stats.hasPricing && 
-                     stats.isProfileComplete && 
-                     stats.applicationSubmitted &&
-                     stats.totalAvailableSlots > 0;
-      
-      console.log('🎯 Booking readiness check:', {
-        mentorId,
-        isReady,
-        reasons: !isReady ? {
-          hasProfile: stats.hasProfile,
-          hasWeeklySchedule: stats.hasWeeklySchedule,
-          hasPricing: stats.hasPricing,
-          isProfileComplete: stats.isProfileComplete,
-          applicationSubmitted: stats.applicationSubmitted,
-          hasAvailableSlots: stats.totalAvailableSlots > 0
-        } : null
-      });
-      
-      return isReady;
-    } catch (error) {
-      console.error('❌ Error checking booking readiness:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Get collection statistics
-   */
-  static async getCollectionStats() {
-    try {
-      const MentorProfile = this.getMentorProfileModel();
-      
-      const [total, completed, withSchedule, withPricing] = await Promise.all([
-        MentorProfile.countDocuments(),
-        MentorProfile.countDocuments({ isProfileComplete: true }),
-        MentorProfile.countDocuments({ weeklySchedule: { $exists: true, $ne: null } }),
-        MentorProfile.countDocuments({ 'pricing.hourlyRate': { $gt: 0 } })
-      ]);
-      
-      const stats = {
-        totalProfiles: total,
-        completedProfiles: completed,
-        profilesWithSchedule: withSchedule,
-        profilesWithPricing: withPricing,
-        readyForBooking: 0 // Will be calculated separately if needed
-      };
-      
-      console.log('📊 Collection stats:', stats);
-      return stats;
-    } catch (error) {
-      console.error('❌ Error getting collection stats:', error);
-      return {
-        totalProfiles: 0,
-        completedProfiles: 0,
-        profilesWithSchedule: 0,
-        profilesWithPricing: 0,
-        readyForBooking: 0
-      };
-    }
-  }
-
-  /**
-   * Search mentor profiles with filters
-   */
-  static async searchProfiles(filters: {
-    expertise?: string[];
-    location?: string;
-    priceRange?: { min: number; max: number };
-    isComplete?: boolean;
-    hasSchedule?: boolean;
-    limit?: number;
-    skip?: number;
-  } = {}) {
-    try {
-      console.log('🔍 Searching mentor profiles with filters:', filters);
-      
-      const MentorProfile = this.getMentorProfileModel();
-      const query: any = {};
-      
-      // Build query
-      if (filters.expertise && filters.expertise.length > 0) {
-        query.expertise = { $in: filters.expertise };
-      }
-      
-      if (filters.location) {
-        query.location = { $regex: filters.location, $options: 'i' };
-      }
-      
-      if (filters.priceRange) {
-        query['pricing.hourlyRate'] = {
-          $gte: filters.priceRange.min,
-          $lte: filters.priceRange.max
+      if (!profile) {
+        return {
+          isValid: false,
+          issues: ['Mentor profile not found']
         };
       }
-      
-      if (filters.isComplete !== undefined) {
-        query.isProfileComplete = filters.isComplete;
+
+      const issues: string[] = [];
+
+      if (!profile.calComUsername) {
+        issues.push('Cal.com username not set');
       }
-      
-      if (filters.hasSchedule) {
-        query.weeklySchedule = { $exists: true, $ne: null };
+
+      if (!profile.calComEventTypes || profile.calComEventTypes.length === 0) {
+        issues.push('No Cal.com event types configured');
       }
-      
-      const profiles = await MentorProfile.find(query)
-        .select('userId displayName bio location expertise pricing weeklySchedule isProfileComplete')
-        .limit(filters.limit || 50)
-        .skip(filters.skip || 0)
-        .sort({ updatedAt: -1 })
-        .lean()
-        .exec();
-      
-      console.log('✅ Found mentor profiles:', profiles.length);
-      return profiles;
+
+      if (!profile.calComVerified) {
+        issues.push('Cal.com integration not verified');
+      }
+
+      if (!profile.hourlyRateINR || profile.hourlyRateINR < 500) {
+        issues.push('Invalid hourly rate');
+      }
+
+      return {
+        isValid: issues.length === 0,
+        issues
+      };
+
     } catch (error) {
-      console.error('❌ Error searching mentor profiles:', error);
-      return [];
+      console.error('Error validating Cal.com integration:', error);
+      return {
+        isValid: false,
+        issues: ['Validation failed due to server error']
+      };
     }
   }
 }
 
-export default MentorProfileService;
+export default MentorProfileService.getInstance();

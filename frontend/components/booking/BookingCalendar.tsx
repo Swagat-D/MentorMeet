@@ -1,4 +1,4 @@
-// components/booking/BookingCalendar.tsx - Simplified Professional Calendar
+// components/booking/BookingCalendar.tsx - Updated for Cal.com API v2 Integration
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -34,6 +34,7 @@ export default function BookingCalendar({
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const today = useMemo(() => {
     const now = new Date();
@@ -84,82 +85,111 @@ export default function BookingCalendar({
   }, [selectedDate, mentor._id]);
 
   const loadAvailableSlots = async (date: Date) => {
-  try {
-    setLoadingSlots(true);
-    setAvailableSlots([]);
-    
-    // Fix timezone issue - use local date string without timezone conversion
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-    
-    console.log('📅 Loading slots for:', dateString);
-    
-    const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
-    
-    // Filter out past slots
-    const now = new Date();
-    const filteredSlots = slots.filter(slot => {
-      const slotTime = new Date(slot.startTime);
-      return slotTime > now && slot.isAvailable;
-    });
-    
-    setAvailableSlots(filteredSlots);
-    console.log('✅ Loaded available slots:', filteredSlots.length);
-    
-  } catch (error: any) {
-    console.error('❌ Error loading slots:', error);
-    
-    // Check if it's a friendly message (not an error)
-    if (error.message && (
-      error.message.includes('Past dates are not available') ||
-      error.message.includes('No available slots') ||
-      error.message.includes('No mentor profile') ||
-      error.message.includes('No schedule configured')
-    )) {
-      // Show friendly message instead of error
+    try {
+      setLoadingSlots(true);
+      setAvailableSlots([]);
+      setErrorMessage(null);
+      
+      // Format date for API (local date without timezone conversion)
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
+      console.log('📅 Loading slots for:', dateString);
+      
+      const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
+      
+      // Filter out past slots (additional safety check)
+      const now = new Date();
+      const filteredSlots = slots.filter(slot => {
+        const slotTime = new Date(slot.startTime);
+        return slotTime > now && slot.isAvailable;
+      });
+      
+      // Group slots by event type for better UX
+      const groupedSlots = groupSlotsByEventType(filteredSlots);
+      
+      setAvailableSlots(groupedSlots);
+      console.log('✅ Loaded available slots:', groupedSlots.length);
+      
+    } catch (error: any) {
+      console.error('❌ Error loading slots:', error);
+      
+      setErrorMessage(error.message);
+      
+      // Show user-friendly error dialog
+      const errorTitle = getErrorTitle(error.message);
+      const errorSuggestion = getErrorSuggestion(error.message);
+      
       Alert.alert(
-        'No Available Times',
-        error.message.includes('Past dates') 
-          ? 'Please select tomorrow or a future date for booking'
-          : error.message.includes('No available slots')
-          ? 'This mentor doesn\'t have available slots for this date. Try selecting a different date.'
-          : 'This mentor hasn\'t set up their availability yet.',
+        errorTitle,
+        errorSuggestion,
         [{ text: 'OK' }]
       );
-    } else {
-      Alert.alert('Error', 'Unable to load available time slots. Please try again.');
+      
+    } finally {
+      setLoadingSlots(false);
     }
-  } finally {
-    setLoadingSlots(false);
-  }
-};
+  };
+
+  const groupSlotsByEventType = (slots: TimeSlot[]): TimeSlot[] => {
+    // Sort slots by start time and event type
+    return slots.sort((a, b) => {
+      const timeCompare = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      if (timeCompare !== 0) return timeCompare;
+      
+      // If same time, sort by duration (shorter first)
+      return a.duration - b.duration;
+    });
+  };
+
+  const getErrorTitle = (errorMessage: string): string => {
+    if (errorMessage.includes('Past dates')) return 'Select Future Date';
+    if (errorMessage.includes('profile setup')) return 'Profile Incomplete';
+    if (errorMessage.includes('Cal.com integration')) return 'Setup Required';
+    if (errorMessage.includes('session types')) return 'No Session Types';
+    if (errorMessage.includes('availability')) return 'Service Unavailable';
+    return 'No Available Times';
+  };
+
+  const getErrorSuggestion = (errorMessage: string): string => {
+    if (errorMessage.includes('Past dates')) {
+      return 'For the best experience, please book sessions at least 2 hours in advance. Try selecting tomorrow or a future date.';
+    }
+    if (errorMessage.includes('profile setup')) {
+      return 'This mentor is still setting up their profile. Please check back later or browse other mentors.';
+    }
+    if (errorMessage.includes('Cal.com integration')) {
+      return 'This mentor is configuring their availability system. Please try again later.';
+    }
+    if (errorMessage.includes('session types')) {
+      return 'This mentor hasn\'t configured any session types yet. Please try another mentor or check back later.';
+    }
+    if (errorMessage.includes('availability')) {
+      return 'Unable to load availability right now. Please check your internet connection and try again.';
+    }
+    return 'This mentor doesn\'t have available slots for this date. Try selecting a different date.';
+  };
 
   const handleDateSelect = (day: any) => {
     if (!day.isCurrentMonth) return;
     
-    // Check if it's today and show friendly message
+    // Check if it's past date
     if (day.isPast) {
-      if (day.isToday) {
-        Alert.alert(
-          'Select Future Date',
-          'For the best experience, please book sessions at least 2 hours in advance. Try selecting tomorrow or a future date.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          'Past Date Selected',
-          'Please select tomorrow or a future date for booking.',
-          [{ text: 'OK' }]
-        );
-      }
+      const message = day.isToday 
+        ? 'For the best experience, please book sessions at least 2 hours in advance. Try selecting tomorrow or a future date.'
+        : 'Please select tomorrow or a future date for booking.';
+      
+      Alert.alert('Select Future Date', message, [{ text: 'OK' }]);
       return;
     }
     
+    // Toggle date selection
     if (selectedDate && day.date.toDateString() === selectedDate.toDateString()) {
       setSelectedDate(null);
       setAvailableSlots([]);
+      setErrorMessage(null);
       return;
     }
     
@@ -180,6 +210,7 @@ export default function BookingCalendar({
     setCurrentDate(newDate);
     setSelectedDate(null);
     setAvailableSlots([]);
+    setErrorMessage(null);
   };
 
   const formatTime = (dateString: string) => {
@@ -189,6 +220,18 @@ export default function BookingCalendar({
       minute: '2-digit',
       hour12: true,
     });
+  };
+
+  const formatPrice = (price: number) => {
+    return `₹${price.toLocaleString('en-IN')}`;
+  };
+
+  const getEventTypeLabel = (slot: TimeSlot) => {
+    // Generate label based on duration
+    if (slot.duration <= 30) return 'Quick Session';
+    if (slot.duration <= 60) return 'Standard Session';
+    if (slot.duration <= 90) return 'Extended Session';
+    return 'Long Session';
   };
 
   const monthNames = [
@@ -291,14 +334,27 @@ export default function BookingCalendar({
           {loadingSlots ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#8B4513" />
-              <Text style={styles.loadingText}>Loading available times...</Text>
+              <Text style={styles.loadingText}>Loading available times from Cal.com...</Text>
+            </View>
+          ) : errorMessage ? (
+            <View style={styles.errorContainer}>
+              <MaterialIcons name="event-busy" size={32} color="#DC2626" />
+              <Text style={styles.errorTitle}>Unable to Load Slots</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => loadAvailableSlots(selectedDate)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
             </View>
           ) : availableSlots.length === 0 ? (
             <View style={styles.noSlotsContainer}>
               <MaterialIcons name="event-busy" size={32} color="#8B7355" />
               <Text style={styles.noSlotsTitle}>No Available Times</Text>
               <Text style={styles.noSlotsText}>
-                This mentor doesn't have available slots for this date.
+                This mentor doesn't have available slots for this date. Try selecting a different date.
               </Text>
             </View>
           ) : (
@@ -309,6 +365,8 @@ export default function BookingCalendar({
             >
               {availableSlots.map((slot, index) => {
                 const isSelected = selectedSlot?.id === slot.id;
+                const eventTypeLabel = getEventTypeLabel(slot);
+                
                 return (
                   <TouchableOpacity
                     key={`slot-${slot.id}-${index}`}
@@ -328,17 +386,25 @@ export default function BookingCalendar({
                     >
                       <View style={styles.timeSlotContent}>
                         <View style={styles.timeSlotLeft}>
+                          <View style={styles.timeSlotTimeContainer}>
+                            <Text style={[
+                              styles.timeSlotTime,
+                              isSelected && styles.timeSlotTimeSelected
+                            ]}>
+                              {formatTime(slot.startTime)}
+                            </Text>
+                            <Text style={[
+                              styles.timeSlotDuration,
+                              isSelected && styles.timeSlotDurationSelected
+                            ]}>
+                              {slot.duration} min
+                            </Text>
+                          </View>
                           <Text style={[
-                            styles.timeSlotTime,
-                            isSelected && styles.timeSlotTimeSelected
+                            styles.eventTypeLabel,
+                            isSelected && styles.eventTypeLabelSelected
                           ]}>
-                            {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                          </Text>
-                          <Text style={[
-                            styles.timeSlotDuration,
-                            isSelected && styles.timeSlotDurationSelected
-                          ]}>
-                            {slot.duration} minutes
+                            {eventTypeLabel}
                           </Text>
                         </View>
                         
@@ -347,7 +413,7 @@ export default function BookingCalendar({
                             styles.timeSlotPrice,
                             isSelected && styles.timeSlotPriceSelected
                           ]}>
-                            ${slot.price}
+                            {formatPrice(slot.price)}
                           </Text>
                           <MaterialIcons 
                             name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
@@ -521,6 +587,38 @@ const styles = StyleSheet.create({
     color: '#8B7355',
   },
 
+  // Error State
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#DC2626',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#8B7355',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#8B4513',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
   // No Slots
   noSlotsContainer: {
     alignItems: 'center',
@@ -589,11 +687,16 @@ const styles = StyleSheet.create({
   timeSlotLeft: {
     flex: 1,
   },
+  timeSlotTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   timeSlotTime: {
     fontSize: 16,
     fontWeight: '700',
     color: '#2A2A2A',
-    marginBottom: 4,
+    marginRight: 8,
   },
   timeSlotTimeSelected: {
     color: '#FFFFFF',
@@ -602,8 +705,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8B7355',
     fontWeight: '500',
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   timeSlotDurationSelected: {
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  eventTypeLabel: {
+    fontSize: 12,
+    color: '#8B7355',
+    fontWeight: '500',
+  },
+  eventTypeLabelSelected: {
     color: '#FFFFFF',
     opacity: 0.9,
   },

@@ -1,4 +1,4 @@
-// backend/src/controllers/booking.controller.ts - Enhanced with Data Sync
+// backend/src/controllers/booking.controller.ts - Updated with Cal.com API v2 Integration
 import { Request, Response } from 'express';
 import { catchAsync } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -6,17 +6,16 @@ import { Session } from '../models/Session.model';
 import User from '../models/User.model';
 import mongoose from 'mongoose';
 import calComService from '../services/calcom.service';
-import mentorScheduleSyncService from '../services/mentorScheduleSync.service';
-import { notificationService } from '../services/booking.service';
 import MentorProfileService from '../services/mentorProfile.service';
+import { notificationService, paymentService } from '../services/booking.service';
 
 /**
- * Get available time slots with intelligent sync handling
+ * Get available time slots using Cal.com API v2
  */
 export const getAvailableSlots = catchAsync(async (req: Request, res: Response) => {
   const { mentorId, date } = req.body;
   
-  console.log('📅 Fetching available slots with sync intelligence:', { mentorId, date });
+  console.log('📅 Fetching available slots via Cal.com:', { mentorId, date });
 
   if (!mentorId || !date) {
     res.status(400).json({
@@ -63,7 +62,7 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       return;
     }
 
-    // Step 1: Check mentor profile exists
+    // Get mentor profile with Cal.com integration
     const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     if (!mentorProfile) {
       res.status(404).json({
@@ -80,63 +79,80 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
     console.log('✅ Mentor profile found:', {
       profileId: mentorProfile._id,
       displayName: mentorProfile.displayName,
-      hasSchedule: !!mentorProfile.weeklySchedule
+      calComUsername: mentorProfile.calComUsername,
+      calComVerified: mentorProfile.calComVerified
     });
 
-    // Step 2: Check sync status and sync if needed
-    const syncStatus = mentorScheduleSyncService.getSyncStatus(mentorId);
-    const shouldSync = !syncStatus.lastSyncTime || 
-                      (Date.now() - syncStatus.lastSyncTime > 30 * 60 * 1000); // 30 minutes
-
-    if (shouldSync && !syncStatus.syncInProgress) {
-      console.log('🔄 Mentor needs sync, triggering background sync...');
-      
-      // Trigger background sync (non-blocking)
-      mentorScheduleSyncService.syncMentorToCalCom(mentorId)
-        .then(result => {
-          console.log(`✅ Background sync completed for ${mentorId}:`, result.success);
-        })
-        .catch(error => {
-          console.error(`❌ Background sync failed for ${mentorId}:`, error);
-        });
+    // Validate Cal.com integration
+    if (!mentorProfile.calComUsername || !mentorProfile.calComVerified) {
+      res.status(400).json({
+        success: false,
+        message: 'Mentor has not set up Cal.com integration',
+        info: {
+          type: 'no_calcom_setup',
+          suggestion: 'This mentor needs to complete their Cal.com setup'
+        }
+      });
+      return;
     }
 
-    // Step 3: Fetch slots from Cal.com (primary source)
-    let availableSlots: any[] = [];
-    let source = 'calcom';
+    // Get all available slots for all mentor's event types
+    let allSlots: any[] = [];
     
     try {
-      availableSlots = await calComService.getAvailableSlots(mentorId, date);
-      console.log(`✅ Cal.com returned ${availableSlots.length} slots`);
+      // Get mentor's event types from Cal.com
+      const eventTypes = await calComService.getMentorEventTypes(mentorProfile.calComUsername);
       
-    } catch (calcomError: any) {
-      console.error('❌ Cal.com failed, attempting fallback:', calcomError.message);
-      
-      // Fallback: Generate from local schedule
-      try {
-        availableSlots = await generateFallbackSlots(mentorProfile, date);
-        source = 'fallback';
-        console.log(`✅ Fallback generated ${availableSlots.length} slots`);
-        
-      } catch (fallbackError: any) {
-        console.error('❌ Fallback also failed:', fallbackError.message);
-        
-        res.status(500).json({
-          success: false,
-          message: 'Unable to fetch available slots. Please try again later.',
+      if (eventTypes.length === 0) {
+        res.status(200).json({
+          success: true,
+          message: 'No event types configured for this mentor',
+          data: [],
           info: {
-            type: 'service_unavailable',
-            suggestion: 'Both Cal.com and fallback systems are unavailable'
+            type: 'no_event_types',
+            suggestion: 'This mentor needs to configure event types in Cal.com'
           }
         });
         return;
       }
+
+      console.log(`📋 Found ${eventTypes.length} event types for ${mentorProfile.calComUsername}`);
+
+      // Fetch slots for each event type
+      for (const eventType of eventTypes) {
+        try {
+          const slots = await calComService.getAvailableSlots(
+            mentorProfile.calComUsername,
+            eventType.id,
+            date
+          );
+          allSlots.push(...slots);
+        } catch (eventTypeError) {
+          console.warn(`⚠️ Failed to fetch slots for event type ${eventType.id}:`, eventTypeError);
+          // Continue with other event types
+        }
+      }
+
+      console.log(`✅ Cal.com returned ${allSlots.length} total slots across all event types`);
+
+    } catch (calcomError: any) {
+      console.error('❌ Cal.com API failed:', calcomError.message);
+      
+      res.status(500).json({
+        success: false,
+        message: 'Unable to fetch available slots from Cal.com. Please try again later.',
+        info: {
+          type: 'calcom_unavailable',
+          suggestion: 'Cal.com service is temporarily unavailable'
+        }
+      });
+      return;
     }
 
-    // Step 4: Filter out database conflicts (double-check)
-    const finalSlots = await filterDatabaseConflicts(availableSlots, mentorId, date);
+    // Filter out database conflicts (sessions already booked through our system)
+    const finalSlots = await filterDatabaseConflicts(allSlots, mentorId, date);
 
-    console.log(`✅ Final available slots: ${finalSlots.length} (source: ${source})`);
+    console.log(`✅ Final available slots: ${finalSlots.length} (after filtering conflicts)`);
 
     res.status(200).json({
       success: true,
@@ -145,12 +161,10 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
         'No available slots for this date',
       data: finalSlots,
       meta: {
-        source,
-        syncStatus: {
-          lastSync: syncStatus.lastSyncTime,
-          needsSync: shouldSync,
-          conflicts: syncStatus.conflicts.length
-        }
+        source: 'calcom_v2',
+        mentorCalComUsername: mentorProfile.calComUsername,
+        totalEventTypes: mentorProfile.calComEventTypes?.length || 0,
+        fetchedAt: new Date().toISOString()
       }
     });
 
@@ -165,13 +179,13 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
 });
 
 /**
- * Create booking with comprehensive validation and sync checks
+ * Create booking with payment-first flow and Cal.com integration
  */
 export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { mentorId, timeSlot, subject, notes, paymentMethodId } = req.body;
   const studentId = req.userId;
 
-  console.log('🎯 Creating booking with enhanced validation:', { 
+  console.log('🎯 Creating booking with payment-first flow:', { 
     mentorId, 
     studentId, 
     timeSlot: timeSlot.id, 
@@ -183,7 +197,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   session.startTransaction();
 
   try {
-    // Step 1: Pre-flight validation
+    // Step 1: Validate booking request
     const validationResult = await validateBookingRequest({
       mentorId,
       studentId,
@@ -201,27 +215,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    // Step 2: Force sync check for this mentor
-    console.log('🔄 Performing pre-booking sync check...');
-    const syncResult = await mentorScheduleSyncService.forceSyncMentor(mentorId);
-    
-    if (!syncResult.success) {
-      console.warn('⚠️ Sync failed but continuing with booking attempt');
-    }
-
-    // Step 3: Real-time slot availability check
-    const isSlotAvailable = await verifySlotAvailability(mentorId, timeSlot);
-    if (!isSlotAvailable) {
-      await session.abortTransaction();
-      res.status(400).json({
-        success: false,
-        message: 'Selected time slot is no longer available. Please select another slot.',
-        code: 'SLOT_UNAVAILABLE'
-      });
-      return;
-    }
-
-    // Step 4: Get participant details
+    // Step 2: Get participant details
     const [mentor, student] = await Promise.all([
       User.findById(mentorId).session(session),
       User.findById(studentId).session(session)
@@ -236,13 +230,30 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    // Step 5: Process payment (atomic)
-    const paymentResult = await processPaymentSafely({
+    // Step 3: Get mentor profile for Cal.com integration
+    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
+    if (!mentorProfile || !mentorProfile.calComUsername) {
+      await session.abortTransaction();
+      res.status(400).json({
+        success: false,
+        message: 'Mentor Cal.com integration not found',
+      });
+      return;
+    }
+
+    // Step 4: Process payment FIRST (payment-first flow)
+    console.log('💳 Processing payment before booking creation...');
+    const paymentResult = await paymentService.processPayment({
       amount: timeSlot.price,
-      currency: 'USD',
+      currency: 'INR',
       paymentMethodId,
       description: `Mentoring session: ${subject}`,
-      metadata: { mentorId, studentId, sessionType: 'mentoring' }
+      metadata: { 
+        mentorId, 
+        studentId, 
+        sessionType: 'mentoring',
+        timeSlot: timeSlot.startTime
+      }
     });
 
     if (!paymentResult.success) {
@@ -250,59 +261,63 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       res.status(400).json({
         success: false,
         message: 'Payment failed: ' + paymentResult.error,
+        code: 'PAYMENT_FAILED'
       });
       return;
     }
 
-    // Step 6: Create session record in database (within transaction)
-    const sessionRecord = new Session({
-      studentId,
-      mentorId,
-      subject,
-      scheduledTime: new Date(timeSlot.startTime),
-      duration: timeSlot.duration,
-      sessionType: 'video',
-      status: 'confirmed',
-      sessionNotes: notes || '',
-      price: timeSlot.price,
-    });
+    console.log('✅ Payment processed successfully:', paymentResult.paymentId);
 
-    await sessionRecord.save({ session });
+    // Step 5: Verify slot is still available (real-time check)
+    const isSlotAvailable = await verifySlotAvailability(
+      mentorProfile.calComUsername, 
+      timeSlot
+    );
+    
+    if (!isSlotAvailable) {
+      await session.abortTransaction();
+      
+      // Refund payment since slot is no longer available
+      if (paymentResult.paymentId) {
+        await paymentService.refundPayment(paymentResult.paymentId, timeSlot.price);
+      }
+      
+      res.status(400).json({
+        success: false,
+        message: 'Selected time slot is no longer available. Your payment has been refunded.',
+        code: 'SLOT_UNAVAILABLE'
+      });
+      return;
+    }
 
-    console.log('✅ Session created in database:', sessionRecord._id);
-
-    // Step 7: Create Cal.com booking (critical step)
+    // Step 6: Create Cal.com booking
+    console.log('📝 Creating Cal.com booking...');
     let calcomResult;
     let meetingUrl = '';
-    let calcomBookingId = '';
+    let calcomBookingUid = '';
 
     try {
       calcomResult = await calComService.createBooking({
-        mentorId,
-        studentId,
-        timeSlot,
-        subject,
-        notes,
-        studentEmail: student.email,
-        studentName: `${student.firstName || student.name} ${student.lastName || ''}`.trim(),
-        mentorEmail: mentor.email,
-        mentorName: `${mentor.firstName} ${mentor.lastName}`,
-        experienceLevel: req.body.experienceLevel,
-        specificGoals: req.body.specificGoals
+        eventTypeId: timeSlot.eventTypeId,
+        startTime: timeSlot.startTime,
+        endTime: timeSlot.endTime,
+        attendeeEmail: student.email,
+        attendeeName: `${student.firstName || student.name} ${student.lastName || ''}`.trim(),
+        notes: `Subject: ${subject}\n\nNotes: ${notes || 'No additional notes'}`,
+        metadata: {
+          mentorId,
+          studentId,
+          platform: 'MentorMatch',
+          paymentId: paymentResult.paymentId
+        }
       });
 
       if (calcomResult.success && calcomResult.booking) {
         meetingUrl = calcomResult.meetingUrl || '';
-        calcomBookingId = calcomResult.booking.id.toString();
+        calcomBookingUid = calcomResult.booking.uid || calcomResult.booking.id?.toString() || '';
         
-        // Update session with Cal.com details
-        sessionRecord.recordingUrl = meetingUrl;
-        (sessionRecord as any).calendarEventId = calcomBookingId;
-        (sessionRecord as any).meetingProvider = 'calcom';
-        await sessionRecord.save({ session });
-
-        console.log('✅ Cal.com booking created with Google Meet:', {
-          calcomBookingId,
+        console.log('✅ Cal.com booking created:', {
+          bookingUid: calcomBookingUid,
           hasGoogleMeetUrl: !!meetingUrl
         });
       } else {
@@ -312,12 +327,14 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     } catch (calcomError: any) {
       console.error('❌ Critical: Cal.com booking failed:', calcomError.message);
       
-      // For production: fail the booking if Cal.com fails
       await session.abortTransaction();
       
-      // Refund payment
+      // Refund payment since Cal.com booking failed
       if (paymentResult.paymentId) {
-        await refundPayment(paymentResult.paymentId, timeSlot.price, 'Cal.com booking failed');
+        await paymentService.refundPayment(
+          paymentResult.paymentId, 
+          timeSlot.price
+        );
       }
       
       res.status(500).json({
@@ -328,6 +345,32 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       });
       return;
     }
+
+    // Step 7: Create session record in database (within transaction)
+    const sessionRecord = new Session({
+      studentId,
+      mentorId,
+      subject,
+      scheduledTime: new Date(timeSlot.startTime),
+      duration: timeSlot.duration,
+      sessionType: 'video',
+      status: 'confirmed',
+      sessionNotes: notes || '',
+      // Cal.com specific fields
+      calComBookingId: calcomBookingUid,
+      eventTypeId: timeSlot.eventTypeId,
+      meetingUrl: meetingUrl,
+      meetingProvider: 'calcom',
+      // Payment fields
+      price: timeSlot.price,
+      currency: 'INR',
+      paymentId: paymentResult.paymentId,
+      paymentStatus: 'completed'
+    });
+
+    await sessionRecord.save({ session });
+
+    console.log('✅ Session created in database:', sessionRecord._id);
 
     // Step 8: Commit transaction - all critical operations succeeded
     await session.commitTransaction();
@@ -349,7 +392,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         duration: timeSlot.duration,
         meetingLink: meetingUrl,
         sessionType: 'video',
-        amount: `${timeSlot.price}`,
+        amount: `₹${timeSlot.price}`,
       });
 
       console.log('📧 Confirmation emails sent');
@@ -358,13 +401,6 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
       // Don't fail the booking for email issues
     }
 
-    // Step 10: Update mentor sync status (commented out for development)
-    // try {
-    //   await mentorScheduleSyncService.forceSyncMentor(mentorId);
-    // } catch (syncError) {
-    //   console.warn('⚠️ Post-booking sync failed (non-critical):', syncError);
-    // }
-
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
@@ -372,11 +408,11 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         bookingId: sessionRecord._id,
         sessionId: sessionRecord._id,
         meetingLink: meetingUrl,
-        calendarEventId: calcomBookingId,
+        calComBookingUid: calcomBookingUid,
         paymentId: paymentResult.paymentId,
         reminderSet: true,
         calcomCreated: true,
-        syncStatus: 'updated'
+        paymentProcessed: true
       },
     });
 
@@ -395,7 +431,7 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
 });
 
 /**
- * Cancel booking with sync updates
+ * Cancel booking with Cal.com integration
  */
 export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { bookingId } = req.params;
@@ -433,9 +469,9 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     }
 
     // Cancel Cal.com booking first
-    if ((sessionRecord as any).calendarEventId && (sessionRecord as any).meetingProvider === 'calcom') {
+    if ((sessionRecord as any).calComBookingId) {
       try {
-        await calComService.cancelBooking((sessionRecord as any).calendarEventId, reason);
+        await calComService.cancelBooking((sessionRecord as any).calComBookingId, reason);
         console.log('✅ Cal.com booking cancelled');
       } catch (calcomError) {
         console.error('⚠️ Failed to cancel Cal.com booking:', calcomError);
@@ -450,20 +486,22 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
 
     // Process refund
     const refundAmount = (sessionRecord as any).price || 0;
-    if (refundAmount > 0) {
+    let refundProcessed = false;
+    
+    if (refundAmount > 0 && (sessionRecord as any).paymentId) {
       try {
-        await refundPayment(`pay_${sessionRecord._id}`, refundAmount, reason || 'Session cancelled');
-        console.log('💰 Refund processed');
+        const refundResult = await paymentService.refundPayment(
+          (sessionRecord as any).paymentId, 
+          refundAmount
+        );
+        refundProcessed = refundResult.success;
+        console.log('💰 Refund processed:', refundProcessed);
       } catch (refundError) {
         console.error('⚠️ Refund processing failed:', refundError);
       }
     }
 
     await session.commitTransaction();
-
-    // Trigger mentor sync (background)
-    mentorScheduleSyncService.forceSyncMentor(sessionRecord.mentorId.toString())
-      .catch(error => console.warn('⚠️ Post-cancellation sync failed:', error));
 
     // Send notifications (non-critical)
     try {
@@ -490,6 +528,7 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
         sessionId: sessionRecord._id,
         refundEligible: refundAmount > 0,
         refundAmount,
+        refundProcessed,
         calcomCancelled: true,
       },
     });
@@ -507,143 +546,7 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   }
 });
 
-/**
- * Sync endpoint for manual mentor sync triggers
- */
-export const syncMentorSchedule = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { mentorId } = req.params;
-  const { force = false } = req.body;
-
-  try {
-    console.log(`🔄 Manual sync trigger for mentor ${mentorId} (force: ${force})`);
-
-    const syncResult = await mentorScheduleSyncService.forceSyncMentor(mentorId);
-
-    res.status(200).json({
-      success: true,
-      message: syncResult.success ? 'Mentor schedule synced successfully' : 'Sync failed',
-      data: syncResult
-    });
-
-  } catch (error: any) {
-    console.error('❌ Manual sync failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync mentor schedule',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-/**
- * Get sync status for a mentor
- */
-export const getMentorSyncStatus = catchAsync(async (req: Request, res: Response) => {
-  const { mentorId } = req.params;
-
-  try {
-    const syncStatus = mentorScheduleSyncService.getSyncStatus(mentorId);
-    
-    res.status(200).json({
-      success: true,
-      message: 'Sync status retrieved successfully',
-      data: {
-        mentorId,
-        ...syncStatus,
-        needsSync: !syncStatus.lastSyncTime || 
-                  (Date.now() - syncStatus.lastSyncTime > 30 * 60 * 1000)
-      }
-    });
-
-  } catch (error: any) {
-    console.error('❌ Error getting sync status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get sync status',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
 // Helper Functions
-
-/**
- * Generate fallback slots from mentor's local schedule
- */
-async function generateFallbackSlots(mentorProfile: any, date: string): Promise<any[]> {
-  try {
-    const requestedDate = new Date(date);
-    const dayName = requestedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    
-    console.log('📅 Generating fallback slots for:', { date, dayName });
-    
-    const daySchedule = mentorProfile.weeklySchedule?.[dayName];
-    
-    if (!daySchedule || !Array.isArray(daySchedule) || daySchedule.length === 0) {
-      console.log('⚠️ No schedule found for', dayName);
-      return [];
-    }
-
-    const slots: any[] = [];
-    const now = new Date();
-    const hourlyRate = mentorProfile.pricing?.hourlyRate || 75;
-    const sessionLength = parseInt(mentorProfile.preferences?.sessionLength?.replace(' minutes', '') || '60');
-
-    for (const block of daySchedule) {
-      if (!block || !block.isAvailable || !block.startTime || !block.endTime) {
-        continue;
-      }
-      
-      try {
-        const [startHour, startMinute] = block.startTime.split(':').map(Number);
-        const [endHour, endMinute] = block.endTime.split(':').map(Number);
-        
-        const blockStart = new Date(requestedDate);
-        blockStart.setHours(startHour, startMinute, 0, 0);
-        
-        const blockEnd = new Date(requestedDate);
-        blockEnd.setHours(endHour, endMinute, 0, 0);
-        
-        let currentTime = new Date(blockStart);
-        
-        while (currentTime.getTime() + (sessionLength * 60 * 1000) <= blockEnd.getTime()) {
-          const slotStart = new Date(currentTime);
-          const slotEnd = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-          
-          // Skip past slots (add 2 hour buffer)
-          if (slotStart <= new Date(now.getTime() + 2 * 60 * 60 * 1000)) {
-            currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-            continue;
-          }
-          
-          const slot = {
-            id: `fallback-${mentorProfile._id}-${slotStart.getTime()}`,
-            startTime: slotStart.toISOString(),
-            endTime: slotEnd.toISOString(),
-            date,
-            isAvailable: true,
-            price: hourlyRate,
-            duration: sessionLength,
-            sessionType: 'video' as const,
-          };
-          
-          slots.push(slot);
-          currentTime = new Date(currentTime.getTime() + (sessionLength * 60 * 1000));
-        }
-      } catch (blockError) {
-        console.error('❌ Error processing block:', block, blockError);
-        continue;
-      }
-    }
-    
-    console.log(`✅ Generated ${slots.length} fallback slots for ${dayName}`);
-    return slots;
-    
-  } catch (error) {
-    console.error('❌ Error generating fallback slots:', error);
-    return [];
-  }
-}
 
 /**
  * Filter database conflicts
@@ -698,14 +601,18 @@ async function filterDatabaseConflicts(slots: any[], mentorId: string, date: str
 }
 
 /**
- * Verify slot availability in real-time
+ * Verify slot availability in real-time via Cal.com
  */
-async function verifySlotAvailability(mentorId: string, timeSlot: any): Promise<boolean> {
+async function verifySlotAvailability(calComUsername: string, timeSlot: any): Promise<boolean> {
   try {
-    console.log('🔍 Verifying slot availability in real-time...');
+    console.log('🔍 Verifying slot availability in real-time via Cal.com...');
     
     // Get fresh slots from Cal.com
-    const availableSlots = await calComService.getAvailableSlots(mentorId, timeSlot.date);
+    const availableSlots = await calComService.getAvailableSlots(
+      calComUsername, 
+      timeSlot.eventTypeId, 
+      timeSlot.date
+    );
     
     // Check if the specific slot is still available
     const slotFound = availableSlots.some(slot => 
@@ -717,93 +624,12 @@ async function verifySlotAvailability(mentorId: string, timeSlot: any): Promise<
       return false;
     }
     
-    // Double-check database conflicts
-    const slotStart = new Date(timeSlot.startTime);
-    const slotEnd = new Date(timeSlot.endTime);
-    
-    const conflictingBooking = await Session.findOne({
-      mentorId,
-      scheduledTime: {
-        $gte: new Date(slotStart.getTime() - 1000),
-        $lt: slotEnd,
-      },
-      status: { $nin: ['cancelled'] },
-    });
-    
-    if (conflictingBooking) {
-      console.log('❌ Slot conflicts with existing database booking');
-      return false;
-    }
-    
-    console.log('✅ Slot verified as available');
+    console.log('✅ Slot verified as available via Cal.com');
     return true;
     
   } catch (error) {
     console.error('❌ Error verifying slot availability:', error);
-    return false;
-  }
-}
-
-/**
- * Enhanced payment processing with better error handling
- */
-async function processPaymentSafely(paymentData: {
-  amount: number;
-  currency: string;
-  paymentMethodId: string;
-  description: string;
-  metadata: any;
-}): Promise<{ success: boolean; paymentId?: string; error?: string }> {
-  try {
-    console.log('💳 Processing payment safely:', {
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      description: paymentData.description,
-    });
-
-    // TODO: Replace with real payment processor (Stripe, PayPal, etc.)
-    // For now, using mock implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Simulate 98% success rate
-    const isSuccessful = Math.random() > 0.02;
-    
-    if (isSuccessful) {
-      const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      console.log('✅ Payment processed successfully:', paymentId);
-      return { success: true, paymentId };
-    } else {
-      return { success: false, error: 'Payment was declined by your bank' };
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Payment processing error:', error);
-    return { success: false, error: 'Payment processing failed' };
-  }
-}
-
-/**
- * Process refund
- */
-async function refundPayment(
-  paymentId: string, 
-  amount: number, 
-  reason: string
-): Promise<{ success: boolean; refundId?: string; error?: string }> {
-  try {
-    console.log('💰 Processing refund:', { paymentId, amount, reason });
-    
-    // TODO: Replace with real payment processor refund
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const refundId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    console.log('✅ Refund processed:', refundId);
-    
-    return { success: true, refundId };
-    
-  } catch (error: any) {
-    console.error('❌ Refund processing error:', error);
-    return { success: false, error: 'Refund processing failed' };
+    return false; // Fail safe - if we can't verify, assume not available
   }
 }
 
@@ -921,12 +747,13 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
         duration: session.duration,
       },
       status: session.status,
-      meetingLink: session.meetingUrl,
-      calendarEventId: (session as any).calendarEventId,
+      meetingLink: session.meetingUrl || session.recordingUrl,
+      calendarEventId: (session as any).calComBookingId || (session as any).calendarEventId,
       notes: session.sessionNotes,
       userRating: session.studentRating || session.mentorRating,
-      price: (session as any).amount || 75,
-      meetingProvider: (session as any).meetingProvider,
+      price: (session as any).price || (session as any).amount || 0,
+      currency: (session as any).currency || 'INR',
+      meetingProvider: session.meetingProvider || 'calcom',
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     }));
@@ -1001,11 +828,12 @@ export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, re
       duration: session.duration,
       sessionType: session.sessionType,
       status: session.status,
-      meetingLink: session.meetingUrl,
+      meetingLink: session.meetingUrl || session.recordingUrl,
       notes: session.sessionNotes,
-      price: (session as any).amount,
-      meetingProvider: (session as any).meetingProvider,
-      calendarEventId: (session as any).calendarEventId,
+      price: (session as any).price || (session as any).amount || 0,
+      currency: (session as any).currency || 'INR',
+      meetingProvider: session.meetingProvider || 'calcom',
+      calendarEventId: (session as any).calComBookingId || (session as any).calendarEventId,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };
@@ -1026,105 +854,10 @@ export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, re
   }
 });
 
-/**
- * Reschedule a booking
- */
-export const rescheduleBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { bookingId } = req.params;
-  const { newTimeSlot } = req.body;
-  const userId = req.userId;
-
-  try {
-    const session = await Session.findById(bookingId);
-
-    if (!session) {
-      res.status(404).json({
-        success: false,
-        message: 'Booking not found',
-      });
-      return;
-    }
-
-    const isStudent = session.studentId.toString() === userId;
-    const isMentor = session.mentorId.toString() === userId;
-    
-    if (!isStudent && !isMentor) {
-      res.status(403).json({
-        success: false,
-        message: 'You are not authorized to reschedule this booking',
-      });
-      return;
-    }
-
-    // Check if new slot is available
-    const isNewSlotAvailable = await verifySlotAvailability(session.mentorId.toString(), newTimeSlot);
-    if (!isNewSlotAvailable) {
-      res.status(400).json({
-        success: false,
-        message: 'Selected new time slot is not available',
-      });
-      return;
-    }
-
-    const oldScheduledTime = session.scheduledTime;
-
-    // Reschedule Cal.com booking if exists
-    if ((session as any).calendarEventId && (session as any).meetingProvider === 'calcom') {
-      try {
-        const rescheduleResult = await calComService.rescheduleBooking(
-          (session as any).calendarEventId,
-          newTimeSlot.startTime,
-          newTimeSlot.endTime
-        );
-        
-        if (!rescheduleResult.success) {
-          throw new Error('Cal.com reschedule failed');
-        }
-        
-        console.log('✅ Cal.com booking rescheduled');
-      } catch (calcomError) {
-        console.error('⚠️ Failed to reschedule Cal.com booking:', calcomError);
-        res.status(400).json({
-          success: false,
-          message: 'Failed to reschedule with Cal.com. Please try again.',
-        });
-        return;
-      }
-    }
-
-    // Update session details
-    session.scheduledTime = new Date(newTimeSlot.startTime);
-    session.duration = newTimeSlot.duration;
-    session.sessionNotes = `${session.sessionNotes ? session.sessionNotes + '\n\n' : ''}Rescheduled from ${oldScheduledTime.toISOString()} to ${newTimeSlot.startTime} by ${isStudent ? 'student' : 'mentor'}`;
-    await session.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Booking rescheduled successfully',
-      data: {
-        sessionId: session._id,
-        oldScheduledTime: oldScheduledTime,
-        newScheduledTime: session.scheduledTime,
-      },
-    });
-
-  } catch (error: any) {
-    console.error('❌ Booking reschedule failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Booking reschedule failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
 export default {
   getAvailableSlots,
   createBooking,
+  cancelBooking,
   getUserBookings,
   getBookingDetails,
-  rescheduleBooking,
-  cancelBooking,
-  syncMentorSchedule,
-  getMentorSyncStatus,
 };
