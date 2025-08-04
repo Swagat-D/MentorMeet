@@ -103,32 +103,59 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
       // Get mentor's event types from Cal.com
       const eventTypes = await calComService.getMentorEventTypes(mentorProfile.calComUsername);
       
+      console.log(`📋 Event types response:`, JSON.stringify(eventTypes, null, 2));
+      
       if (eventTypes.length === 0) {
+        // Enhanced debugging for no event types
+        console.warn(`⚠️ No event types found for ${mentorProfile.calComUsername}`);
+        console.warn(`🔍 Mentor profile details:`, {
+          calComUsername: mentorProfile.calComUsername,
+          calComVerified: mentorProfile.calComVerified,
+          storedEventTypes: mentorProfile.calComEventTypes
+        });
+        
+        // Try to get raw Cal.com user info for debugging
+        try {
+          const debugInfo = await calComService.getRaw('/me');
+          console.log(`🐛 Cal.com user info:`, debugInfo.data);
+        } catch (debugError) {
+          console.error(`🐛 Failed to get Cal.com user info:`, debugError);
+        }
+        
         res.status(200).json({
           success: true,
           message: 'No event types configured for this mentor',
           data: [],
           info: {
             type: 'no_event_types',
-            suggestion: 'This mentor needs to configure event types in Cal.com'
+            suggestion: 'This mentor needs to configure event types in Cal.com',
+            debug: {
+              username: mentorProfile.calComUsername,
+              verified: mentorProfile.calComVerified,
+              storedEventTypes: mentorProfile.calComEventTypes?.length || 0
+            }
           }
         });
         return;
       }
 
       console.log(`📋 Found ${eventTypes.length} event types for ${mentorProfile.calComUsername}`);
+      console.log(`📋 Event types:`, eventTypes.map(et => ({ id: et.id, title: et.title, length: et.length })));
 
       // Fetch slots for each event type
       for (const eventType of eventTypes) {
         try {
+          console.log(`🔍 Fetching slots for event type ${eventType.id} (${eventType.title})`);
           const slots = await calComService.getAvailableSlots(
             mentorProfile.calComUsername,
             eventType.id,
             date
           );
+          
+          console.log(`📊 Event type ${eventType.id} returned ${slots.length} slots`);
           allSlots.push(...slots);
-        } catch (eventTypeError) {
-          console.warn(`⚠️ Failed to fetch slots for event type ${eventType.id}:`, eventTypeError);
+        } catch (eventTypeError: any) {
+          console.warn(`⚠️ Failed to fetch slots for event type ${eventType.id}:`, eventTypeError.message);
           // Continue with other event types
         }
       }
@@ -137,13 +164,18 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
 
     } catch (calcomError: any) {
       console.error('❌ Cal.com API failed:', calcomError.message);
+      console.error('❌ Full error:', calcomError);
       
       res.status(500).json({
         success: false,
         message: 'Unable to fetch available slots from Cal.com. Please try again later.',
         info: {
           type: 'calcom_unavailable',
-          suggestion: 'Cal.com service is temporarily unavailable'
+          suggestion: 'Cal.com service is temporarily unavailable',
+          debug: {
+            error: calcomError.message,
+            username: mentorProfile.calComUsername
+          }
         }
       });
       return;

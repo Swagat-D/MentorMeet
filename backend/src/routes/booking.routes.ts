@@ -538,6 +538,91 @@ router.post('/:sessionId/join', async (req, res) => {
   }
 });
 
+router.get('/debug/calcom-raw/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    console.log('🔍 Raw Cal.com API exploration for:', username);
+    
+    const results: any = {
+      username,
+      attempts: [],
+      timestamp: new Date().toISOString()
+    };
+
+    // Test different API endpoints
+    const testEndpoints = [
+      `/event-types?username=${username}`,
+      `/event-types/${username}`, 
+      `/users/${username}/event-types`,
+      `/event-types`,
+      `/me/event-types`,
+      `/bookings/event-types`
+    ];
+
+    for (const endpoint of testEndpoints) {
+      try {
+        console.log(`🧪 Testing endpoint: ${endpoint}`);
+        const response = await calComService.getRaw(endpoint);
+        
+        results.attempts.push({
+          endpoint,
+          success: true,
+          status: response.status,
+          dataStructure: {
+            hasData: !!response.data,
+            dataKeys: Object.keys(response.data || {}),
+            dataType: typeof response.data,
+            isArray: Array.isArray(response.data)
+          },
+          rawResponse: response.data,
+          eventTypesFound: response.data?.data?.eventTypes?.length || 
+                          response.data?.eventTypes?.length || 
+                          (Array.isArray(response.data?.data) ? response.data.data.length : 0) ||
+                          (Array.isArray(response.data) ? response.data.length : 0)
+        });
+        
+      } catch (error: any) {
+        results.attempts.push({
+          endpoint,
+          success: false,
+          error: error.message,
+          status: error.response?.status,
+          responseData: error.response?.data
+        });
+      }
+    }
+
+    // Also test the current method
+    try {
+      const currentResult = await calComService.getMentorEventTypes(username);
+      results.currentMethodResult = {
+        success: true,
+        eventTypes: currentResult,
+        count: currentResult.length
+      };
+    } catch (error: any) {
+      results.currentMethodResult = {
+        success: false,
+        error: error.message
+      };
+    }
+
+    return res.json({
+      success: true,
+      message: 'Cal.com API exploration completed',
+      data: results
+    });
+    
+  } catch (error: any) {
+    return res.json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // Health check endpoint
 router.get('/health', (req, res) => {
   res.json({

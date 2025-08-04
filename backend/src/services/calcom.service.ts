@@ -134,6 +134,10 @@ class CalComService {
     );
   }
 
+  public async getRaw(endpoint: string) {
+    return this.client.get(endpoint);
+  }
+
   private async handleRateLimit(error: any): Promise<any> {
     const retryAfter = error.response?.headers['retry-after'] || this.config.retryDelay / 1000;
     await this.delay(retryAfter * 1000);
@@ -177,47 +181,99 @@ class CalComService {
    * Get mentor's event types by Cal.com username
    */
   async getMentorEventTypes(calComUsername: string): Promise<CalComEventType[]> {
-    const cacheKey = `eventTypes-${calComUsername}`;
+  const cacheKey = `eventTypes-${calComUsername}`;
+  
+  // Check cache
+  if (this.eventTypeCache.has(cacheKey)) {
+    const cachedTime = this.cacheExpiry.get(cacheKey) || 0;
+    if (Date.now() - cachedTime < this.CACHE_TTL) {
+      console.log('📦 Using cached event types for:', calComUsername);
+      return this.eventTypeCache.get(cacheKey)!;
+    }
+  }
+
+  return this.retryOperation(async () => {
+    console.log(`🔍 Fetching event types for Cal.com user: ${calComUsername}`);
+
+    // Use Cal.com API v2 to get event types
+    const response = await this.client.get(`/event-types?username=${calComUsername}`);
     
-    // Check cache
-    if (this.eventTypeCache.has(cacheKey)) {
-      const cachedTime = this.cacheExpiry.get(cacheKey) || 0;
-      if (Date.now() - cachedTime < this.CACHE_TTL) {
-        console.log('📦 Using cached event types for:', calComUsername);
-        return this.eventTypeCache.get(cacheKey)!;
+    console.log(`📊 Raw response structure:`, {
+      status: response.data?.status,
+      hasData: !!response.data?.data,
+      hasEventTypeGroups: !!response.data?.data?.eventTypeGroups,
+      groupsCount: response.data?.data?.eventTypeGroups?.length || 0
+    });
+
+    let eventTypes: any[] = [];
+
+    // FIXED: Handle the correct Cal.com API v2 response structure
+    if (response.data?.data?.eventTypeGroups && Array.isArray(response.data.data.eventTypeGroups)) {
+      // Get event types from all groups (usually just one group for individual users)
+      for (const group of response.data.data.eventTypeGroups) {
+        if (group.eventTypes && Array.isArray(group.eventTypes)) {
+          eventTypes.push(...group.eventTypes);
+          console.log(`📋 Found ${group.eventTypes.length} event types in group`);
+        }
       }
+    } else {
+      console.warn('⚠️ Unexpected response structure from Cal.com API');
+      console.log('🐛 Full response:', JSON.stringify(response.data, null, 2));
     }
 
-    return this.retryOperation(async () => {
-      console.log(`🔍 Fetching event types for Cal.com user: ${calComUsername}`);
+    console.log(`📊 Total raw event types found: ${eventTypes.length}`);
 
-      // Use Cal.com API v2 to get event types
-      const response = await this.client.get(`/event-types?username=${calComUsername}`);
-      
-      const eventTypes = response.data?.data?.eventTypes || [];
-      
-      // Filter only active and public event types
-      const activeEventTypes = eventTypes.filter((et: any) => 
-        !et.hidden && et.length > 0
-      ).map((et: any) => ({
+    if (eventTypes.length === 0) {
+      console.error(`❌ No event types found in any groups for ${calComUsername}`);
+      console.log(`🐛 Response data:`, JSON.stringify(response.data?.data, null, 2));
+    }
+
+    // Filter and transform event types
+    const activeEventTypes = eventTypes
+      .filter((et: any) => {
+        // Basic validation - must have id and length
+        const isValid = et.id && et.length && et.length > 0;
+        
+        // Log filtering details
+        if (!isValid) {
+          console.log(`⚠️ Filtering out invalid event type:`, {
+            id: et.id,
+            length: et.length,
+            title: et.title,
+            hidden: et.hidden
+          });
+        } else {
+          console.log(`✅ Valid event type found:`, {
+            id: et.id,
+            title: et.title,
+            length: et.length,
+            hidden: et.hidden,
+            slug: et.slug
+          });
+        }
+        
+        return isValid;
+      })
+      .map((et: any) => ({
         id: et.id,
-        title: et.title,
-        slug: et.slug,
+        title: et.title || `Session ${et.length}min`,
+        slug: et.slug || `session-${et.length}min`,
         length: et.length,
-        description: et.description,
-        price: et.price,
+        description: et.description || '',
+        price: et.price || 0,
         currency: et.currency || 'USD'
       }));
 
-      console.log(`✅ Found ${activeEventTypes.length} active event types for ${calComUsername}`);
+    console.log(`✅ Final active event types for ${calComUsername}: ${activeEventTypes.length}`);
+    console.log(`📋 Event types details:`, activeEventTypes);
 
-      // Cache the results
-      this.eventTypeCache.set(cacheKey, activeEventTypes);
-      this.cacheExpiry.set(cacheKey, Date.now());
+    // Cache the results
+    this.eventTypeCache.set(cacheKey, activeEventTypes);
+    this.cacheExpiry.set(cacheKey, Date.now());
 
-      return activeEventTypes;
-    }, `get event types for ${calComUsername}`);
-  }
+    return activeEventTypes;
+  }, `get event types for ${calComUsername}`);
+}
 
   /**
    * Get available slots for a specific event type and date using Cal.com API v2

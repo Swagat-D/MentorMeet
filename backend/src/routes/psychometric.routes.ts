@@ -244,25 +244,25 @@ router.post('/start-new-session', [
   try {
     const user = req.user as IUser;
     
-    console.log(`🔄 Starting new test session for user: ${user._id}`);
+    console.log(`🔄 Resetting test session for user: ${user._id}`);
 
-    const newTest = await PsychometricTestService.startNewTestSession(user._id.toString());
+    const resetTest = await PsychometricTestService.startNewTestSession(user._id.toString());
 
     return res.json({
       success: true,
-      message: 'New test session started successfully',
+      message: 'Test session reset successfully',
       data: {
-        testId: newTest.testId,
-        status: newTest.status,
+        testId: resetTest.testId,
+        status: resetTest.status,
         completionPercentage: 0,
-        sectionsCompleted: newTest.sectionsCompleted,
-        startedAt: newTest.startedAt,
+        sectionsCompleted: resetTest.sectionsCompleted,
+        startedAt: resetTest.startedAt,
         isComplete: false
       }
     });
 
   } catch (error: any) {
-    return handleServiceError(error, res, 'Failed to start new test session');
+    return handleServiceError(error, res, 'Failed to reset test session');
   }
 });
 

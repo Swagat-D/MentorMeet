@@ -12,9 +12,9 @@ import User from '../models/User.model.js';
 export class PsychometricTestService {
   
   /**
-   * Create or get existing test for user with optimization
-   */
-  static async getOrCreateTest(userId: string): Promise<IPsychometricTest> {
+ * Create or get existing test for user with optimization
+ */
+static async getOrCreateTest(userId: string): Promise<IPsychometricTest> {
   try {
     console.log(`📋 Getting/creating test for user: ${userId}`);
     
@@ -29,11 +29,10 @@ export class PsychometricTestService {
 
     const userObjectId = new Types.ObjectId(userId);
     
-    // First try to find existing test
+    // First try to find any existing test (in_progress or completed)
     let test = await PsychometricTest.findOne({
-      userId: userObjectId,
-      status: 'in_progress'
-    });
+      userId: userObjectId
+    }).sort({ createdAt: -1 }); // Get the latest test
 
     if (!test) {
       console.log('📝 Creating new psychometric test...');
@@ -61,7 +60,7 @@ export class PsychometricTestService {
       
       console.log(`✅ Created new test: ${test.testId}`);
     } else {
-      console.log(`📋 Found existing test: ${test.testId}`);
+      console.log(`📋 Found existing test: ${test.testId} (status: ${test.status})`);
     }
 
     // Ensure all required fields exist
@@ -766,6 +765,9 @@ export class PsychometricTestService {
 /**
  * Start a new test session (for retaking)
  */
+/**
+ * Start a new test session (for retaking) - Reset existing test instead of creating new one
+ */
 static async startNewTestSession(userId: string): Promise<IPsychometricTest> {
   try {
     console.log(`🔄 Starting new test session for user: ${userId}`);
@@ -776,41 +778,77 @@ static async startNewTestSession(userId: string): Promise<IPsychometricTest> {
 
     const userObjectId = new Types.ObjectId(userId);
     
-    // Mark any existing in-progress test as completed/abandoned
-    await PsychometricTest.updateMany(
-      { 
-        userId: userObjectId, 
-        status: 'in_progress' 
-      },
-      { 
-        status: 'abandoned',
-        completedAt: new Date()
-      }
-    );
-    
-    // Create a completely new test
-    const newTestData = {
+    // Find existing test (completed or in-progress)
+    let existingTest = await PsychometricTest.findOne({
       userId: userObjectId,
-      status: 'in_progress' as const,
-      startedAt: new Date(),
-      totalTimeSpent: 0,
-      sectionsCompleted: {
-        riasec: false,
-        brainProfile: false,
-        employability: false,
-        personalInsights: false,
-      },
-      progressData: {
-        currentQuestionIndex: 0,
-        partialResponses: {}
-      }
-    };
+      $or: [
+        { status: 'completed' },
+        { status: 'in_progress' }
+      ]
+    }).sort({ createdAt: -1 });
 
-    const newTest = new PsychometricTest(newTestData);
-    await newTest.save();
-    
-    console.log(`✅ Created new test session: ${newTest.testId}`);
-    return newTest;
+    if (existingTest) {
+      // Reset the existing test instead of creating new one
+      console.log(`🔄 Resetting existing test: ${existingTest.testId}`);
+      
+      const resetData = {
+        status: 'in_progress' as const,
+        startedAt: new Date(),
+        completedAt: undefined,
+        totalTimeSpent: 0,
+        sectionsCompleted: {
+          riasec: false,
+          brainProfile: false,
+          employability: false,
+          personalInsights: false,
+        },
+        progressData: {
+          currentQuestionIndex: 0,
+          partialResponses: {}
+        },
+        // Clear all section results
+        riasecResult: undefined,
+        brainProfileResult: undefined,
+        employabilityResult: undefined,
+        personalInsightsResult: undefined,
+        overallResults: undefined,
+        lastActiveSection: undefined
+      };
+
+      await PsychometricTest.findByIdAndUpdate(
+        existingTest._id,
+        { $set: resetData, $unset: { completedAt: 1, riasecResult: 1, brainProfileResult: 1, employabilityResult: 1, personalInsightsResult: 1, overallResults: 1, lastActiveSection: 1 } },
+        { new: true }
+      );
+
+      const updatedTest = await PsychometricTest.findById(existingTest._id);
+      console.log(`✅ Test reset successfully: ${updatedTest?.testId}`);
+      return updatedTest!;
+    } else {
+      // Create new test only if no existing test found
+      const newTestData = {
+        userId: userObjectId,
+        status: 'in_progress' as const,
+        startedAt: new Date(),
+        totalTimeSpent: 0,
+        sectionsCompleted: {
+          riasec: false,
+          brainProfile: false,
+          employability: false,
+          personalInsights: false,
+        },
+        progressData: {
+          currentQuestionIndex: 0,
+          partialResponses: {}
+        }
+      };
+
+      const newTest = new PsychometricTest(newTestData);
+      await newTest.save();
+      
+      console.log(`✅ Created new test: ${newTest.testId}`);
+      return newTest;
+    }
   } catch (error) {
     console.error('❌ Error starting new test session:', error);
     throw new Error(`Failed to start new test session: ${error instanceof Error ? error.message : 'Unknown error'}`);

@@ -132,28 +132,31 @@ export default function PsychometricTest() {
   };
 
   const handleRetakeAssessment = () => {
-    Alert.alert(
-      'Retake Assessment',
-      'This will start a fresh assessment. Your previous results will be saved but you\'ll create a new test session.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Start Fresh Assessment', 
-          style: 'default',
-          onPress: async () => {
-            try {
-              // Reset the test to start fresh
-              await psychometricService.startNewTest();
-              // Reload the data
-              loadTestData();
-            } catch (error: any) {
-              Alert.alert('Error', 'Failed to start new assessment. Please try again.');
-            }
+  Alert.alert(
+    'Retake Assessment',
+    'This will reset your current test progress and start fresh. Your test will be cleared and you can retake all sections.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Reset & Start Fresh', 
+        style: 'default',
+        onPress: async () => {
+          try {
+            setLoading(true);
+            // Reset the existing test instead of creating new one
+            await psychometricService.startNewTest();
+            // Reload the data to show reset state
+            await loadTestData();
+          } catch (error: any) {
+            Alert.alert('Error', 'Failed to reset assessment. Please try again.');
+          } finally {
+            setLoading(false);
           }
         }
-      ]
-    );
-  };
+      }
+    ]
+  );
+};
 
   const renderTestCard = (section: TestSection) => {
     const status = getTestStatus(section.id);

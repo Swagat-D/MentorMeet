@@ -265,13 +265,13 @@ async getTestDashboardData(): Promise<{
           response = await ApiService.post(endpoint, options.body, { headers: requestOptions.headers });
           break;
         case 'PUT':
-          response = await ApiService.put(endpoint, options.body, { headers: requestOptions.headers });
+          response = await ApiService.put(endpoint, options.body);
           break;
         case 'DELETE':
-          response = await ApiService.delete(endpoint, { headers: requestOptions.headers });
+          response = await ApiService.delete(endpoint);
           break;
         default:
-          response = await ApiService.get(endpoint, { headers: requestOptions.headers });
+          response = await ApiService.get(endpoint);
       }
 
       console.log(`✅ Psychometric API request successful: ${endpoint}`);
@@ -1093,31 +1093,29 @@ async resetAllTests(): Promise<void> {
   }
 
   /**
-   * Start a new test (abandons any in-progress test)
-   */
-  async startNewTest(): Promise<PsychometricTest> {
-    try {
-      console.log('🆕 Starting new psychometric test...');
-      
-      // First, get current test to see if we need to abandon one
-      const currentTest = await this.getOrCreateTest();
-      
-      if (currentTest.status === 'in_progress' && currentTest.testId) {
-        console.log('🗑️ Abandoning current in-progress test...');
-        try {
-          await this.deleteTest(currentTest.testId);
-        } catch (deleteError) {
-          console.warn('⚠️ Failed to delete previous test, continuing...', deleteError);
-        }
-      }
-      
-      // Create new test
-      return await this.getOrCreateTest();
-    } catch (error) {
-      console.error('❌ Error starting new test:', error);
-      throw error;
+ * Start a new test (resets existing test instead of creating new one)
+ */
+async startNewTest(): Promise<PsychometricTest> {
+  try {
+    console.log('🆕 Starting new psychometric test session...');
+    
+    const endpoint = await this.buildPsychometricUrl('/start-new-session');
+    const response = await this.makeRequest(endpoint, {
+      method: 'POST',
+      body: {}
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to start new test');
     }
+
+    console.log('✅ Test session reset successfully');
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error starting new test:', error);
+    throw error;
   }
+}
 }
 
 // Export enhanced singleton instance
