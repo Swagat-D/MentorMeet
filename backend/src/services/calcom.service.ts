@@ -177,10 +177,10 @@ class CalComService {
     throw lastError!;
   }
 
-  /**
-   * Get mentor's event types by Cal.com username
-   */
-  async getMentorEventTypes(calComUsername: string): Promise<CalComEventType[]> {
+/**
+ * Get mentor's event types by Cal.com username - FIXED VERSION
+ */
+async getMentorEventTypes(calComUsername: string): Promise<CalComEventType[]> {
   const cacheKey = `eventTypes-${calComUsername}`;
   
   // Check cache
@@ -195,10 +195,14 @@ class CalComService {
   return this.retryOperation(async () => {
     console.log(`🔍 Fetching event types for Cal.com user: ${calComUsername}`);
 
-    // Use Cal.com API v2 to get event types
-    const response = await this.client.get(`/event-types?username=${calComUsername}`);
+    // Use the correct Cal.com API v2 endpoint
+    const response = await this.client.get('/event-types', {
+      params: {
+        username: calComUsername
+      }
+    });
     
-    console.log(`📊 Raw response structure:`, {
+    console.log(`📊 Raw API response structure:`, {
       status: response.data?.status,
       hasData: !!response.data?.data,
       hasEventTypeGroups: !!response.data?.data?.eventTypeGroups,
@@ -207,135 +211,187 @@ class CalComService {
 
     let eventTypes: any[] = [];
 
-    // FIXED: Handle the correct Cal.com API v2 response structure
-    if (response.data?.data?.eventTypeGroups && Array.isArray(response.data.data.eventTypeGroups)) {
-      // Get event types from all groups (usually just one group for individual users)
-      for (const group of response.data.data.eventTypeGroups) {
+    // FIXED: Handle the correct eventTypeGroups structure
+    if (response.data?.status === 'success' && response.data?.data?.eventTypeGroups) {
+      const eventTypeGroups = response.data.data.eventTypeGroups;
+      
+      // Extract event types from all groups
+      for (const group of eventTypeGroups) {
         if (group.eventTypes && Array.isArray(group.eventTypes)) {
           eventTypes.push(...group.eventTypes);
           console.log(`📋 Found ${group.eventTypes.length} event types in group`);
         }
       }
+      
+      console.log(`📋 Total event types extracted: ${eventTypes.length}`);
     } else {
-      console.warn('⚠️ Unexpected response structure from Cal.com API');
+      console.warn('⚠️ Unexpected Cal.com API response structure');
       console.log('🐛 Full response:', JSON.stringify(response.data, null, 2));
     }
 
-    console.log(`📊 Total raw event types found: ${eventTypes.length}`);
-
     if (eventTypes.length === 0) {
-      console.error(`❌ No event types found in any groups for ${calComUsername}`);
-      console.log(`🐛 Response data:`, JSON.stringify(response.data?.data, null, 2));
+      console.error(`❌ No event types found for ${calComUsername}`);
+      console.log(`🐛 Debug info:`, {
+        username: calComUsername,
+        responseStatus: response.data?.status,
+        hasEventTypeGroups: !!response.data?.data?.eventTypeGroups,
+        groupsArray: response.data?.data?.eventTypeGroups
+      });
     }
 
-    // Filter and transform event types
-    const activeEventTypes = eventTypes
+    // Transform to our format using the correct field names
+    const transformedEventTypes = eventTypes
       .filter((et: any) => {
-        // Basic validation - must have id and length
+        // Basic validation - use 'length' not 'lengthInMinutes'
         const isValid = et.id && et.length && et.length > 0;
+        const isNotHidden = !et.hidden;
         
-        // Log filtering details
-        if (!isValid) {
-          console.log(`⚠️ Filtering out invalid event type:`, {
-            id: et.id,
-            length: et.length,
-            title: et.title,
-            hidden: et.hidden
-          });
-        } else {
-          console.log(`✅ Valid event type found:`, {
+        if (!isValid || !isNotHidden) {
+          console.log(`⚠️ Filtering out event type:`, {
             id: et.id,
             title: et.title,
             length: et.length,
             hidden: et.hidden,
+            reason: !isValid ? 'invalid' : 'hidden'
+          });
+        } else {
+          console.log(`✅ Valid event type:`, {
+            id: et.id,
+            title: et.title,
+            length: et.length,
+            price: et.price,
             slug: et.slug
           });
         }
         
-        return isValid;
+        return isValid && isNotHidden;
       })
       .map((et: any) => ({
         id: et.id,
         title: et.title || `Session ${et.length}min`,
-        slug: et.slug || `session-${et.length}min`,
-        length: et.length,
+        slug: et.slug,
+        length: et.length, // Use 'length' field from actual response
         description: et.description || '',
         price: et.price || 0,
         currency: et.currency || 'USD'
       }));
 
-    console.log(`✅ Final active event types for ${calComUsername}: ${activeEventTypes.length}`);
-    console.log(`📋 Event types details:`, activeEventTypes);
+    console.log(`✅ Final transformed event types: ${transformedEventTypes.length}`);
+    console.log(`📋 Event types details:`, transformedEventTypes);
 
     // Cache the results
-    this.eventTypeCache.set(cacheKey, activeEventTypes);
+    this.eventTypeCache.set(cacheKey, transformedEventTypes);
     this.cacheExpiry.set(cacheKey, Date.now());
 
-    return activeEventTypes;
+    return transformedEventTypes;
   }, `get event types for ${calComUsername}`);
 }
 
   /**
-   * Get available slots for a specific event type and date using Cal.com API v2
-   */
-  async getAvailableSlots(calComUsername: string, eventTypeId: number, date: string): Promise<TimeSlot[]> {
-    return this.retryOperation(async () => {
-      console.log(`📅 Fetching available slots for ${calComUsername}, event type ${eventTypeId}, date ${date}`);
+ * Get available slots for a specific event type and date - FIXED FOR DATE-KEYED RESPONSE
+ */
+async getAvailableSlots(calComUsername: string, eventTypeId: number, date: string): Promise<TimeSlot[]> {
+  return this.retryOperation(async () => {
+    console.log(`📅 Fetching available slots for ${calComUsername}, event type ${eventTypeId}, date ${date}`);
 
-      // Format date range for Cal.com API v2
-      const startTime = `${date}T00:00:00.000Z`;
-      const endTime = `${date}T23:59:59.999Z`;
+    // Format date range for Cal.com API v2 - use the correct endpoint
+    const startTime = `${date}T00:00:00.000Z`;
+    const endTime = `${date}T23:59:59.999Z`;
 
-      // Get availability from Cal.com API v2
-      const response = await this.client.get('/slots/available', {
-        params: {
-          eventTypeId,
-          startTime,
-          endTime,
-          timeZone: 'Asia/Kolkata'
-        }
-      });
-
-      const slots = response.data?.data?.slots || [];
-      
-      console.log(`📊 Cal.com returned ${slots.length} available slots`);
-
-      // Get event type details for pricing
-      const eventTypes = await this.getMentorEventTypes(calComUsername);
-      const eventType = eventTypes.find(et => et.id === eventTypeId);
-      
-      if (!eventType) {
-        throw new Error(`Event type ${eventTypeId} not found for ${calComUsername}`);
+    // Use the correct Cal.com slots endpoint as per documentation
+    const response = await this.client.get('/slots', {
+      params: {
+        eventTypeId,
+        start: startTime,
+        end: endTime,
+        timeZone: 'Asia/Kolkata'
       }
+    });
 
-      // Get mentor profile for pricing
-      const mentorProfile = await MentorProfileService.findMentorByCalComUsername(calComUsername);
-      const hourlyRate = mentorProfile?.hourlyRateINR || 2000;
-      const sessionPrice = Math.round((hourlyRate / 60) * eventType.length);
+    console.log(`🐛 Slots API response structure:`, {
+      status: response.data?.status,
+      hasData: !!response.data?.data,
+      dataType: typeof response.data?.data,
+      dataKeys: response.data?.data ? Object.keys(response.data.data) : []
+    });
 
-      // Transform Cal.com slots to our format
-      const transformedSlots: TimeSlot[] = slots.map((slot: any, index: number) => {
-        const startTime = new Date(slot.time);
-        const endTime = new Date(startTime.getTime() + (eventType.length * 60 * 1000));
+    let slots: any[] = [];
+    
+    if (response.data?.status === 'success' && response.data?.data?.slots) {
+      const slotsData = response.data.data.slots;
+      
+      // Handle the date-keyed response structure
+      if (slotsData[date] && Array.isArray(slotsData[date])) {
+        slots = slotsData[date];
+        console.log(`📊 Found ${slots.length} slots for date ${date}`);
+      } else {
+        // Check if there are slots for any date in the response
+        const availableDates = Object.keys(slotsData);
+        console.log(`📊 Available dates in response:`, availableDates);
+        
+        if (availableDates.length > 0) {
+          // Take slots from the first available date
+          const firstDate = availableDates[0];
+          slots = slotsData[firstDate] || [];
+          console.log(`📊 Using slots from ${firstDate}: ${slots.length} slots`);
+        }
+      }
+    } else {
+      console.warn(`⚠️ Unexpected slots API response structure`);
+      console.log(`🐛 Full response:`, JSON.stringify(response.data, null, 2));
+    }
 
-        return {
-          id: `calcom-${eventTypeId}-${startTime.getTime()}-${index}`,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          date,
-          isAvailable: true,
-          price: sessionPrice,
-          duration: eventType.length,
-          sessionType: 'video' as const,
-          eventTypeId
-        };
-      });
+    if (!Array.isArray(slots)) {
+      console.warn(`⚠️ Expected slots array but got:`, typeof slots);
+      slots = [];
+    }
+    
+    console.log(`📊 Extracted ${slots.length} slots from Cal.com`);
 
-      console.log(`✅ Returning ${transformedSlots.length} available slots`);
-      return transformedSlots;
+    // Get event type details for pricing
+    const eventTypes = await this.getMentorEventTypes(calComUsername);
+    const eventType = eventTypes.find(et => et.id === eventTypeId);
+    
+    if (!eventType) {
+      throw new Error(`Event type ${eventTypeId} not found for ${calComUsername}`);
+    }
 
-    }, `get available slots for ${calComUsername}`);
-  }
+    // Get mentor profile for pricing
+    const mentorProfile = await MentorProfileService.findMentorByCalComUsername(calComUsername);
+    const hourlyRate = mentorProfile?.hourlyRateINR || 2000;
+    const sessionPrice = Math.round((hourlyRate / 60) * eventType.length);
+
+    // Transform Cal.com slots to our format
+    const transformedSlots: TimeSlot[] = slots.map((slot: any, index: number) => {
+      const slotTime = new Date(slot.time);
+      const endTime = new Date(slotTime.getTime() + (eventType.length * 60 * 1000));
+
+      return {
+        id: `calcom-${eventTypeId}-${slotTime.getTime()}-${index}`,
+        startTime: slotTime.toISOString(),
+        endTime: endTime.toISOString(),
+        date,
+        isAvailable: true,
+        price: sessionPrice,
+        duration: eventType.length,
+        sessionType: 'video' as const,
+        eventTypeId
+      };
+    });
+
+    console.log(`✅ Returning ${transformedSlots.length} transformed slots`);
+    if (transformedSlots.length > 0) {
+      console.log(`📋 Sample slots:`, transformedSlots.slice(0, 2).map(s => ({
+        id: s.id,
+        startTime: s.startTime,
+        price: s.price
+      })));
+    }
+
+    return transformedSlots;
+
+  }, `get available slots for ${calComUsername}`);
+}
 
   /**
    * Create booking using Cal.com API v2

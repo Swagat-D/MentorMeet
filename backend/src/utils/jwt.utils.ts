@@ -5,7 +5,7 @@ import { IUser } from '../models/User.model';
 // Direct environment variable access with validation
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '60m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 // Validate required environment variables
@@ -54,7 +54,7 @@ export const generateAccessToken = (user: IUser): string => {
   };
 
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: '15m',
+    expiresIn: '60m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -71,7 +71,7 @@ export const generateRefreshToken = (user: IUser): string => {
   };
 
   return jwt.sign(payload, JWT_REFRESH_SECRET!, {
-    expiresIn: '15m',
+    expiresIn: '60m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -196,7 +196,7 @@ export const generatePasswordResetToken = (userId: string, email: string): strin
   };
 
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: '15m',
+    expiresIn: '60m',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
