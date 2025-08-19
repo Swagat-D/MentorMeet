@@ -1,4 +1,3 @@
-// stores/authStore.ts - Updated with Dynamic API Service
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -80,14 +79,12 @@ interface AuthState {
 
 // Token management
 export const TokenManager = {
-  async setTokens(accessToken: string, refreshToken?: string): Promise<void> {
+  async setTokens(accessToken: string): Promise<void> {
     try {
       await AsyncStorage.setItem('access_token', accessToken);
-      if (refreshToken) {
-        await AsyncStorage.setItem('refresh_token', refreshToken);
-      }
+      console.log('✅ Access token stored successfully');
     } catch (error) {
-      console.error('Error saving tokens:', error);
+      console.error('Error saving token:', error);
     }
   },
 
@@ -100,18 +97,10 @@ export const TokenManager = {
     }
   },
 
-  async getRefreshToken(): Promise<string | null> {
-    try {
-      return await AsyncStorage.getItem('refresh_token');
-    } catch (error) {
-      console.error('Error getting refresh token:', error);
-      return null;
-    }
-  },
-
   async clearTokens(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+      await AsyncStorage.removeItem('access_token');
+      console.log('✅ Access token cleared');
     } catch (error) {
       console.error('Error clearing tokens:', error);
     }
@@ -202,10 +191,8 @@ export const useAuthStore = create<AuthState>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             
-            await TokenManager.setTokens(
-              tokens.accessToken,
-              tokens.refreshToken
-            );
+            await TokenManager.setTokens(tokens.accessToken);
+              console.log('🔍 Token stored, verifying:', await TokenManager.getAccessToken());
 
             set({
               user,
@@ -248,7 +235,6 @@ export const useAuthStore = create<AuthState>()(
             // Store tokens
             await TokenManager.setTokens(
               response.data.tokens.accessToken,
-              response.data.tokens.refreshToken
             );
             
             // Update state
@@ -344,7 +330,6 @@ export const useAuthStore = create<AuthState>()(
             
             await TokenManager.setTokens(
               tokens.accessToken,
-              tokens.refreshToken
             );
 
             set({

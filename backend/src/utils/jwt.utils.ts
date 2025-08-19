@@ -3,13 +3,14 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { IUser } from '../models/User.model';
 
 // Direct environment variable access with validation
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '60m';
+const JWT_SECRET = process.env.JWT_SECRET as string;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN as string || '7d';
 
 // Validate required environment variables
-if (!JWT_SECRET) {
+if (!JWT_SECRET || typeof JWT_SECRET !== 'string') {
   throw new Error('JWT_SECRET environment variable is required');
 }
+
 
 // Token payload interface
 export interface JWTPayload {
@@ -34,7 +35,11 @@ export const generateTokenPair = (user: IUser): TokenPair => {
     isEmailVerified: user.isEmailVerified,
   };
 
-   const accessToken = jwt.sign(payload, process.env.JWT_SECRET!);
+  const accessToken = jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '7d',
+    issuer: 'mentormatch-api',
+    audience: 'mentormatch-app',
+  });
   
   return {
     accessToken,
@@ -145,7 +150,7 @@ export const generatePasswordResetToken = (userId: string, email: string): strin
   };
 
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: '60m',
+    expiresIn: '7d',
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
@@ -183,24 +188,24 @@ export const verifyPasswordResetToken = (token: string): { userId: string; email
 /**
  * Create JWT response format for client
  */
-export const createTokenResponse = (user: IUser, tokens: TokenPair) => {
+export const createTokenResponse = (user: any, tokens: any) => {
   return {
     success: true,
     message: 'Authentication successful',
     data: {
       user: {
         id: user.id,
-        email: user.email,
         name: user.name,
+        email: user.email,
         role: user.role,
+        avatar: user.avatar,
         isEmailVerified: user.isEmailVerified,
         isOnboarded: user.isOnboarded,
-        avatar: user.avatar,
+        onboardingStatus: user.onboardingStatus,
       },
       tokens: {
         accessToken: tokens.accessToken,
-        expiresIn: JWT_EXPIRES_IN,
-      },
+      }
     },
   };
 };

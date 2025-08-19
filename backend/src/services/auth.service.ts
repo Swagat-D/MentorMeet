@@ -1,4 +1,3 @@
-// src/services/auth.service.ts - Complete Authentication Service Implementation
 import User, { IUser, OnboardingStatus } from '../models/User.model';
 import { OTPType } from '../models/OTP.model';
 import { generateTokenPair, createTokenResponse } from '../utils/jwt.utils';
@@ -303,7 +302,25 @@ class AuthService {
 
       console.log('🎉 [AUTH SERVICE] Email verification completed successfully');
 
-      return createTokenResponse(user, tokens);
+      return {
+        success: true,
+        message: 'Email verified successfully',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            avatar: user.avatar,
+            isEmailVerified: user.isEmailVerified,
+            isOnboarded: user.isOnboarded,
+            onboardingStatus: user.onboardingStatus,
+          },
+          tokens: {
+            accessToken: tokens.accessToken,
+          }
+        },
+      };
     } catch (error: any) {
       console.error('💥 [AUTH SERVICE] Email verification error:', {
         email,
@@ -463,7 +480,25 @@ class AuthService {
 
       console.log('✅ [AUTH SERVICE] Login successful');
 
-      return createTokenResponse(user, tokens);
+      return {
+        success: true,
+        message: 'Login successful',
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            avatar: user.avatar,
+            isEmailVerified: user.isEmailVerified,
+            isOnboarded: user.isOnboarded,
+            onboardingStatus: user.onboardingStatus,
+          },
+          tokens: {
+            accessToken: tokens.accessToken,
+          }
+        },
+      };
     } catch (error: any) {
       console.error('💥 [AUTH SERVICE] Login error:', {
         email,

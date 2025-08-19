@@ -25,18 +25,7 @@ class ApiConfig {
     return await this._initPromise;
   }
 
-  public static async getAuthToken(): Promise<string | null> {
-    try {
-      const token = await AsyncStorage.getItem('access_token');
-      if (!token) {
-        console.warn('⚠️ No auth token found');
-      }
-      return token;
-    } catch (error) {
-      console.error('❌ Error getting auth token:', error);
-      return null;
-    }
-  }
+  
 
   static async checkHealth(): Promise<{ healthy: boolean; details?: any }> {
     try {
@@ -78,7 +67,7 @@ class ApiConfig {
 ): Promise<any> {
   try {
     // Get auth token
-    const token = await this.getAuthToken();
+    const token = await ApiService.getAuthToken();
     if (!token) {
       throw new Error('Authentication required. Please log in again.');
     }
@@ -234,7 +223,7 @@ static async diagnosePsychometricConnection(): Promise<{
 
     // 2. Check auth token
     try {
-      const token = await this.getAuthToken();
+      const token = await ApiService.getAuthToken();
       results.authToken = !!token;
       details.tokenLength = token?.length || 0;
     } catch (error) {
@@ -542,14 +531,17 @@ export class ApiService {
       const token = await this.getAuthToken();
       
       const defaultHeaders: HeadersInit = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'MentorMatch-Mobile/1.0',
-      };
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+  'User-Agent': 'MentorMatch-Mobile/1.0',
+};
 
-      if (token) {
-        defaultHeaders['Authorization'] = `Bearer ${token}`;
-      }
+if (token) {
+  defaultHeaders['Authorization'] = `Bearer ${token}`;
+  console.log('🔑 Adding auth header with token:', token.substring(0, 20) + '...');
+} else {
+  console.log('⚠️ No auth token found for request');
+}
 
       const config: RequestInit = {
         ...options,

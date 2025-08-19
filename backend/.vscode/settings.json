@@ -3,7 +3,7 @@
   "typescript.suggest.autoImports": true,
   "typescript.preferences.useAliasesForRenames": false,
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true
+    "source.fixAll.eslint": "explicit"
   },
   "eslint.validate": ["typescript"],
   "typescript.enablePromptUseWorkspaceTsdk": true
