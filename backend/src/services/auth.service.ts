@@ -288,10 +288,7 @@ class AuthService {
       // Update onboarding status
       await user.updateOnboardingStatus(OnboardingStatus.IN_PROGRESS);
 
-      console.log('✅ [AUTH SERVICE] User marked as verified');
-
       // Generate JWT tokens
-      console.log('🔑 [AUTH SERVICE] Generating JWT tokens...');
       const tokens = generateTokenPair(user);
 
       console.log('✅ [AUTH SERVICE] JWT tokens generated');
@@ -300,7 +297,6 @@ class AuthService {
       console.log('📧 [AUTH SERVICE] Sending welcome email...');
       try {
         await emailService.sendWelcomeEmail(user.email, user.name);
-        console.log('✅ [AUTH SERVICE] Welcome email sent');
       } catch (emailError) {
         console.warn('⚠️ [AUTH SERVICE] Welcome email failed, but continuing:', emailError);
       }

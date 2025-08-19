@@ -4,17 +4,11 @@ import { IUser } from '../models/User.model';
 
 // Direct environment variable access with validation
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '60m';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 // Validate required environment variables
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
-}
-
-if (!JWT_REFRESH_SECRET) {
-  throw new Error('JWT_REFRESH_SECRET environment variable is required');
 }
 
 // Token payload interface
@@ -27,20 +21,25 @@ export interface JWTPayload {
   exp?: number;
 }
 
-// Refresh token payload interface
-export interface RefreshTokenPayload {
-  userId: string;
-  email: string;
-  tokenVersion?: number;
-  iat?: number;
-  exp?: number;
-}
-
 // Token pair interface
 export interface TokenPair {
   accessToken: string;
-  refreshToken: string;
 }
+
+export const generateTokenPair = (user: IUser): TokenPair => {
+  const payload: JWTPayload = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    isEmailVerified: user.isEmailVerified,
+  };
+
+   const accessToken = jwt.sign(payload, process.env.JWT_SECRET!);
+  
+  return {
+    accessToken,
+  };
+};
 
 /**
  * Generate JWT access token
@@ -58,33 +57,6 @@ export const generateAccessToken = (user: IUser): string => {
     issuer: 'mentormatch-api',
     audience: 'mentormatch-app',
   });
-};
-
-/**
- * Generate JWT refresh token
- */
-export const generateRefreshToken = (user: IUser): string => {
-  const payload = {
-    userId: user.id,
-    email: user.email,
-    tokenVersion: 1,
-  };
-
-  return jwt.sign(payload, JWT_REFRESH_SECRET!, {
-    expiresIn: '60m',
-    issuer: 'mentormatch-api',
-    audience: 'mentormatch-app',
-  });
-};
-
-/**
- * Generate both access and refresh tokens
- */
-export const generateTokenPair = (user: IUser): TokenPair => {
-  return {
-    accessToken: generateAccessToken(user),
-    refreshToken: generateRefreshToken(user),
-  };
 };
 
 /**
@@ -108,29 +80,6 @@ export const verifyAccessToken = (token: string): JWTPayload => {
     throw new Error('Token verification failed');
   }
 };
-
-/**
- * Verify and decode refresh token
- */
-export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
-  try {
-    const decoded = jwt.verify(token, JWT_REFRESH_SECRET, {
-      issuer: 'mentormatch-api',
-      audience: 'mentormatch-app',
-    }) as RefreshTokenPayload;
-
-    return decoded;
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      throw new Error('Refresh token expired');
-    }
-    if (error instanceof jwt.JsonWebTokenError) {
-      throw new Error('Invalid refresh token');
-    }
-    throw new Error('Refresh token verification failed');
-  }
-};
-
 /**
  * Extract token from Authorization header
  */
@@ -250,7 +199,6 @@ export const createTokenResponse = (user: IUser, tokens: TokenPair) => {
       },
       tokens: {
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
         expiresIn: JWT_EXPIRES_IN,
       },
     },
@@ -259,10 +207,7 @@ export const createTokenResponse = (user: IUser, tokens: TokenPair) => {
 
 export default {
   generateAccessToken,
-  generateRefreshToken,
-  generateTokenPair,
   verifyAccessToken,
-  verifyRefreshToken,
   extractTokenFromHeader,
   isTokenExpired,
   getTokenExpiration,

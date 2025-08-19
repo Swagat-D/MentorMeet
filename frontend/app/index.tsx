@@ -1,4 +1,4 @@
-// app/index.tsx - Modern Professional Educational Splash Screen
+// app/index.tsx - Fixed Splash Screen with Proper Navigation
 import { useEffect, useRef } from "react";
 import { View, StyleSheet, Text, Animated, Easing, Dimensions } from "react-native";
 import { router } from "expo-router";
@@ -9,7 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen() {
-  const { isAuthenticated, isOnboarded } = useAuthStore();
+  const { isAuthenticated, isOnboarded, isInitialized } = useAuthStore();
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -167,24 +167,41 @@ export default function SplashScreen() {
     floatingAnimations.forEach(anim => anim.start());
     shimmerAnimation.start();
 
-    // Navigation timer - Total duration: ~6 seconds
-    const timer = setTimeout(() => {
-      if (!isAuthenticated) {
-        router.replace("/(auth)/login");
-      } else if (!isOnboarded) {
-        router.replace("/(onboarding)/welcome");
-      } else {
-        router.replace("/(tabs)");
-      }
-    }, 6000);
-
     return () => {
-      clearTimeout(timer);
       sequence.stop();
       floatingAnimations.forEach(anim => anim.stop());
       shimmerAnimation.stop();
     };
-  }, [isAuthenticated, isOnboarded]);
+  }, []);
+
+  // Navigation effect - separate from animations
+  useEffect(() => {
+    // Wait for both the splash animation AND auth initialization
+    const timer = setTimeout(() => {
+      console.log('🎬 Splash screen completed, checking navigation...');
+      console.log('Auth state:', { isAuthenticated, isOnboarded, isInitialized });
+      
+      // Navigate based on auth state
+      try {
+        if (!isAuthenticated) {
+          console.log('🔒 Not authenticated, navigating to login');
+          router.replace("/(auth)/login");
+        } else if (!isOnboarded) {
+          console.log('👋 Authenticated but not onboarded, navigating to welcome');
+          router.replace("/(onboarding)/welcome");
+        } else {
+          console.log('✅ Fully authenticated and onboarded, navigating to home');
+          router.replace("/(tabs)");
+        }
+      } catch (error) {
+        console.error('❌ Navigation error:', error);
+        // Fallback navigation
+        router.replace("/(auth)/login");
+      }
+    }, 6000); // 6 second delay
+
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, isOnboarded, isInitialized]); // Add isInitialized as dependency
 
   // Interpolations
   const logoGlowOpacity = logoGlowAnim.interpolate({
@@ -482,6 +499,17 @@ export default function SplashScreen() {
       >
         <Text style={styles.brandText}>Innovative Learning Experience</Text>
       </Animated.View>
+
+      {/* Debug info - remove in production */}
+      {__DEV__ && (
+        <View style={styles.debugInfo}>
+          <Text style={styles.debugText}>
+            Auth: {isAuthenticated ? '✅' : '❌'} | 
+            Onboarded: {isOnboarded ? '✅' : '❌'} | 
+            Init: {isInitialized ? '✅' : '❌'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -733,5 +761,22 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
     fontWeight: '500',
     letterSpacing: 1,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#b91c1c',
+    fontFamily: 'System',
+    fontWeight: '500',
+    letterSpacing: 0.5,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  debugInfo: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    width: '100%',
   },
 });

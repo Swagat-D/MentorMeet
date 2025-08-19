@@ -310,18 +310,6 @@ export const createIndexes = async (): Promise<void> => {
     } catch (error) {
       console.log('📝 OTP collection indexes will be created when collection exists');
     }
-    
-    // Refresh token indexes
-    try {
-      indexPromises.push(
-        mongoose.connection.collection('refreshtokens').createIndex({ token: 1 }, { unique: true, background: true }),
-        mongoose.connection.collection('refreshtokens').createIndex({ userId: 1 }, { background: true }),
-        mongoose.connection.collection('refreshtokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true })
-      );
-      console.log('📋 Refresh token indexes queued');
-    } catch (error) {
-      console.log('📝 Refresh token collection indexes will be created when collection exists');
-    }
 
     // Psychometric test indexes (critical for performance)
     try {

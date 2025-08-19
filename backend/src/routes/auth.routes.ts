@@ -120,17 +120,6 @@ router.post(
   authController.resetPassword
 );
 
-/**
- * @route   POST /api/v1/auth/refresh-token
- * @desc    Refresh access token
- * @access  Public
- */
-router.post(
-  '/refresh-token',
-  authRateLimit,
-  authController.refreshToken
-);
-
 // Protected routes (authentication required)
 
 /**

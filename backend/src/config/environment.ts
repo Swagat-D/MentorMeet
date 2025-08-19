@@ -22,9 +22,7 @@ const envSchema = z.object({
   
   // JWT Configuration
   JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
-  JWT_REFRESH_SECRET: z.string().min(32, 'JWT refresh secret must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('60m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   
   // CORS Configuration
   FRONTEND_URL: z.string().url().default('http://localhost:8081'),
@@ -116,9 +114,7 @@ export const config = {
   // JWT Configuration - Fixed types
   jwt: {
     secret: env.JWT_SECRET,
-    refreshSecret: env.JWT_REFRESH_SECRET,
     expiresIn: env.JWT_EXPIRES_IN,
-    refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
   },
   
   // Email Configuration

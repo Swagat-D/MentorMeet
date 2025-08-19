@@ -143,15 +143,6 @@ export const resetPasswordSchema = z.object({
   }),
 });
 
-// Refresh token validation
-export const refreshTokenSchema = z.object({
-  body: z.object({
-    refreshToken: z
-      .string({ required_error: 'Refresh token is required' })
-      .min(1, 'Refresh token cannot be empty'),
-  }),
-});
-
 // Change password validation (for authenticated users)
 export const changePasswordSchema = z.object({
   body: z.object({
@@ -312,7 +303,6 @@ export type VerifyOTPInput = z.infer<typeof verifyOTPSchema>['body'];
 export type ResendOTPInput = z.infer<typeof resendOTPSchema>['body'];
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>['body'];
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>['body'];
-export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>['body'];
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>['body'];
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>['body'];
 export type OnboardingBasicInput = z.infer<typeof onboardingBasicSchema>['body'];

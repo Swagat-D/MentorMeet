@@ -6,7 +6,6 @@ import './StudentProgress.model';
 import './Achievement.model';
 import './LearningInsight.model';
 import './Review.model';
-import './RefreshToken.model';
 import './PsychometricTest.model';
 
 console.log('📋 All models imported and registered');
@@ -19,5 +18,4 @@ export { default as StudentProgress } from './StudentProgress.model';
 export { default as Achievement } from './Achievement.model';
 export { default as LearningInsight } from './LearningInsight.model';
 export { default as Review } from './Review.model';
-export { default as RefreshToken } from './RefreshToken.model';
 export { default as PsychometricTest } from './PsychometricTest.model';

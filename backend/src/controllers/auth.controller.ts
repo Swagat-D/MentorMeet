@@ -458,32 +458,6 @@ export const logout = catchAsync(async (req: AuthenticatedRequest, res: Response
 });
 
 /**
- * Refresh access token
- */
-export const refreshToken = catchAsync(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
-
-  console.log('🔄 Token refresh attempt:', {
-    hasRefreshToken: !!refreshToken,
-    clientIP: extractClientIP(req),
-  });
-
-  if (!refreshToken) {
-    return res.status(400).json({
-      success: false,
-      message: 'Refresh token is required',
-    });
-  }
-
-  // Note: Implement refresh token logic in auth service
-  // For now, return error as refresh tokens need additional implementation
-  return res.status(501).json({
-    success: false,
-    message: 'Refresh token functionality not implemented yet',
-  });
-});
-
-/**
  * Deactivate user account
  */
 export const deactivateAccount = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
@@ -584,7 +558,6 @@ export default {
   updateOnboarding,
   completeOnboarding,
   logout,
-  refreshToken,
   deactivateAccount,
   getDashboard,
   checkAuth,

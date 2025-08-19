@@ -1,4 +1,3 @@
-// frontend/services/networkDiscovery.ts - Optimized Version
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface NetworkInterface {
@@ -26,11 +25,11 @@ class NetworkDiscoveryService {
   
   // Most likely IPs based on your backend output
   private static readonly PRIORITY_IPS = [
-    '192.168.8.1',      // VMware Network Adapter VMnet1 (your primary)
+    '192.168.8.1',      
     '192.168.145.210',
-    '192.168.1.1',      // Common router
-    '192.168.0.1',      // Common router
-    '10.0.0.1',         // Corporate network
+    '192.168.1.1',      
+    '192.168.0.1',      
+    '10.0.0.1',         
   ];
 
   // Smart network ranges - start with most likely
