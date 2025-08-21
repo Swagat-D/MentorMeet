@@ -1,4 +1,4 @@
-// backend/src/controllers/booking.controller.ts - Updated for Manual Booking Flow
+// backend/src/controllers/booking.controller.ts - Updated with Email Integration
 import { Request, Response } from 'express';
 import { catchAsync } from '../middleware/error.middleware';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -7,7 +7,9 @@ import User from '../models/User.model';
 import mongoose from 'mongoose';
 import MentorProfileService from '../services/mentorProfile.service';
 import ScheduleGenerationService from '../services/scheduleGeneration.service';
-import { notificationService, paymentService } from '../services/booking.service';
+import { paymentService } from '../services/booking.service';
+import emailService from '../services/email.service';
+import nodemailer from 'nodemailer';
 
 /**
  * Get available time slots using mentor's manual schedule
@@ -137,7 +139,7 @@ export const getAvailableSlots = catchAsync(async (req: Request, res: Response) 
 });
 
 /**
- * Create booking with payment-first flow (manual)
+ * Create booking with payment-first flow and email notifications
  */
 export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { mentorId, timeSlot, subject, notes, paymentMethodId } = req.body;
@@ -150,124 +152,369 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     subject 
   });
 
-  // Start database transaction for atomic operations
   try {
-  // Step 1: Validate booking request (no session needed)
-  const validationResult = await validateBookingRequest({
-    mentorId,
-    studentId,
-    timeSlot,
-    subject,
-    paymentMethodId,
-  });
-
-  if (!validationResult.isValid) {
-    res.status(400).json({
-      success: false,
-      message: validationResult.message,
+    // Step 1: Validate booking request
+    const validationResult = await validateBookingRequest({
+      mentorId,
+      studentId,
+      timeSlot,
+      subject,
+      paymentMethodId,
     });
-    return;
-  }
 
-  // Step 2: Get participant details (no session needed)
-  const [mentor, student] = await Promise.all([
-    User.findById(mentorId),
-    User.findById(studentId)
-  ]);
-
-  if (!mentor || !student) {
-    res.status(400).json({
-      success: false,
-      message: 'Participant not found',
-    });
-    return;
-  }
-
-  // Step 3: Verify slot is still available
-  const isSlotAvailable = await ScheduleGenerationService.isSlotAvailable(
-    mentorId,
-    timeSlot.startTime,
-    timeSlot.duration
-  );
-  
-  if (!isSlotAvailable) {
-    res.status(400).json({
-      success: false,
-      message: 'Selected time slot is no longer available. Please select another time.',
-      code: 'SLOT_UNAVAILABLE'
-    });
-    return;
-  }
-
-  // Step 4: Process payment
-  console.log('💳 Processing payment before booking creation...');
-  const paymentResult = await paymentService.processPayment({
-    amount: timeSlot.price,
-    currency: 'INR',
-    paymentMethodId,
-    description: `Mentoring session: ${subject}`,
-    metadata: { 
-      mentorId, 
-      studentId, 
-      sessionType: 'mentoring',
-      timeSlot: timeSlot.startTime
+    if (!validationResult.isValid) {
+      res.status(400).json({
+        success: false,
+        message: validationResult.message,
+      });
+      return;
     }
-  });
 
-  if (!paymentResult.success) {
-    res.status(400).json({
-      success: false,
-      message: 'Payment failed: ' + paymentResult.error,
-      code: 'PAYMENT_FAILED'
+    // Step 2: Get participant details
+    const [mentor, student] = await Promise.all([
+      User.findById(mentorId),
+      User.findById(studentId)
+    ]);
+
+    if (!mentor || !student) {
+      res.status(400).json({
+        success: false,
+        message: 'Participant not found',
+      });
+      return;
+    }
+
+    // Step 3: Verify slot is still available
+    const isSlotAvailable = await ScheduleGenerationService.isSlotAvailable(
+      mentorId,
+      timeSlot.startTime,
+      timeSlot.duration
+    );
+    
+    if (!isSlotAvailable) {
+      res.status(400).json({
+        success: false,
+        message: 'Selected time slot is no longer available. Please select another time.',
+        code: 'SLOT_UNAVAILABLE'
+      });
+      return;
+    }
+
+    // Step 4: Process payment
+    console.log('💳 Processing payment before booking creation...');
+    const paymentResult = await paymentService.processPayment({
+      amount: timeSlot.price,
+      currency: 'INR',
+      paymentMethodId,
+      description: `Mentoring session: ${subject}`,
+      metadata: { 
+        mentorId, 
+        studentId, 
+        sessionType: 'mentoring',
+        timeSlot: timeSlot.startTime
+      }
     });
-    return;
+
+    if (!paymentResult.success) {
+      res.status(400).json({
+        success: false,
+        message: 'Payment failed: ' + paymentResult.error,
+        code: 'PAYMENT_FAILED'
+      });
+      return;
+    }
+
+    console.log('✅ Payment processed successfully:', paymentResult.paymentId);
+
+    // Step 5: Create session record
+    const scheduledTime = new Date(timeSlot.startTime);
+    const autoDeclineAt = new Date(scheduledTime.getTime() - (2 * 60 * 60 * 1000));
+
+    const sessionRecord = new Session({
+      studentId,
+      mentorId,
+      subject,
+      scheduledTime,
+      duration: timeSlot.duration,
+      sessionType: 'video',
+      status: 'pending_mentor_acceptance',
+      sessionNotes: notes || '',
+      autoDeclineAt,
+      
+      // Manual booking specific fields
+      slotId: timeSlot.slotId || timeSlot.id,
+      bookingSource: 'manual',
+      
+      // Payment fields
+      price: timeSlot.price,
+      currency: 'INR',
+      paymentId: paymentResult.paymentId!,
+      paymentStatus: 'completed'
+    });
+
+    await sessionRecord.save();
+
+    console.log('✅ Session created in database:', sessionRecord._id);
+
+    // Step 6: Send email notifications to both mentor and student
+    try {
+      const sessionDate = scheduledTime.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = scheduledTime.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      // Send email to student
+      await sendBookingEmail(student.email, {
+        isForMentor: false,
+        recipientName: `${student.firstName} ${student.lastName}`,
+        otherPartyName: `${mentor.firstName} ${mentor.lastName}`,
+        subject,
+        sessionDate,
+        sessionTime,
+        duration: timeSlot.duration,
+        amount: `₹${timeSlot.price}`,
+        sessionId: sessionRecord._id.toString()
+      });
+
+      // Send email to mentor
+      await sendBookingEmail(mentor.email, {
+        isForMentor: true,
+        recipientName: `${mentor.firstName} ${mentor.lastName}`,
+        otherPartyName: `${student.firstName} ${student.lastName}`,
+        subject,
+        sessionDate,
+        sessionTime,
+        duration: timeSlot.duration,
+        amount: `₹${timeSlot.price}`,
+        sessionId: sessionRecord._id.toString()
+      });
+
+      console.log('✅ Booking confirmation emails sent to both parties');
+
+    } catch (emailError) {
+      console.error('⚠️ Failed to send booking confirmation emails:', emailError);
+      // Don't fail the booking for email issues
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking created successfully! Confirmation emails sent to both mentor and student.',
+      data: {
+        bookingId: sessionRecord._id,
+        sessionId: sessionRecord._id,
+        paymentId: paymentResult.paymentId,
+        status: sessionRecord.status,
+        autoDeclineAt: sessionRecord.autoDeclineAt.toISOString(),
+        reminderSet: true,
+        paymentProcessed: true,
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ Booking creation failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Booking creation failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
-
-  console.log('✅ Payment processed successfully:', paymentResult.paymentId);
-
-  // Step 5: Create session record (no transaction)
-  const scheduledTime = new Date(timeSlot.startTime);
-  const autoDeclineAt = new Date(scheduledTime.getTime() - (2 * 60 * 60 * 1000));
-
-  const sessionRecord = new Session({
-    studentId,
-    mentorId,
-    subject,
-    scheduledTime,
-    duration: timeSlot.duration,
-    sessionType: 'video',
-    status: 'pending_mentor_acceptance',
-    sessionNotes: notes || '',
-    autoDeclineAt, // Explicitly set autoDeclineAt
-    
-    // Manual booking specific fields
-    slotId: timeSlot.slotId,
-    bookingSource: 'manual',
-    
-    // Payment fields
-    price: timeSlot.price,
-    currency: 'INR',
-    paymentId: paymentResult.paymentId,
-    paymentStatus: 'completed'
-  });
-
-  await sessionRecord.save(); // Save without transaction
-
-  console.log('✅ Session created in database:', sessionRecord._id);
-
-  // Rest of your code for notifications...
-} catch (error: any) {
-  console.error('❌ Booking creation failed:', error);
-  res.status(500).json({
-    success: false,
-    message: 'Booking creation failed',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-  });
-}
 });
 
+function createEmailTransporter() {
+  return nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+}
+
 /**
- * Cancel booking
+ * Helper function to send booking emails
+ */
+async function sendBookingEmail(email: string, data: any): Promise<void> {
+  try {
+    const subject = data.isForMentor 
+      ? `New Session Booked: ${data.subject}` 
+      : `Booking Confirmed: ${data.subject}`;
+
+    const html = getBookingEmailHTML(data);
+    const text = getBookingEmailText(data);
+
+    
+    const transporter = createEmailTransporter();
+
+    const mailOptions = {
+      from: `MentorMatch <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject,
+      html,
+      text,
+    };
+
+    transporter.sendMail(mailOptions);
+    console.log(`✅ Email sent successfully to: ${email}`);
+
+  } catch (error) {
+    console.error(`❌ Failed to send email to ${email}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get booking email HTML template
+ */
+function getBookingEmailHTML(data: any): string {
+  const isForMentor = data.isForMentor;
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${isForMentor ? 'New Session Booked' : 'Booking Confirmed'}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; color: white; }
+    .content { padding: 30px 20px; }
+    .details { background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0; }
+    .footer { background: #F8F3EE; padding: 20px; text-align: center; border-top: 1px solid #E8DDD1; color: #8B7355; }
+    h1 { margin: 0; font-size: 28px; font-weight: bold; }
+    h3 { color: #8B4513; margin: 0 0 15px 0; font-size: 18px; }
+    .detail-row { margin-bottom: 12px; }
+    .detail-label { color: #2A2A2A; font-weight: bold; }
+    .detail-value { color: ${isForMentor ? '#8B4513' : '#2A2A2A'}; font-weight: ${isForMentor ? '600' : 'normal'}; }
+    .status-badge { background: #FEF3C7; color: #92400E; padding: 8px 12px; border-radius: 6px; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>${isForMentor ? '👨‍🏫 New Session Booked!' : '📺 Booking Confirmed!'}</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">
+        ${isForMentor ? 'A student has scheduled a session with you' : 'Your session has been confirmed'}
+      </p>
+    </div>
+    
+    <div class="content">
+      <p style="font-size: 16px; margin-bottom: 20px;">Hi ${data.recipientName},</p>
+      
+      <p style="font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+        ${isForMentor 
+          ? 'Great news! A new mentoring session has been booked. Here are the details:' 
+          : 'Your mentoring session has been confirmed! Here are all the details you need:'
+        }
+      </p>
+      
+      <div class="details">
+        <h3>📚 Session Details</h3>
+        
+        <div class="detail-row">
+          <span class="detail-label">${isForMentor ? 'Student' : 'Mentor'}:</span> 
+          <span class="detail-value">${data.otherPartyName}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="detail-label">Subject:</span> 
+          <span class="detail-value">${data.subject}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="detail-label">Date:</span> 
+          <span class="detail-value">${data.sessionDate}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="detail-label">Time:</span> 
+          <span class="detail-value">${data.sessionTime}</span>
+        </div>
+        
+        <div class="detail-row">
+          <span class="detail-label">Duration:</span> 
+          <span class="detail-value">${data.duration} minutes</span>
+        </div>
+
+        ${data.amount ? `
+        <div class="detail-row">
+          <span class="detail-label">Amount:</span> 
+          <span class="detail-value">${data.amount}</span>
+        </div>
+        ` : ''}
+
+        <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+          <div class="status-badge">
+            ⏳ ${isForMentor ? 'Please accept this session and provide meeting link' : 'Waiting for mentor to accept and provide meeting link'}
+          </div>
+        </div>
+      </div>
+      
+      <p style="font-size: 16px; margin-top: 25px;">
+        ${isForMentor 
+          ? 'Thank you for sharing your expertise and helping students learn! 🌟' 
+          : 'Looking forward to your learning session! 🚀'
+        }
+      </p>
+      
+      <p style="font-size: 16px;">
+        Best regards,<br>
+        <strong style="color: #8B4513;">The MentorMatch Team</strong>
+      </p>
+    </div>
+    
+    <div class="footer">
+      <p style="margin: 0; font-size: 12px;">
+        Session ID: ${data.sessionId}<br>
+        © 2024 MentorMatch. All rights reserved.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
+/**
+ * Get booking email text template
+ */
+function getBookingEmailText(data: any): string {
+  const isForMentor = data.isForMentor;
+  
+  return `
+Hi ${data.recipientName},
+
+${isForMentor ? 'Great news! A new session has been booked.' : 'Your session has been confirmed!'}
+
+Session Details:
+- ${isForMentor ? 'Student' : 'Mentor'}: ${data.otherPartyName}
+- Subject: ${data.subject}
+- Date: ${data.sessionDate}
+- Time: ${data.sessionTime}
+- Duration: ${data.duration} minutes
+${data.amount ? `- Amount: ${data.amount}` : ''}
+
+Status: ${isForMentor ? 'Please accept this session and provide meeting link' : 'Waiting for mentor to accept and provide meeting link'}
+
+${isForMentor ? 'Thank you for sharing your expertise!' : 'Looking forward to your learning session!'}
+
+Best regards,
+The MentorMatch Team
+
+Session ID: ${data.sessionId}
+  `.trim();
+}
+
+/**
+ * Cancel booking (keeping existing implementation)
  */
 export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { bookingId } = req.params;
@@ -275,9 +522,10 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   const userId = req.userId;
 
   const session = await mongoose.startSession();
-  session.startTransaction();
-
+  
   try {
+    session.startTransaction();
+
     const sessionRecord = await Session.findById(bookingId)
       .populate('studentId', 'firstName lastName email')
       .populate('mentorId', 'firstName lastName email')
@@ -317,10 +565,7 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
     
     if (refundAmount > 0 && sessionRecord.paymentId) {
       try {
-        const refundResult = await paymentService.refundPayment(
-          sessionRecord.paymentId, 
-          refundAmount
-        );
+        const refundResult = await paymentService.refundPayment(sessionRecord.paymentId, refundAmount);
         refundProcessed = refundResult.success;
         
         if (refundProcessed && refundResult.paymentId) {
@@ -329,8 +574,6 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
           sessionRecord.paymentStatus = 'refunded';
           await sessionRecord.save({ session });
         }
-        
-        console.log('💰 Refund processed:', refundProcessed);
       } catch (refundError) {
         console.error('⚠️ Refund processing failed:', refundError);
         sessionRecord.refundStatus = 'failed';
@@ -340,20 +583,38 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
 
     await session.commitTransaction();
 
-    // Send notifications (non-critical)
+    // Send cancellation emails
     try {
-      await notificationService.sendCancellationNotification({
-        sessionId: sessionRecord._id.toString(),
-        mentorEmail: (sessionRecord.mentorId as any).email,
-        studentEmail: (sessionRecord.studentId as any).email,
-        mentorName: `${(sessionRecord.mentorId as any).firstName} ${(sessionRecord.mentorId as any).lastName}`,
-        studentName: `${(sessionRecord.studentId as any).firstName} ${(sessionRecord.studentId as any).lastName}`,
+      const sessionDate = sessionRecord.scheduledTime.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = sessionRecord.scheduledTime.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      const cancellationData = {
         subject: sessionRecord.subject,
-        scheduledTime: sessionRecord.scheduledTime.toISOString(),
+        sessionDate,
+        sessionTime,
         cancelledBy: isStudent ? 'student' : 'mentor',
         reason: reason || 'No reason provided',
-        refundAmount,
-      });
+        refundAmount
+      };
+
+      // Send to both parties
+      await Promise.all([
+        sendCancellationEmail((sessionRecord.studentId as any).email, cancellationData),
+        sendCancellationEmail((sessionRecord.mentorId as any).email, cancellationData)
+      ]);
+
+      console.log('✅ Cancellation emails sent to both parties');
+
     } catch (emailError) {
       console.error('⚠️ Failed to send cancellation emails:', emailError);
     }
@@ -383,7 +644,127 @@ export const cancelBooking = catchAsync(async (req: AuthenticatedRequest, res: R
 });
 
 /**
- * Get user's bookings
+ * Helper function to send cancellation emails
+ */
+async function sendCancellationEmail(email: string, data: any): Promise<void> {
+  try {
+    const subject = `Session Cancelled: ${data.subject}`;
+    const html = getCancellationEmailHTML(data);
+    const text = getCancellationEmailText(data);
+
+    
+    const transporter = nodemailer.createTransport({
+      service: process.env.EMAIL_SERVICE || 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: `"MentorMatch" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject,
+      html,
+      text,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Cancellation email sent to: ${email}`);
+
+  } catch (error) {
+    console.error(`❌ Failed to send cancellation email to ${email}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get cancellation email HTML template
+ */
+function getCancellationEmailHTML(data: any): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Session Cancelled</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .header { background: #DC2626; padding: 30px 20px; text-align: center; color: white; }
+    .content { padding: 30px 20px; }
+    .details { background: #FEF2F2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #DC2626; }
+    .refund { background: #D1FAE5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10B981; }
+    .footer { background: #F8F3EE; padding: 20px; text-align: center; color: #8B7355; }
+    h1 { margin: 0; font-size: 28px; font-weight: bold; }
+    .detail-row { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>❌ Session Cancelled</h1>
+    </div>
+    
+    <div class="content">
+      <p>Hi there,</p>
+      <p>We're writing to inform you that the following session has been cancelled:</p>
+      
+      <div class="details">
+        <div class="detail-row"><strong>Subject:</strong> ${data.subject}</div>
+        <div class="detail-row"><strong>Date:</strong> ${data.sessionDate}</div>
+        <div class="detail-row"><strong>Time:</strong> ${data.sessionTime}</div>
+        <div class="detail-row"><strong>Cancelled by:</strong> ${data.cancelledBy}</div>
+        <div class="detail-row"><strong>Reason:</strong> ${data.reason}</div>
+      </div>
+      
+      ${data.refundAmount > 0 ? `
+      <div class="refund">
+        <strong>💰 Refund Information</strong><br>
+        A refund of ₹${data.refundAmount} will be processed within 3-5 business days.
+      </div>
+      ` : ''}
+      
+      <p>We apologize for any inconvenience this may cause. You can book a new session anytime through our platform.</p>
+      
+      <p>Best regards,<br><strong style="color: #8B4513;">The MentorMatch Team</strong></p>
+    </div>
+    
+    <div class="footer">
+      <p style="margin: 0; font-size: 12px;">© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
+/**
+ * Get cancellation email text template
+ */
+function getCancellationEmailText(data: any): string {
+  return `
+Hi there,
+
+We're writing to inform you that the following session has been cancelled:
+
+Subject: ${data.subject}
+Date: ${data.sessionDate}
+Time: ${data.sessionTime}
+Cancelled by: ${data.cancelledBy}
+Reason: ${data.reason}
+
+${data.refundAmount > 0 ? `Refund: A refund of ₹${data.refundAmount} will be processed within 3-5 business days.` : ''}
+
+We apologize for any inconvenience this may cause. You can book a new session anytime through our platform.
+
+Best regards,
+The MentorMatch Team
+  `.trim();
+}
+
+/**
+ * Get user's bookings (keeping existing implementation)
  */
 export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.userId;
@@ -483,7 +864,7 @@ export const getUserBookings = catchAsync(async (req: AuthenticatedRequest, res:
 });
 
 /**
- * Get booking details
+ * Get booking details (keeping existing implementation)
  */
 export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { bookingId } = req.params;
@@ -557,11 +938,7 @@ export const getBookingDetails = catchAsync(async (req: AuthenticatedRequest, re
   }
 });
 
-// Helper Functions
-
-/**
- * Enhanced booking validation
- */
+// Helper function for validation (keeping existing implementation)
 async function validateBookingRequest(bookingData: any): Promise<{ isValid: boolean; message: string }> {
   try {
     const { mentorId, studentId, timeSlot, subject, paymentMethodId } = bookingData;

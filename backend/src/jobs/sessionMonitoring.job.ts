@@ -1,7 +1,6 @@
-// backend/src/jobs/sessionMonitoring.job.ts - Auto-cancellation Job
+// backend/src/jobs/sessionMonitoring.job.ts - Fixed Version
 import { Session } from '../models/Session.model';
-import { notificationService, paymentService } from '../services/notification.service';
-import User from '../models/User.model';
+import { notificationService, paymentService } from '../services/booking.service';
 
 class SessionMonitoringJob {
   private static instance: SessionMonitoringJob;

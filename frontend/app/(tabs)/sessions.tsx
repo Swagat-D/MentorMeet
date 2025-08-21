@@ -23,12 +23,14 @@ const { width, height } = Dimensions.get('window');
 const isTablet = width > 768;
 const isSmallScreen = width < 375;
 
-type SessionFilter = 'all' | 'upcoming' | 'completed' | 'cancelled';
+type SessionFilter = 'all' | 'upcoming' | 'completed' | 'cancelled' | 'pending';
 
 interface SessionStats {
   totalSessions: number;
   completedSessions: number;
   upcomingSessions: number;
+  pendingSessions: number;
+  cancelledSessions: number;
   averageRating?: number;
 }
 
@@ -43,6 +45,8 @@ export default function SessionsScreen() {
     totalSessions: 0,
     completedSessions: 0,
     upcomingSessions: 0,
+    pendingSessions: 0,
+    cancelledSessions: 0,
   });
 
   useEffect(() => {
@@ -57,39 +61,49 @@ export default function SessionsScreen() {
     try {
       setLoading(true);
       
-      // Load all sessions
-      const [upcomingResult, completedResult, cancelledResult, stats] = await Promise.all([
-        bookingService.getUserBookings('upcoming', 1, 50),
-        bookingService.getUserBookings('completed', 1, 50),
-        bookingService.getUserBookings('cancelled', 1, 50),
-        bookingService.getSessionStats(),
+      // Load all sessions - FIXED: Load each type separately to avoid duplication
+      const [upcomingResult, completedResult, cancelledResult, pendingResult] = await Promise.all([
+        bookingService.getUserBookings('upcoming', 1, 100),
+        bookingService.getUserBookings('completed', 1, 100),
+        bookingService.getUserBookings('cancelled', 1, 100),
+        bookingService.getUserBookings('pending', 1, 100),
       ]);
 
-      // Combine all sessions
-      const allSessions = [
-        ...upcomingResult.sessions,
-        ...completedResult.sessions,
-        ...cancelledResult.sessions,
-      ];
+      // FIXED: Use Set to ensure unique sessions by ID
+      const allSessionsMap = new Map();
+      
+      // Add sessions to map (will automatically prevent duplicates)
+      [...upcomingResult.sessions, ...completedResult.sessions, ...cancelledResult.sessions, ...pendingResult.sessions]
+        .forEach(session => {
+          allSessionsMap.set(session.id, session);
+        });
 
-      // Sort by date (upcoming first, then by date)
-      allSessions.sort((a, b) => {
+      const uniqueSessions = Array.from(allSessionsMap.values());
+
+      // Sort by date (upcoming first, then by date descending)
+      uniqueSessions.sort((a, b) => {
         const dateA = new Date(a.date);
         const dateB = new Date(b.date);
         const now = new Date();
 
         // Upcoming sessions first
-        const aIsUpcoming = dateA > now && a.status !== 'cancelled';
-        const bIsUpcoming = dateB > now && b.status !== 'cancelled';
+        const aIsUpcoming = dateA > now && !['cancelled', 'completed'].includes(a.status);
+        const bIsUpcoming = dateB > now && !['cancelled', 'completed'].includes(b.status);
 
         if (aIsUpcoming && !bIsUpcoming) return -1;
         if (!aIsUpcoming && bIsUpcoming) return 1;
 
-        // Then sort by date
-        return dateB.getTime() - dateA.getTime();
+        // Then sort by date (newest first for past, earliest first for future)
+        if (aIsUpcoming && bIsUpcoming) {
+          return dateA.getTime() - dateB.getTime(); // Earliest upcoming first
+        }
+        return dateB.getTime() - dateA.getTime(); // Most recent past first
       });
 
-      setSessions(allSessions);
+      setSessions(uniqueSessions);
+
+      // FIXED: Calculate stats from actual unique sessions
+      const stats = calculateSessionStats(uniqueSessions);
       setSessionStats(stats);
 
     } catch (error: any) {
@@ -104,6 +118,34 @@ export default function SessionsScreen() {
     }
   };
 
+  // FIXED: Calculate stats from actual sessions data
+  const calculateSessionStats = (sessions: Session[]): SessionStats => {
+    const now = new Date();
+    
+    const completedSessions = sessions.filter(s => s.status === 'completed').length;
+    const cancelledSessions = sessions.filter(s => s.status === 'cancelled').length;
+    const pendingSessions = sessions.filter(s => s.status === 'pending_mentor_acceptance').length;
+    const upcomingSessions = sessions.filter(s => {
+      const sessionDate = new Date(s.date);
+      return sessionDate > now && !['cancelled', 'completed'].includes(s.status);
+    }).length;
+
+    // Calculate average rating from completed sessions
+    const ratedSessions = sessions.filter(s => s.status === 'completed' && s.userRating);
+    const averageRating = ratedSessions.length > 0 
+      ? ratedSessions.reduce((sum, s) => sum + (s.userRating || 0), 0) / ratedSessions.length 
+      : undefined;
+
+    return {
+      totalSessions: sessions.length,
+      completedSessions,
+      upcomingSessions,
+      pendingSessions,
+      cancelledSessions,
+      averageRating
+    };
+  };
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadSessions();
@@ -112,13 +154,13 @@ export default function SessionsScreen() {
 
   const filterSessions = () => {
     let filtered = sessions;
+    const now = new Date();
 
     switch (selectedFilter) {
       case 'upcoming':
         filtered = sessions.filter(session => {
           const sessionDate = new Date(session.date);
-          const now = new Date();
-          return sessionDate > now && session.status !== 'cancelled';
+          return sessionDate > now && !['cancelled', 'completed'].includes(session.status);
         });
         break;
       case 'completed':
@@ -126,6 +168,9 @@ export default function SessionsScreen() {
         break;
       case 'cancelled':
         filtered = sessions.filter(session => session.status === 'cancelled');
+        break;
+      case 'pending':
+        filtered = sessions.filter(session => session.status === 'pending_mentor_acceptance');
         break;
       default:
         filtered = sessions;
@@ -151,15 +196,13 @@ export default function SessionsScreen() {
         );
         break;
       case 'reschedule':
-        // Navigate to reschedule flow
         router.push(`/booking/${session.mentor.id}?reschedule=${session.id}`);
         break;
       case 'join':
         if (session.meetingLink) {
-          // Open meeting link
           Alert.alert(
-            'Join Google Meet',
-            'This will open your Google Meet session.',
+            'Join Meeting',
+            'This will open your meeting session.',
             [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Join Meeting', onPress: () => openMeetingLink(session.meetingLink!) },
@@ -170,7 +213,6 @@ export default function SessionsScreen() {
         }
         break;
       case 'rate':
-        // Navigate to rating screen
         router.push(`/sessions/rate/${session.id}`);
         break;
     }
@@ -186,7 +228,7 @@ export default function SessionsScreen() {
           'Your session has been cancelled successfully. You will receive a refund if eligible.',
           [{ text: 'OK' }]
         );
-        await loadSessions(); // Refresh sessions
+        await loadSessions();
       } else {
         throw new Error(result.message);
       }
@@ -195,23 +237,10 @@ export default function SessionsScreen() {
     }
   };
 
-      const openMeetingLink = (meetingLink: string) => {
-    if (meetingLink.includes('meet.google.com')) {
-      // For React Native, use Linking
-      import('expo-linking').then(Linking => {
-        Linking.openURL(meetingLink);
-      });
-    } else {
-      Alert.alert('Meeting Link', meetingLink, [
-        { text: 'Copy Link', onPress: () => {
-          import('expo-clipboard').then(Clipboard => {
-            Clipboard.setStringAsync(meetingLink);
-            Alert.alert('Copied!', 'Meeting link copied to clipboard');
-          });
-        }},
-        { text: 'OK' }
-      ]);
-    }
+  const openMeetingLink = (meetingLink: string) => {
+    import('expo-linking').then(Linking => {
+      Linking.openURL(meetingLink);
+    });
   };
 
   const formatSessionDate = (dateString: string) => {
@@ -247,195 +276,189 @@ export default function SessionsScreen() {
     const diffMinutes = Math.floor((sessionDate.getTime() - now.getTime()) / (1000 * 60));
 
     if (session.status === 'cancelled') {
-      return { color: '#DC2626', text: 'Cancelled', icon: 'cancel' };
+      return { color: '#DC2626', text: 'Cancelled', icon: 'cancel' as const, bgColor: '#FEF2F2' };
     }
 
     if (session.status === 'completed') {
-      return { color: '#10B981', text: 'Completed', icon: 'check-circle' };
+      return { color: '#10B981', text: 'Completed', icon: 'check-circle' as const, bgColor: '#ECFDF5' };
     }
 
-    if (diffMinutes < -session.duration) {
-      return { color: '#8B7355', text: 'Past', icon: 'history' };
+    if (session.status === 'pending_mentor_acceptance') {
+      return { color: '#F59E0B', text: 'Pending', icon: 'hourglass-empty' as const, bgColor: '#FEF3C7' };
     }
 
-    if (diffMinutes <= 15 && diffMinutes >= -15) {
-      return { color: '#F59E0B', text: 'Live Now', icon: 'videocam' };
-    }
-
-    if (diffMinutes > 0) {
-      if (diffMinutes < 60) {
-        return { color: '#8B4513', text: `In ${diffMinutes}m`, icon: 'schedule' };
-      } else if (diffMinutes < 1440) {
-        return { color: '#8B4513', text: `In ${Math.floor(diffMinutes / 60)}h`, icon: 'schedule' };
+    if (session.status === 'confirmed') {
+      if (diffMinutes < -session.duration) {
+        return { color: '#8B7355', text: 'Past', icon: 'history' as const, bgColor: '#F9F7F4' };
       }
-      return { color: '#8B4513', text: 'Upcoming', icon: 'schedule' };
+
+      if (diffMinutes <= 15 && diffMinutes >= -15) {
+        return { color: '#DC2626', text: 'Live Now', icon: 'videocam' as const, bgColor: '#FEF2F2' };
+      }
+
+      if (diffMinutes > 0) {
+        if (diffMinutes < 60) {
+          return { color: '#8B4513', text: `In ${diffMinutes}m`, icon: 'schedule' as const, bgColor: '#F8F3EE' };
+        } else if (diffMinutes < 1440) {
+          return { color: '#8B4513', text: `In ${Math.floor(diffMinutes / 60)}h`, icon: 'schedule' as const, bgColor: '#F8F3EE' };
+        }
+        return { color: '#8B4513', text: 'Upcoming', icon: 'schedule' as const, bgColor: '#F8F3EE' };
+      }
     }
 
-    return { color: '#8B7355', text: 'Past', icon: 'history' };
+    return { color: '#8B7355', text: 'Past', icon: 'history' as const, bgColor: '#F9F7F4' };
+  };
+
+  // FIXED: Get proper mentor/student name
+  const getDisplayName = (person: { name?: string; firstName?: string; lastName?: string }) => {
+    if (person.name) return person.name;
+    if (person.firstName && person.lastName) return `${person.firstName} ${person.lastName}`;
+    if (person.firstName) return person.firstName;
+    return 'Unknown User';
   };
 
   const renderSessionCard = (session: Session) => {
     const statusInfo = getSessionStatusInfo(session);
-    const canJoin = statusInfo.text === 'Live Now' || (statusInfo.text.includes('In') && !statusInfo.text.includes('days'));
-    const canCancel = statusInfo.text !== 'Past' && statusInfo.text !== 'Completed' && statusInfo.text !== 'Cancelled';
+    const canJoin = (statusInfo.text === 'Live Now' || statusInfo.text.includes('In')) && session.meetingLink && session.status === 'confirmed';
+    const canCancel = !['completed', 'cancelled'].includes(session.status) && statusInfo.text !== 'Past';
     const canRate = session.status === 'completed' && !session.userRating;
+    
+    // FIXED: Get proper display name
+    const mentorName = getDisplayName(session.mentor);
+    const studentName = getDisplayName(session.student);
 
     return (
-        <LinearGradient
-          colors={['#FFFFFF', '#F8F3EE']}
-          style={styles.sessionCardGradient}
-        >
-          {/* Session Header */}
-          <View style={styles.sessionHeader}>
-            <View style={styles.sessionHeaderLeft}>
+      <View key={session.id} style={styles.sessionCard}>
+        {/* Session Header */}
+        <View style={styles.sessionHeader}>
+          <View style={styles.sessionHeaderLeft}>
+            <View style={styles.avatarContainer}>
               <Image
-                source={{ uri: session.mentor.avatar || 'https://via.placeholder.com/48' }}
+                source={{ uri: session.mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentorName)}&background=8B4513&color=fff` }}
                 style={styles.mentorAvatar}
               />
-              <View style={styles.sessionHeaderInfo}>
-                <Text style={styles.sessionMentorName}>{session.mentor.name}</Text>
-                <Text style={styles.sessionSubject} numberOfLines={1}>
-                  {session.subject}
+            </View>
+            <View style={styles.sessionHeaderInfo}>
+              <Text style={styles.sessionMentorName}>{mentorName}</Text>
+              <Text style={styles.sessionSubject} numberOfLines={1}>
+                {session.subject}
+              </Text>
+              <View style={styles.sessionMetaRow}>
+                <MaterialIcons name="schedule" size={14} color="#8B7355" />
+                <Text style={styles.sessionMetaText}>
+                  {formatSessionDate(session.date)} • {formatSessionTime(session.date)}
                 </Text>
               </View>
             </View>
-            
-            <View style={styles.sessionStatusContainer}>
-              <MaterialIcons 
-                name={statusInfo.icon as any} 
-                size={16} 
-                color={statusInfo.color} 
-              />
-              <Text style={[styles.sessionStatus, { color: statusInfo.color }]}>
-                {statusInfo.text}
-              </Text>
-            </View>
           </View>
-
-          {/* Session Details */}
-          <View style={styles.sessionDetails}>
-            <View style={styles.sessionDetailRow}>
-              <MaterialIcons name="schedule" size={16} color="#8B7355" />
-              <Text style={styles.sessionDetailText}>
-                {formatSessionDate(session.date)} at {formatSessionTime(session.date)}
-              </Text>
-            </View>
-            
-            <View style={styles.sessionDetailRow}>
-              <MaterialIcons name="timer" size={16} color="#8B7355" />
-              <Text style={styles.sessionDetailText}>
-                {session.duration} minutes
-              </Text>
-            </View>
-            
-            <View style={styles.sessionDetailRow}>
-              <MaterialIcons name="videocam" size={16} color="#8B7355" />
-              <Text style={styles.sessionDetailText}>
-                Google Meet Session
-              </Text>
-            </View>
-            
-            <View style={styles.sessionDetailRow}>
-              <MaterialIcons name="attach-money" size={16} color="#8B7355" />
-              <Text style={styles.sessionDetailText}>
-                ${session.price}
-              </Text>
-            </View>
+          
+          <View style={[styles.sessionStatusContainer, { backgroundColor: statusInfo.bgColor }]}>
+            <MaterialIcons 
+              name={statusInfo.icon} 
+              size={14} 
+              color={statusInfo.color} 
+            />
+            <Text style={[styles.sessionStatus, { color: statusInfo.color }]}>
+              {statusInfo.text}
+            </Text>
           </View>
+        </View>
 
-          {/* Session Actions */}
+        {/* Session Details */}
+        <View style={styles.sessionDetails}>
+          <View style={styles.sessionDetailRow}>
+            <MaterialIcons name="timer" size={16} color="#8B7355" />
+            <Text style={styles.sessionDetailText}>{session.duration} minutes</Text>
+          </View>
+          
+          <View style={styles.sessionDetailRow}>
+            <MaterialIcons name="videocam" size={16} color="#8B7355" />
+            <Text style={styles.sessionDetailText}>Video Session</Text>
+          </View>
+          
+          <View style={styles.sessionDetailRow}>
+            <MaterialIcons name="payment" size={16} color="#8B7355" />
+            <Text style={styles.sessionDetailText}>₹{session.price}</Text>
+          </View>
+        </View>
+
+        {/* Session Actions */}
+        {(canJoin || canRate || canCancel) && (
           <View style={styles.sessionActions}>
-             {canJoin && session.meetingLink && (
-    <TouchableOpacity
-      style={[styles.actionButton, styles.joinButton]}
-      onPress={() => openMeetingLink(session.meetingLink!)}
-      activeOpacity={0.8}
-    >
-      <LinearGradient
-        colors={['#10B981', '#059669']}
-        style={styles.actionButtonGradient}
-      >
-        <MaterialIcons name="videocam" size={16} color="#FFFFFF" />
-        <Text style={styles.joinButtonText}>
-          {statusInfo.text === 'Live Now' ? 'Join Now' : 'Join Meeting'}
-        </Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  )}
+            {canJoin && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.joinButton]}
+                onPress={() => openMeetingLink(session.meetingLink!)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="videocam" size={18} color="#FFFFFF" />
+                <Text style={styles.joinButtonText}>
+                  {statusInfo.text === 'Live Now' ? 'Join Now' : 'Join Meeting'}
+                </Text>
+              </TouchableOpacity>
+            )}
             
             {canRate && (
               <TouchableOpacity
-                style={[styles.actionButton, styles.rateButton]}
+                style={[styles.actionButton, styles.secondaryButton]}
                 onPress={() => handleSessionAction(session, 'rate')}
                 activeOpacity={0.8}
               >
-                <MaterialIcons name="star" size={16} color="#F59E0B" />
-                <Text style={styles.rateButtonText}>Rate Session</Text>
+                <MaterialIcons name="star" size={18} color="#F59E0B" />
+                <Text style={styles.secondaryButtonText}>Rate</Text>
               </TouchableOpacity>
             )}
             
             {canCancel && (
-              <>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.rescheduleButton]}
-                  onPress={() => handleSessionAction(session, 'reschedule')}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="schedule" size={16} color="#8B4513" />
-                  <Text style={styles.rescheduleButtonText}>Reschedule</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.cancelButton]}
-                  onPress={() => handleSessionAction(session, 'cancel')}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="cancel" size={16} color="#DC2626" />
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.cancelButton]}
+                onPress={() => handleSessionAction(session, 'cancel')}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="cancel" size={18} color="#DC2626" />
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
             )}
           </View>
+        )}
 
-          {/* User Rating Display */}
-          {session.userRating && (
-            <View style={styles.ratingContainer}>
-              <Text style={styles.ratingLabel}>Your Rating:</Text>
-              <View style={styles.ratingStars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <MaterialIcons
-                    key={star}
-                    name={star <= session.userRating! ? 'star' : 'star-border'}
-                    size={16}
-                    color="#D4AF37"
-                  />
-                ))}
-              </View>
+        {/* User Rating Display */}
+        {session.userRating && (
+          <View style={styles.ratingContainer}>
+            <Text style={styles.ratingLabel}>Your Rating:</Text>
+            <View style={styles.ratingStars}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <MaterialIcons
+                  key={star}
+                  name={star <= session.userRating! ? 'star' : 'star-border'}
+                  size={16}
+                  color="#D4AF37"
+                />
+              ))}
             </View>
-          )}
-        </LinearGradient>
+          </View>
+        )}
+      </View>
     );
   };
 
-  {filteredSessions.map((session) => (
-  <View key={session.id} style={styles.sessionCard}>
-    {renderSessionCard(session)}
-  </View>
-))}
-
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <MaterialIcons name="event-note" size={64} color="#8B7355" />
+      <View style={styles.emptyIconContainer}>
+        <MaterialIcons name="event-note" size={48} color="#8B7355" />
+      </View>
       <Text style={styles.emptyTitle}>
         {selectedFilter === 'upcoming' ? 'No Upcoming Sessions' :
          selectedFilter === 'completed' ? 'No Completed Sessions' :
          selectedFilter === 'cancelled' ? 'No Cancelled Sessions' :
+         selectedFilter === 'pending' ? 'No Pending Sessions' :
          'No Sessions Yet'}
       </Text>
       <Text style={styles.emptySubtitle}>
         {selectedFilter === 'upcoming' ? 'You don\'t have any upcoming sessions scheduled.' :
          selectedFilter === 'completed' ? 'You haven\'t completed any sessions yet.' :
          selectedFilter === 'cancelled' ? 'You don\'t have any cancelled sessions.' :
+         selectedFilter === 'pending' ? 'No sessions waiting for mentor acceptance.' :
          'Start your learning journey by booking a session with a mentor.'}
       </Text>
       {(selectedFilter === 'all' || selectedFilter === 'upcoming') && (
@@ -444,59 +467,45 @@ export default function SessionsScreen() {
           onPress={() => router.push('/(tabs)/search')}
           activeOpacity={0.8}
         >
-          <LinearGradient
-            colors={['#8B4513', '#D2691E']}
-            style={styles.findMentorGradient}
-          >
-            <MaterialIcons name="search" size={20} color="#FFFFFF" />
-            <Text style={styles.findMentorText}>Find a Mentor</Text>
-          </LinearGradient>
+          <Text style={styles.findMentorText}>Find a Mentor</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
+  // FIXED: Simple, elegant stats without colorful boxes
   const renderStatsSection = () => (
     <View style={styles.statsSection}>
       <Text style={styles.statsSectionTitle}>Your Learning Progress</Text>
       
       <View style={styles.statsGrid}>
-        <LinearGradient
-          colors={['#10B981', '#059669']}
-          style={styles.statCard}
-        >
-          <MaterialIcons name="event-available" size={24} color="#FFFFFF" />
+        <View style={styles.statItem}>
           <Text style={styles.statNumber}>{sessionStats.totalSessions}</Text>
           <Text style={styles.statLabel}>Total Sessions</Text>
-        </LinearGradient>
+        </View>
         
-        <LinearGradient
-          colors={['#8B4513', '#D2691E']}
-          style={styles.statCard}
-        >
-          <MaterialIcons name="check-circle" size={24} color="#FFFFFF" />
+        <View style={styles.statItem}>
           <Text style={styles.statNumber}>{sessionStats.completedSessions}</Text>
           <Text style={styles.statLabel}>Completed</Text>
-        </LinearGradient>
+        </View>
         
-        <LinearGradient
-          colors={['#F59E0B', '#D97706']}
-          style={styles.statCard}
-        >
-          <MaterialIcons name="schedule" size={24} color="#FFFFFF" />
+        <View style={styles.statItem}>
           <Text style={styles.statNumber}>{sessionStats.upcomingSessions}</Text>
           <Text style={styles.statLabel}>Upcoming</Text>
-        </LinearGradient>
+        </View>
+        
+        {sessionStats.pendingSessions > 0 && (
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{sessionStats.pendingSessions}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </View>
+        )}
         
         {sessionStats.averageRating && (
-          <LinearGradient
-            colors={['#6366F1', '#4F46E5']}
-            style={styles.statCard}
-          >
-            <MaterialIcons name="star" size={24} color="#FFFFFF" />
+          <View style={styles.statItem}>
             <Text style={styles.statNumber}>{sessionStats.averageRating.toFixed(1)}</Text>
             <Text style={styles.statLabel}>Avg Rating</Text>
-          </LinearGradient>
+          </View>
         )}
       </View>
     </View>
@@ -510,11 +519,12 @@ export default function SessionsScreen() {
         contentContainerStyle={styles.filterScrollContainer}
       >
         {[
-          { key: 'all', label: 'All Sessions', count: sessions.length },
+          { key: 'all', label: 'All', count: sessionStats.totalSessions },
           { key: 'upcoming', label: 'Upcoming', count: sessionStats.upcomingSessions },
+          { key: 'pending', label: 'Pending', count: sessionStats.pendingSessions },
           { key: 'completed', label: 'Completed', count: sessionStats.completedSessions },
-          { key: 'cancelled', label: 'Cancelled', count: sessions.filter(s => s.status === 'cancelled').length },
-        ].map((filter) => (
+          { key: 'cancelled', label: 'Cancelled', count: sessionStats.cancelledSessions },
+        ].filter(filter => filter.count > 0 || filter.key === 'all').map((filter) => (
           <TouchableOpacity
             key={filter.key}
             style={[
@@ -524,29 +534,25 @@ export default function SessionsScreen() {
             onPress={() => setSelectedFilter(filter.key as SessionFilter)}
             activeOpacity={0.8}
           >
-            {selectedFilter === filter.key && (
-              <LinearGradient
-                colors={['#8B4513', '#D2691E']}
-                style={styles.filterTabGradient}
-              />
-            )}
             <Text style={[
               styles.filterTabText,
               selectedFilter === filter.key && styles.filterTabTextActive
             ]}>
               {filter.label}
             </Text>
-            <View style={[
-              styles.filterTabBadge,
-              selectedFilter === filter.key && styles.filterTabBadgeActive
-            ]}>
-              <Text style={[
-                styles.filterTabBadgeText,
-                selectedFilter === filter.key && styles.filterTabBadgeTextActive
+            {filter.count > 0 && (
+              <View style={[
+                styles.filterTabBadge,
+                selectedFilter === filter.key && styles.filterTabBadgeActive
               ]}>
-                {filter.count}
-              </Text>
-            </View>
+                <Text style={[
+                  styles.filterTabBadgeText,
+                  selectedFilter === filter.key && styles.filterTabBadgeTextActive
+                ]}>
+                  {filter.count}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -557,14 +563,8 @@ export default function SessionsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <LinearGradient
-            colors={['#8B4513', '#D2691E']}
-            style={styles.loadingSpinner}
-          >
-            <ActivityIndicator size="large" color="#FFFFFF" />
-          </LinearGradient>
+          <ActivityIndicator size="large" color="#8B4513" />
           <Text style={styles.loadingText}>Loading your sessions...</Text>
-          <Text style={styles.loadingSubtext}>Please wait while we fetch your learning progress</Text>
         </View>
       </SafeAreaView>
     );
@@ -573,15 +573,12 @@ export default function SessionsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <LinearGradient
-        colors={['#FFFFFF', '#F8F3EE']}
-        style={styles.header}
-      >
+      <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>My Sessions</Text>
             <Text style={styles.headerSubtitle}>
-              Track your learning journey and upcoming sessions
+              Track your learning journey
             </Text>
           </View>
           
@@ -590,15 +587,10 @@ export default function SessionsScreen() {
             onPress={() => router.push('/(tabs)/search')}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={['#8B4513', '#D2691E']}
-              style={styles.headerActionGradient}
-            >
-              <MaterialIcons name="add" size={20} color="#FFFFFF" />
-            </LinearGradient>
+            <MaterialIcons name="add" size={24} color="#8B4513" />
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
 
       <ScrollView
         style={styles.scrollContainer}
@@ -629,6 +621,7 @@ export default function SessionsScreen() {
                 {selectedFilter === 'all' ? 'All Sessions' :
                  selectedFilter === 'upcoming' ? 'Upcoming Sessions' :
                  selectedFilter === 'completed' ? 'Completed Sessions' :
+                 selectedFilter === 'pending' ? 'Pending Sessions' :
                  'Cancelled Sessions'} ({filteredSessions.length})
               </Text>
               
@@ -637,7 +630,6 @@ export default function SessionsScreen() {
           )}
         </View>
 
-        {/* Bottom Spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </SafeAreaView>
@@ -657,45 +649,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  loadingSpinner: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
   loadingText: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
-    color: '#2A2A2A',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  loadingSubtext: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#8B7355',
+    marginTop: 16,
     textAlign: 'center',
-    lineHeight: 20,
   },
 
   // Header
   header: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: isTablet ? 32 : 20,
     paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E8DDD1',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
   },
   headerContent: {
     flexDirection: 'row',
@@ -714,28 +681,16 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#8B7355',
-    lineHeight: 20,
   },
   headerAction: {
-    borderRadius: 25,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#8B4513',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  headerActionGradient: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F8F3EE',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8DDD1',
   },
 
   // Scroll Container
@@ -746,59 +701,42 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
 
-  // Stats Section
+  // FIXED: Simple elegant stats without colorful boxes
   statsSection: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: isTablet ? 32 : 20,
     paddingVertical: 24,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
   statsSectionTitle: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#2A2A2A',
-    marginBottom: 16,
+    marginBottom: 20,
     textAlign: 'center',
   },
   statsGrid: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
   },
-  statCard: {
-    width: isTablet ? '23%' : '48%',
-    aspectRatio: 1,
-    borderRadius: 16,
-    padding: 16,
+  statItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    minWidth: '20%',
+    marginBottom: 16,
   },
   statNumber: {
-    fontSize: isTablet ? 32 : 28,
+    fontSize: isTablet ? 28 : 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginTop: 8,
+    color: '#8B4513',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: '#FFFFFF',
+    color: '#8B7355',
+    fontWeight: '500',
     textAlign: 'center',
-    fontWeight: '600',
-    opacity: 0.9,
   },
 
   // Filter Tabs
@@ -813,58 +751,39 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   filterTab: {
-    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#F8F3EE',
     borderWidth: 1,
     borderColor: '#E8DDD1',
-    overflow: 'hidden',
   },
   filterTabActive: {
+    backgroundColor: '#8B4513',
     borderColor: '#8B4513',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#8B4513',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  filterTabGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   filterTabText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#8B4513',
-    marginRight: 8,
   },
   filterTabTextActive: {
     color: '#FFFFFF',
   },
   filterTabBadge: {
     backgroundColor: '#E8DDD1',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
+    marginLeft: 6,
   },
   filterTabBadgeActive: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   filterTabBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
     color: '#8B4513',
   },
@@ -878,77 +797,84 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   sessionsListTitle: {
-    fontSize: isTablet ? 20 : 18,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#2A2A2A',
     marginBottom: 16,
   },
 
-  // Session Card
+  // FIXED: Clean, elegant session cards
   sessionCard: {
-    borderRadius: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E8DDD1',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 2,
       },
     }),
   },
-  sessionCardGradient: {
-    padding: 20,
-  },
   sessionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sessionHeaderLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
   },
-  mentorAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  avatarContainer: {
     marginRight: 12,
+  },
+  mentorAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#E8DDD1',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
   },
   sessionHeaderInfo: {
     flex: 1,
+    paddingTop: 2,
   },
   sessionMentorName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#2A2A2A',
     marginBottom: 2,
   },
   sessionSubject: {
     fontSize: 14,
     color: '#8B7355',
-    fontWeight: '500',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  sessionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sessionMetaText: {
+    fontSize: 12,
+    color: '#8B7355',
+    marginLeft: 4,
   },
   sessionStatusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 69, 19, 0.2)',
+    marginTop: 2,
   },
   sessionStatus: {
     fontSize: 12,
@@ -958,18 +884,23 @@ const styles = StyleSheet.create({
 
   // Session Details
   sessionDetails: {
-    marginBottom: 16,
-    paddingHorizontal: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
   },
   sessionDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginRight: 20,
+    marginBottom: 4,
   },
   sessionDetailText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#8B7355',
-    marginLeft: 8,
+    marginLeft: 6,
     fontWeight: '500',
   },
 
@@ -978,6 +909,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
   },
   actionButton: {
     flexDirection: 'row',
@@ -988,26 +922,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   joinButton: {
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#10B981',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  actionButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
   },
   joinButtonText: {
     fontSize: 14,
@@ -1015,24 +931,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 6,
   },
-  rateButton: {
+  secondaryButton: {
     backgroundColor: '#FEF3C7',
     borderColor: '#F59E0B',
   },
-  rateButtonText: {
+  secondaryButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#F59E0B',
-    marginLeft: 6,
-  },
-  rescheduleButton: {
-    backgroundColor: '#F8F3EE',
-    borderColor: '#8B4513',
-  },
-  rescheduleButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8B4513',
     marginLeft: 6,
   },
   cancelButton: {
@@ -1050,13 +956,13 @@ const styles = StyleSheet.create({
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: '#F5F5F5',
   },
   ratingLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#8B7355',
     marginRight: 8,
     fontWeight: '500',
@@ -1072,47 +978,39 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     paddingHorizontal: 40,
   },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F8F3EE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   emptyTitle: {
-    fontSize: isTablet ? 22 : 20,
-    fontWeight: 'bold',
+    fontSize: isTablet ? 20 : 18,
+    fontWeight: '600',
     color: '#2A2A2A',
-    marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#8B7355',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
+    lineHeight: 20,
+    marginBottom: 24,
   },
   findMentorButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#8B4513',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  findMentorGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: '#8B4513',
     paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
   findMentorText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#FFFFFF',
-    marginLeft: 8,
   },
 
   // Bottom Spacing

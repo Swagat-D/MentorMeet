@@ -1,6 +1,7 @@
-// backend/src/services/booking.service.ts - Core Booking Logic
+// backend/src/services/booking.service.ts - Updated with Real Email Service
 import User, { IUser } from '../models/User.model';
 import { Session } from '../models/Session.model';
+import emailService from './email.service';
 
 interface TimeSlot {
   id: string;
@@ -21,6 +22,693 @@ interface BookingValidation {
   mentorName?: string;
   studentName?: string;
   mentorTimezone?: string;
+}
+
+// Payment Service (Mock - as requested)
+interface PaymentRequest {
+  amount: number;
+  currency: string;
+  paymentMethodId: string;
+  description: string;
+  metadata?: any;
+}
+
+interface PaymentResponse {
+  success: boolean;
+  paymentId?: string;
+  error?: string;
+}
+
+class PaymentService {
+  async processPayment(paymentData: PaymentRequest): Promise<PaymentResponse> {
+    try {
+      console.log('💳 Processing payment:', {
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        description: paymentData.description
+      });
+
+      // Validate payment method ID format
+      if (!paymentData.paymentMethodId || paymentData.paymentMethodId.length < 10) {
+        return {
+          success: false,
+          error: 'Invalid payment method. Please check your payment details.'
+        };
+      }
+
+      // Validate amount
+      if (paymentData.amount <= 0) {
+        return {
+          success: false,
+          error: 'Invalid payment amount.'
+        };
+      }
+
+      // Simulate payment processing delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Simulate 95% success rate
+      const isSuccessful = Math.random() > 0.05;
+      
+      if (isSuccessful) {
+        const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        console.log('✅ Payment processed successfully:', paymentId);
+        return { success: true, paymentId };
+      } else {
+        const errors = [
+          'Payment was declined by your bank.',
+          'Insufficient funds in your account.',
+          'Your card has expired.',
+          'Payment processing failed.'
+        ];
+        
+        const error = errors[Math.floor(Math.random() * errors.length)];
+        console.log('❌ Payment failed:', error);
+        return { success: false, error };
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Payment processing error:', error);
+      return {
+        success: false,
+        error: 'Payment processing failed due to a technical error.'
+      };
+    }
+  }
+
+  async refundPayment(paymentId: string, amount?: number): Promise<PaymentResponse> {
+    try {
+      console.log('💰 Processing refund:', { paymentId, amount });
+
+      if (!paymentId || !paymentId.startsWith('pay_')) {
+        return { success: false, error: 'Invalid payment ID for refund.' };
+      }
+
+      // Simulate refund processing
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const refundId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('✅ Refund processed:', refundId);
+      
+      return { success: true, paymentId: refundId };
+      
+    } catch (error: any) {
+      console.error('❌ Refund processing error:', error);
+      return { success: false, error: 'Refund processing failed.' };
+    }
+  }
+
+  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
+    try {
+      return paymentMethodId.startsWith('pm_') && paymentMethodId.length > 10;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// Real Notification Service using Email Service
+class NotificationService {
+  /**
+   * Send booking confirmation emails to both mentor and student
+   */
+  async sendBookingConfirmation(data: {
+    sessionId: string;
+    mentorEmail: string;
+    studentEmail: string;
+    mentorName: string;
+    studentName: string;
+    subject: string;
+    scheduledTime: string;
+    duration: number;
+    sessionType: string;
+    amount: string;
+  }): Promise<void> {
+    try {
+      console.log('📧 Sending booking confirmation emails...');
+
+      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      // Email to student
+      const studentEmailData = {
+        isForMentor: false,
+        mentorName: data.mentorName,
+        studentName: data.studentName,
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        duration: data.duration,
+        amount: data.amount,
+      };
+
+      // Email to mentor
+      const mentorEmailData = {
+        isForMentor: true,
+        mentorName: data.mentorName,
+        studentName: data.studentName,
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        duration: data.duration,
+        amount: data.amount,
+      };
+
+      // Send emails using the real email service
+      const [studentResult, mentorResult] = await Promise.all([
+        this.sendBookingEmail(data.studentEmail, studentEmailData),
+        this.sendBookingEmail(data.mentorEmail, mentorEmailData)
+      ]);
+
+      if (studentResult.success) {
+        console.log('✅ Booking confirmation email sent to student:', data.studentEmail);
+      } else {
+        console.error('❌ Failed to send booking email to student:', studentResult.error);
+      }
+
+      if (mentorResult.success) {
+        console.log('✅ Booking confirmation email sent to mentor:', data.mentorEmail);
+      } else {
+        console.error('❌ Failed to send booking email to mentor:', mentorResult.error);
+      }
+
+    } catch (error) {
+      console.error('❌ Error sending booking confirmation emails:', error);
+    }
+  }
+
+  /**
+   * Send session acceptance notification (when mentor accepts)
+   */
+  async sendSessionAcceptanceNotification(data: {
+    sessionId: string;
+    mentorId: string;
+    studentId: string;
+    mentorEmail: string;
+    studentEmail: string;
+    mentorName: string;
+    studentName: string;
+    subject: string;
+    scheduledTime: string;
+    duration: number;
+    meetingLink: string;
+  }): Promise<void> {
+    try {
+      console.log('📧 Sending session acceptance notifications...');
+
+      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      // Email to student (session confirmed with meeting link)
+      const studentEmailData = {
+        isForMentor: false,
+        mentorName: data.mentorName,
+        studentName: data.studentName,
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        duration: data.duration,
+        meetingLink: data.meetingLink,
+      };
+
+      // Email to mentor (confirmation that they accepted)
+      const mentorEmailData = {
+        isForMentor: true,
+        mentorName: data.mentorName,
+        studentName: data.studentName,
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        duration: data.duration,
+        meetingLink: data.meetingLink,
+      };
+
+      // Send emails
+      const [studentResult, mentorResult] = await Promise.all([
+        this.sendBookingEmail(data.studentEmail, studentEmailData),
+        this.sendBookingEmail(data.mentorEmail, mentorEmailData)
+      ]);
+
+      if (studentResult.success) {
+        console.log('✅ Session acceptance email sent to student:', data.studentEmail);
+      } else {
+        console.error('❌ Failed to send acceptance email to student:', studentResult.error);
+      }
+
+      if (mentorResult.success) {
+        console.log('✅ Session acceptance email sent to mentor:', data.mentorEmail);
+      } else {
+        console.error('❌ Failed to send acceptance email to mentor:', mentorResult.error);
+      }
+
+    } catch (error) {
+      console.error('❌ Error sending session acceptance notifications:', error);
+    }
+  }
+
+  /**
+   * Send cancellation notification
+   */
+  async sendCancellationNotification(data: {
+    sessionId: string;
+    mentorEmail: string;
+    studentEmail: string;
+    mentorName: string;
+    studentName: string;
+    subject: string;
+    scheduledTime: string;
+    cancelledBy: string;
+    reason: string;
+    refundAmount: number;
+  }): Promise<void> {
+    try {
+      console.log('📧 Sending cancellation notifications...');
+
+      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      const cancellationData = {
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        cancelledBy: data.cancelledBy,
+        reason: data.reason,
+        refundAmount: data.refundAmount,
+      };
+
+      // Send emails to both parties
+      const [studentResult, mentorResult] = await Promise.all([
+        this.sendCancellationEmail(data.studentEmail, cancellationData),
+        this.sendCancellationEmail(data.mentorEmail, cancellationData)
+      ]);
+
+      if (studentResult.success) {
+        console.log('✅ Cancellation email sent to student:', data.studentEmail);
+      } else {
+        console.error('❌ Failed to send cancellation email to student:', studentResult.error);
+      }
+
+      if (mentorResult.success) {
+        console.log('✅ Cancellation email sent to mentor:', data.mentorEmail);
+      } else {
+        console.error('❌ Failed to send cancellation email to mentor:', mentorResult.error);
+      }
+
+    } catch (error) {
+      console.error('❌ Error sending cancellation notifications:', error);
+    }
+  }
+
+  /**
+   * Send auto-cancellation notification (when mentor doesn't respond)
+   */
+  async sendAutoCancellationNotification(data: {
+    sessionId: string;
+    mentorEmail: string;
+    studentEmail: string;
+    mentorName: string;
+    studentName: string;
+    subject: string;
+    scheduledTime: string;
+    refundAmount: number;
+  }): Promise<void> {
+    try {
+      console.log('📧 Sending auto-cancellation notifications...');
+
+      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      const cancellationData = {
+        subject: data.subject,
+        sessionDate,
+        sessionTime,
+        cancelledBy: 'system',
+        reason: 'Mentor did not accept within the required timeframe',
+        refundAmount: data.refundAmount,
+      };
+
+      // Send emails to both parties
+      const [studentResult, mentorResult] = await Promise.all([
+        this.sendCancellationEmail(data.studentEmail, cancellationData),
+        this.sendCancellationEmail(data.mentorEmail, cancellationData)
+      ]);
+
+      if (studentResult.success) {
+        console.log('✅ Auto-cancellation email sent to student:', data.studentEmail);
+      } else {
+        console.error('❌ Failed to send auto-cancellation email to student:', studentResult.error);
+      }
+
+      if (mentorResult.success) {
+        console.log('✅ Auto-cancellation email sent to mentor:', data.mentorEmail);
+      } else {
+        console.error('❌ Failed to send auto-cancellation email to mentor:', mentorResult.error);
+      }
+
+    } catch (error) {
+      console.error('❌ Error sending auto-cancellation notifications:', error);
+    }
+  }
+
+  /**
+   * Helper method to send booking email using email service
+   */
+  private async sendBookingEmail(email: string, data: any): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Use the private method from email service (we'll call it directly)
+      const mailOptions = {
+        from: {
+          name: 'MentorMatch',
+          address: process.env.EMAIL_FROM || 'noreply@mentormatch.com',
+        },
+        to: email,
+        subject: data.isForMentor ? `New Session Booked: ${data.subject}` : `Booking Confirmed: ${data.subject}`,
+        html: this.getBookingConfirmationHTML(data),
+        text: this.getBookingConfirmationText(data),
+      };
+
+      // Direct transporter usage - you might need to access emailService.transporter
+      // For now, let's use a simple approach
+      return await this.sendEmailDirect(mailOptions);
+
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Helper method to send cancellation email
+   */
+  private async sendCancellationEmail(email: string, data: any): Promise<{ success: boolean; error?: string }> {
+    try {
+      const mailOptions = {
+        from: {
+          name: 'MentorMatch',
+          address: process.env.EMAIL_FROM || 'noreply@mentormatch.com',
+        },
+        to: email,
+        subject: `Session Cancelled: ${data.subject}`,
+        html: this.getCancellationHTML(data),
+        text: this.getCancellationText(data),
+      };
+
+      return await this.sendEmailDirect(mailOptions);
+
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Direct email sending method
+   */
+  private async sendEmailDirect(mailOptions: any): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Import nodemailer dynamically to avoid circular dependencies
+      const nodemailer = require('nodemailer');
+      
+      // Create transporter (use the same config as email service)
+      const transporter = nodemailer.createTransporter({
+        service: process.env.EMAIL_SERVICE || 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      const result = await transporter.sendMail(mailOptions);
+      
+      return {
+        success: true,
+      };
+    } catch (error: any) {
+      console.error('❌ Failed to send email:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get booking confirmation HTML template
+   */
+  private getBookingConfirmationHTML(data: any): string {
+    const isForMentor = data.isForMentor;
+    const recipientName = isForMentor ? data.mentorName : data.studentName;
+    const otherPartyName = isForMentor ? data.studentName : data.mentorName;
+    
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${isForMentor ? 'New Session Booked' : 'Booking Confirmed'}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0; }
+    .content { padding: 30px 20px; }
+    .details { background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0; }
+    .meeting-link { background: #10B981; color: white; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
+    .footer { background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">
+        ${isForMentor ? '👨‍🏫 New Session Booked!' : '📺 Booking Confirmed!'}
+      </h1>
+      <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">
+        ${isForMentor ? 'A student has scheduled a session with you' : 'Your session has been confirmed'}
+      </p>
+    </div>
+    
+    <div class="content">
+      <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${recipientName},</p>
+      
+      <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
+        ${isForMentor 
+          ? 'Great news! A new mentoring session has been booked. Here are the details:' 
+          : 'Your mentoring session has been confirmed! Here are all the details you need:'
+        }
+      </p>
+      
+      <div class="details">
+        <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">📚 Session Details</h3>
+        
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #2A2A2A;">${isForMentor ? 'Student' : 'Mentor'}:</strong> 
+          <span style="color: #8B4513; font-weight: 600;">${otherPartyName}</span>
+        </div>
+        
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #2A2A2A;">Subject:</strong> 
+          <span style="color: #2A2A2A;">${data.subject}</span>
+        </div>
+        
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #2A2A2A;">Date:</strong> 
+          <span style="color: #2A2A2A;">${data.sessionDate}</span>
+        </div>
+        
+        <div style="margin-bottom: 12px;">
+          <strong style="color: #2A2A2A;">Time:</strong> 
+          <span style="color: #2A2A2A;">${data.sessionTime}</span>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+          <strong style="color: #2A2A2A;">Duration:</strong> 
+          <span style="color: #2A2A2A;">${data.duration} minutes</span>
+        </div>
+        
+        ${data.meetingLink ? `
+        <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+          <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Meeting Link:</strong>
+          <a href="${data.meetingLink}" 
+             style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
+                    color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
+                    font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+            🚀 Join Meeting Now
+          </a>
+        </div>
+        ` : `
+        <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+          <p style="color: #F59E0B; font-weight: 600; margin: 0;">
+            ⏳ ${isForMentor ? 'Please accept this session and provide a meeting link' : 'Waiting for mentor to accept and provide meeting link'}
+          </p>
+        </div>
+        `}
+      </div>
+      
+      <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
+        ${isForMentor 
+          ? 'Thank you for sharing your expertise and helping students learn! 🌟' 
+          : 'Looking forward to your learning session! 🚀'
+        }
+      </p>
+      
+      <p style="font-size: 16px; color: #2A2A2A;">
+        Best regards,<br>
+        <strong style="color: #8B4513;">The MentorMatch Team</strong>
+      </p>
+    </div>
+    
+    <div class="footer">
+      <p style="color: #8B7355; font-size: 12px; margin: 0;">
+        © 2024 MentorMatch. All rights reserved.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
+  }
+
+  /**
+   * Get booking confirmation text template
+   */
+  private getBookingConfirmationText(data: any): string {
+    const isForMentor = data.isForMentor;
+    const recipientName = isForMentor ? data.mentorName : data.studentName;
+    const otherPartyName = isForMentor ? data.studentName : data.mentorName;
+    
+    return `
+Hi ${recipientName},
+
+${isForMentor ? 'Great news! A new session has been booked.' : 'Your session has been confirmed!'}
+
+Session Details:
+- ${isForMentor ? 'Student' : 'Mentor'}: ${otherPartyName}
+- Subject: ${data.subject}
+- Date: ${data.sessionDate}
+- Time: ${data.sessionTime}
+- Duration: ${data.duration} minutes
+${data.meetingLink ? `- Meeting Link: ${data.meetingLink}` : ''}
+
+${isForMentor ? 'Thank you for sharing your expertise!' : 'Looking forward to your learning session!'}
+
+Best regards,
+The MentorMatch Team
+    `.trim();
+  }
+
+  /**
+   * Get cancellation HTML template
+   */
+  private getCancellationHTML(data: any): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Session Cancelled</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; }
+    .container { max-width: 600px; margin: 0 auto; background: white; }
+    .header { background: #DC2626; color: white; padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0; }
+    .content { padding: 30px 20px; }
+    .details { background: #FEF2F2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #DC2626; }
+    .footer { background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0;">❌ Session Cancelled</h1>
+    </div>
+    
+    <div class="content">
+      <p>Hi there,</p>
+      <p>The following session has been cancelled:</p>
+      
+      <div class="details">
+        <p><strong>Subject:</strong> ${data.subject}</p>
+        <p><strong>Date:</strong> ${data.sessionDate}</p>
+        <p><strong>Time:</strong> ${data.sessionTime}</p>
+        <p><strong>Cancelled by:</strong> ${data.cancelledBy}</p>
+        <p><strong>Reason:</strong> ${data.reason}</p>
+      </div>
+      
+      ${data.refundAmount > 0 ? `<p>💰 A refund of ₹${data.refundAmount} will be processed within 3-5 business days.</p>` : ''}
+      
+      <p>We apologize for any inconvenience.</p>
+    </div>
+    
+    <div class="footer">
+      <p>© 2024 MentorMatch. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
+  }
+
+  /**
+   * Get cancellation text template
+   */
+  private getCancellationText(data: any): string {
+    return `
+Hi there,
+
+The following session has been cancelled:
+
+Subject: ${data.subject}
+Date: ${data.sessionDate}
+Time: ${data.sessionTime}
+Cancelled by: ${data.cancelledBy}
+Reason: ${data.reason}
+
+${data.refundAmount > 0 ? `A refund of ₹${data.refundAmount} will be processed within 3-5 business days.` : ''}
+
+We apologize for any inconvenience.
+
+Best regards,
+MentorMatch Team
+    `.trim();
+  }
 }
 
 class BookingService {
@@ -286,819 +974,6 @@ class BookingService {
     } catch (error: any) {
       console.error('❌ Error validating time slot:', error);
       return { isValid: false, message: 'Time slot validation failed' };
-    }
-  }
-}
-
-// backend/src/services/payment.service.ts - Payment Processing
-interface PaymentRequest {
-  amount: number;
-  currency: string;
-  paymentMethodId: string;
-  description: string;
-  metadata?: any;
-}
-
-interface PaymentResponse {
-  success: boolean;
-  paymentId?: string;
-  error?: string;
-}
-
-class PaymentService {
-  /**
-   * Process payment for booking
-   */
-  async processPayment(paymentData: PaymentRequest): Promise<PaymentResponse> {
-    try {
-      console.log('💳 Processing payment:', {
-        amount: paymentData.amount,
-        currency: paymentData.currency,
-        description: paymentData.description,
-      });
-
-      // Simulate payment processing
-      // In production, integrate with Stripe, PayPal, Razorpay, etc.
-      
-      // Mock payment processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate payment success (90% success rate)
-      const isSuccessful = Math.random() > 0.1;
-      
-      if (isSuccessful) {
-        const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        console.log('✅ Payment processed successfully:', paymentId);
-        
-        return {
-          success: true,
-          paymentId,
-        };
-      } else {
-        console.log('❌ Payment processing failed');
-        
-        return {
-          success: false,
-          error: 'Payment was declined by your bank. Please try a different payment method.',
-        };
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Payment processing error:', error);
-      return {
-        success: false,
-        error: 'Payment processing failed due to a technical error. Please try again.',
-      };
-    }
-  }
-
-  /**
-   * Refund a payment
-   */
-  async refundPayment(paymentId: string, amount?: number): Promise<PaymentResponse> {
-    try {
-      console.log('💰 Processing refund:', { paymentId, amount });
-
-      // Simulate refund processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const refundId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log('✅ Refund processed:', refundId);
-      
-      return {
-        success: true,
-        paymentId: refundId,
-      };
-      
-    } catch (error: any) {
-      console.error('❌ Refund processing error:', error);
-      return {
-        success: false,
-        error: 'Refund processing failed',
-      };
-    }
-  }
-
-  /**
-   * Validate payment method
-   */
-  async validatePaymentMethod(paymentMethodId: string): Promise<boolean> {
-    try {
-      // Mock validation
-      return paymentMethodId.startsWith('pm_') && paymentMethodId.length > 10;
-    } catch {
-      return false;
-    }
-  }
-}
-
-// backend/src/services/notification.service.ts - Notification & Email Service
-interface NotificationData {
-  sessionId: string;
-  mentorId: string;
-  studentId: string;
-  mentorEmail: string;
-  studentEmail: string;
-  mentorName: string;
-  studentName: string;
-  subject: string;
-  scheduledTime: string;
-  duration: number;
-  meetingLink?: string;
-  sessionType: string;
-}
-
-class NotificationService {
-  /**
-   * Setup session reminders
-   */
-  async setupSessionReminders(data: NotificationData): Promise<void> {
-    try {
-      console.log('🔔 Setting up session reminders for:', data.sessionId);
-
-      const scheduledTime = new Date(data.scheduledTime);
-      
-      // Calculate reminder times
-      const reminders = [
-        { time: new Date(scheduledTime.getTime() - 24 * 60 * 60 * 1000), type: 'email', label: '24 hours' },
-        { time: new Date(scheduledTime.getTime() - 60 * 60 * 1000), type: 'email', label: '1 hour' },
-        { time: new Date(scheduledTime.getTime() - 15 * 60 * 1000), type: 'push', label: '15 minutes' },
-        { time: new Date(scheduledTime.getTime() - 5 * 60 * 1000), type: 'push', label: '5 minutes' },
-      ];
-
-      // Filter out past reminders
-      const now = new Date();
-      const futureReminders = reminders.filter(reminder => reminder.time > now);
-
-      // Schedule reminders (in production, use a job queue like Bull or Agenda)
-      for (const reminder of futureReminders) {
-        setTimeout(() => {
-          this.sendReminder(data, reminder.type, reminder.label);
-        }, reminder.time.getTime() - now.getTime());
-      }
-
-      console.log(`✅ ${futureReminders.length} reminders scheduled for session ${data.sessionId}`);
-
-    } catch (error) {
-      console.error('❌ Error setting up reminders:', error);
-    }
-  }
-
-  /**
- * Send meeting link email to both participants
- */
-async sendMeetingLinkEmail(emailData: {
-  mentorEmail: string;
-  studentEmail: string;
-  mentorName: string;
-  studentName: string;
-  subject: string;
-  sessionDate: string;
-  sessionTime: string;
-  meetingLink: string;
-  sessionId: string;
-  calendarEventId: string;
-}): Promise<void> {
-  try {
-    console.log('📧 Sending meeting link emails...');
-
-    // Email to student
-    const studentEmail = {
-      to: emailData.studentEmail,
-      subject: `Your Google Meet Link: ${emailData.subject} with ${emailData.mentorName}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-          <!-- Header -->
-          <div style="background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">📺 Your Google Meet is Ready!</h1>
-            <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">Session successfully scheduled</p>
-          </div>
-          
-          <!-- Content -->
-          <div style="padding: 30px 20px;">
-            <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${emailData.studentName},</p>
-            
-            <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
-              Your mentoring session has been confirmed! Here are all the details you need:
-            </p>
-            
-            <!-- Session Details Card -->
-            <div style="background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0;">
-              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">📚 Session Details</h3>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Mentor:</strong> 
-                <span style="color: #8B4513; font-weight: 600;">${emailData.mentorName}</span>
-              </div>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Subject:</strong> 
-                <span style="color: #2A2A2A;">${emailData.subject}</span>
-              </div>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Date:</strong> 
-                <span style="color: #2A2A2A;">${emailData.sessionDate}</span>
-              </div>
-              
-              <div style="margin-bottom: 15px;">
-                <strong style="color: #2A2A2A;">Time:</strong> 
-                <span style="color: #2A2A2A;">${emailData.sessionTime}</span>
-              </div>
-              
-              <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
-                <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Google Meet Link:</strong>
-                <a href="${emailData.meetingLink}" 
-                   style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
-                          color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
-                          font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
-                  🚀 Join Meeting Now
-                </a>
-                <p style="font-size: 12px; color: #8B7355; margin: 8px 0 0 0;">
-                  Link: <span style="word-break: break-all;">${emailData.meetingLink}</span>
-                </p>
-              </div>
-            </div>
-            
-            <!-- Instructions -->
-            <div style="background: #E8F5E8; border-left: 4px solid #10B981; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-              <h4 style="color: #166534; margin: 0 0 12px 0; font-size: 16px;">📋 What to do next:</h4>
-              <ul style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.6;">
-                <li>Click the meeting link 2-3 minutes before your session</li>
-                <li>Test your camera and microphone beforehand</li>
-                <li>Prepare any questions or materials you want to discuss</li>
-                <li>Find a quiet space with good internet connection</li>
-                <li>This event has been added to your Google Calendar</li>
-              </ul>
-            </div>
-            
-            <!-- Support -->
-            <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-              <p style="color: #92400E; margin: 0; font-size: 14px;">
-                <strong>Need help?</strong> Contact our support team if you have any technical issues.
-              </p>
-            </div>
-            
-            <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
-              Looking forward to your learning session! 🚀
-            </p>
-            
-            <p style="font-size: 16px; color: #2A2A2A;">
-              Best regards,<br>
-              <strong style="color: #8B4513;">The MentorMatch Team</strong>
-            </p>
-          </div>
-          
-          <!-- Footer -->
-          <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
-            <p style="color: #8B7355; font-size: 12px; margin: 0;">
-              Session ID: ${emailData.sessionId} | Calendar Event: ${emailData.calendarEventId}
-            </p>
-          </div>
-        </div>
-      `,
-    };
-
-    // Email to mentor
-    const mentorEmail = {
-      to: emailData.mentorEmail,
-      subject: `New Session Scheduled: ${emailData.subject} with ${emailData.studentName}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-          <!-- Header -->
-          <div style="background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">👨‍🏫 New Session Booked!</h1>
-            <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">A student has scheduled a session with you</p>
-          </div>
-          
-          <!-- Content -->
-          <div style="padding: 30px 20px;">
-            <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${emailData.mentorName},</p>
-            
-            <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
-              Great news! A new mentoring session has been scheduled. Here are the details:
-            </p>
-            
-            <!-- Session Details Card -->
-            <div style="background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0;">
-              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">📚 Session Details</h3>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Student:</strong> 
-                <span style="color: #8B4513; font-weight: 600;">${emailData.studentName}</span>
-              </div>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Subject:</strong> 
-                <span style="color: #2A2A2A;">${emailData.subject}</span>
-              </div>
-              
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #2A2A2A;">Date:</strong> 
-                <span style="color: #2A2A2A;">${emailData.sessionDate}</span>
-              </div>
-              
-              <div style="margin-bottom: 15px;">
-                <strong style="color: #2A2A2A;">Time:</strong> 
-                <span style="color: #2A2A2A;">${emailData.sessionTime}</span>
-              </div>
-              
-              <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
-                <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Google Meet Link:</strong>
-                <a href="${emailData.meetingLink}" 
-                   style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
-                          color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
-                          font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
-                  🚀 Join Meeting Now
-                </a>
-                <p style="font-size: 12px; color: #8B7355; margin: 8px 0 0 0;">
-                  Link: <span style="word-break: break-all;">${emailData.meetingLink}</span>
-                </p>
-              </div>
-            </div>
-            
-            <!-- Mentor Instructions -->
-            <div style="background: #E8F5E8; border-left: 4px solid #10B981; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-              <h4 style="color: #166534; margin: 0 0 12px 0; font-size: 16px;">👨‍🏫 Preparation checklist:</h4>
-              <ul style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.6;">
-                <li>Review the session subject and prepare relevant materials</li>
-                <li>Test your audio/video setup 10 minutes early</li>
-                <li>Join the meeting 2-3 minutes before the scheduled time</li>
-                <li>Prepare a welcoming introduction for the student</li>
-                <li>This event has been added to your Google Calendar with reminders</li>
-              </ul>
-            </div>
-            
-            <!-- Earnings -->
-            <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-              <p style="color: #92400E; margin: 0; font-size: 14px;">
-                <strong>💰 Earnings:</strong> Payment will be processed after the session is completed successfully.
-              </p>
-            </div>
-            
-            <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
-              Thank you for sharing your expertise and helping students learn! 🌟
-            </p>
-            
-            <p style="font-size: 16px; color: #2A2A2A;">
-              Best regards,<br>
-              <strong style="color: #8B4513;">The MentorMatch Team</strong>
-            </p>
-          </div>
-          
-          <!-- Footer -->
-          <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
-            <p style="color: #8B7355; font-size: 12px; margin: 0;">
-              Session ID: ${emailData.sessionId} | Calendar Event: ${emailData.calendarEventId}
-            </p>
-          </div>
-        </div>
-      `,
-    };
-
-    // Send emails (implement actual email sending)
-    await this.sendEmail(studentEmail);
-    await this.sendEmail(mentorEmail);
-
-    console.log('✅ Meeting link emails sent successfully');
-
-  } catch (error) {
-    console.error('❌ Error sending meeting link emails:', error);
-  }
-}
-
-  /**
-   * Send booking confirmation emails
-   */
-  async sendBookingConfirmation(data: any): Promise<void> {
-    try {
-      console.log('📧 Sending booking confirmation emails...');
-
-      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-      // Email to student
-      const studentEmail = {
-        to: data.studentEmail,
-        subject: `Booking Confirmed: ${data.subject} with ${data.mentorName}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #8B4513;">Session Booking Confirmed! 🎉</h2>
-            
-            <p>Hi ${data.studentName},</p>
-            
-            <p>Your mentoring session has been successfully booked. Here are the details:</p>
-            
-            <div style="background: #F8F3EE; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #8B4513;">Session Details</h3>
-              <p><strong>Mentor:</strong> ${data.mentorName}</p>
-              <p><strong>Subject:</strong> ${data.subject}</p>
-              <p><strong>Date:</strong> ${sessionDate}</p>
-              <p><strong>Time:</strong> ${sessionTime}</p>
-              <p><strong>Duration:</strong> ${data.duration} minutes</p>
-              <p><strong>Type:</strong> ${data.sessionType.toUpperCase()} Session</p>
-              ${data.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${data.meetingLink}">${data.meetingLink}</a></p>` : ''}
-            </div>
-            
-            <div style="background: #E8F5E8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <h4 style="margin-top: 0; color: #166534;">What's Next?</h4>
-              <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>You'll receive reminder emails 24 hours and 1 hour before your session</li>
-                <li>The meeting link is ready to use at the scheduled time</li>
-                <li>Check your calendar - we've added this event automatically</li>
-                <li>Prepare any questions or materials you'd like to discuss</li>
-              </ul>
-            </div>
-            
-            <p>If you need to reschedule or cancel, please do so at least 24 hours in advance for a full refund.</p>
-            
-            <p>Looking forward to your learning session!</p>
-            
-            <p>Best regards,<br>The Mentoring Team</p>
-          </div>
-        `,
-      };
-
-      // Email to mentor
-      const mentorEmail = {
-        to: data.mentorEmail,
-        subject: `New Session Booked: ${data.subject} with ${data.studentName}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #8B4513;">New Session Booked! 📚</h2>
-            
-            <p>Hi ${data.mentorName},</p>
-            
-            <p>You have a new mentoring session booked. Here are the details:</p>
-            
-            <div style="background: #F8F3EE; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #8B4513;">Session Details</h3>
-              <p><strong>Student:</strong> ${data.studentName}</p>
-              <p><strong>Subject:</strong> ${data.subject}</p>
-              <p><strong>Date:</strong> ${sessionDate}</p>
-              <p><strong>Time:</strong> ${sessionTime}</p>
-              <p><strong>Duration:</strong> ${data.duration} minutes</p>
-              <p><strong>Type:</strong> ${data.sessionType.toUpperCase()} Session</p>
-              <p><strong>Amount:</strong> ${data.amount}</p>
-              ${data.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${data.meetingLink}">${data.meetingLink}</a></p>` : ''}
-            </div>
-            
-            <div style="background: #E8F5E8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <h4 style="margin-top: 0; color: #166534;">Preparation Reminders</h4>
-              <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>Review the subject material beforehand</li>
-                <li>Prepare teaching materials or resources</li>
-                <li>Test your audio/video setup before the session</li>
-                <li>Join the meeting a few minutes early</li>
-              </ul>
-            </div>
-            
-            <p>This event has been added to your calendar with reminders set.</p>
-            
-            <p>Thank you for sharing your expertise!</p>
-            
-            <p>Best regards,<br>The Mentoring Team</p>
-          </div>
-        `,
-      };
-
-      // Send emails (implement actual email sending)
-      await this.sendEmail(studentEmail);
-      await this.sendEmail(mentorEmail);
-
-      console.log('✅ Booking confirmation emails sent');
-
-    } catch (error) {
-      console.error('❌ Error sending booking confirmation:', error);
-    }
-  }
-
-  /**
-   * Send cancellation notification
-   */
-  async sendCancellationNotification(data: any): Promise<void> {
-    try {
-      console.log('📧 Sending cancellation notifications...');
-
-      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-      // Email to both parties
-      const emails = [
-        {
-          to: data.studentEmail,
-          recipient: data.studentName,
-          other: data.mentorName,
-        },
-        {
-          to: data.mentorEmail,
-          recipient: data.mentorName,
-          other: data.studentName,
-        },
-      ];
-
-      for (const email of emails) {
-        const emailData = {
-          to: email.to,
-          subject: `Session Cancelled: ${data.subject}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #DC2626;">Session Cancelled</h2>
-              
-              <p>Hi ${email.recipient},</p>
-              
-              <p>The following mentoring session has been cancelled:</p>
-              
-              <div style="background: #FEF2F2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #DC2626;">
-                <h3 style="margin-top: 0; color: #DC2626;">Cancelled Session</h3>
-                <p><strong>Subject:</strong> ${data.subject}</p>
-                <p><strong>Date:</strong> ${sessionDate}</p>
-                <p><strong>Time:</strong> ${sessionTime}</p>
-                <p><strong>Cancelled by:</strong> ${data.cancelledBy === 'student' ? data.studentName : data.mentorName}</p>
-                <p><strong>Reason:</strong> ${data.reason}</p>
-              </div>
-              
-              ${data.refundAmount > 0 ? `
-                <div style="background: #E8F5E8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                  <h4 style="margin-top: 0; color: #166534;">Refund Information</h4>
-                  <p>A refund of ${data.refundAmount} will be processed within 3-5 business days.</p>
-                </div>
-              ` : ''}
-              
-              <p>We apologize for any inconvenience. You can book a new session anytime.</p>
-              
-              <p>Best regards,<br>The Mentoring Team</p>
-            </div>
-          `,
-        };
-
-        await this.sendEmail(emailData);
-      }
-
-      console.log('✅ Cancellation notifications sent');
-
-    } catch (error) {
-      console.error('❌ Error sending cancellation notifications:', error);
-    }
-  }
-
-  /**
-   * Send reschedule notification
-   */
-  async sendRescheduleNotification(data: any): Promise<void> {
-    try {
-      console.log('📧 Sending reschedule notifications...');
-
-      const oldDate = new Date(data.oldTime).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const oldTime = new Date(data.oldTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-      const newDate = new Date(data.newTime).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const newTime = new Date(data.newTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-      const emails = [
-        {
-          to: data.studentEmail,
-          recipient: data.studentName,
-        },
-        {
-          to: data.mentorEmail,
-          recipient: data.mentorName,
-        },
-      ];
-
-      for (const email of emails) {
-        const emailData = {
-          to: email.to,
-          subject: `Session Rescheduled: ${data.subject}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #F59E0B;">Session Rescheduled</h2>
-              
-              <p>Hi ${email.recipient},</p>
-              
-              <p>Your mentoring session has been rescheduled:</p>
-              
-              <div style="background: #FEF3C7; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin-top: 0; color: #92400E;">Previous Time</h3>
-                <p><strong>Date:</strong> ${oldDate}</p>
-                <p><strong>Time:</strong> ${oldTime}</p>
-              </div>
-              
-              <div style="background: #E8F5E8; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin-top: 0; color: #166534;">New Time</h3>
-                <p><strong>Date:</strong> ${newDate}</p>
-                <p><strong>Time:</strong> ${newTime}</p>
-                <p><strong>Subject:</strong> ${data.subject}</p>
-                ${data.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${data.meetingLink}">${data.meetingLink}</a></p>` : ''}
-              </div>
-              
-              <p>Your calendar has been updated with the new time. You'll receive reminder notifications as usual.</p>
-              
-              <p>Best regards,<br>The Mentoring Team</p>
-            </div>
-          `,
-        };
-
-        await this.sendEmail(emailData);
-      }
-
-      console.log('✅ Reschedule notifications sent');
-
-    } catch (error) {
-      console.error('❌ Error sending reschedule notifications:', error);
-    }
-  }
-
-  /**
-   * Send reminder notification
-   */
-  private async sendReminder(data: NotificationData, type: string, timeLabel: string): Promise<void> {
-    try {
-      console.log(`🔔 Sending ${type} reminder (${timeLabel}) for session:`, data.sessionId);
-
-      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-      if (type === 'email') {
-        // Send email reminders
-        const emails = [
-          {
-            to: data.studentEmail,
-            recipient: data.studentName,
-            role: 'student',
-          },
-          {
-            to: data.mentorEmail,
-            recipient: data.mentorName,
-            role: 'mentor',
-          },
-        ];
-
-        for (const email of emails) {
-          const emailData = {
-            to: email.to,
-            subject: `Reminder: Your session starts in ${timeLabel}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #8B4513;">Session Reminder ⏰</h2>
-                
-                <p>Hi ${email.recipient},</p>
-                
-                <p>This is a friendly reminder that your mentoring session starts in ${timeLabel}.</p>
-                
-                <div style="background: #F8F3EE; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                  <h3 style="margin-top: 0; color: #8B4513;">Session Details</h3>
-                  <p><strong>Subject:</strong> ${data.subject}</p>
-                  <p><strong>Date:</strong> ${sessionDate}</p>
-                  <p><strong>Time:</strong> ${sessionTime}</p>
-                  <p><strong>Duration:</strong> ${data.duration} minutes</p>
-                  ${data.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${data.meetingLink}" style="background: #8B4513; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Join Meeting</a></p>` : ''}
-                </div>
-                
-                ${email.role === 'mentor' ? `
-                  <div style="background: #E8F5E8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h4 style="margin-top: 0; color: #166534;">Quick Checklist</h4>
-                    <ul style="margin: 10px 0; padding-left: 20px;">
-                      <li>Review session materials</li>
-                      <li>Test audio/video setup</li>
-                      <li>Join 2-3 minutes early</li>
-                    </ul>
-                  </div>
-                ` : `
-                  <div style="background: #E8F5E8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h4 style="margin-top: 0; color: #166534;">Get Ready</h4>
-                    <ul style="margin: 10px 0; padding-left: 20px;">
-                      <li>Prepare your questions</li>
-                      <li>Test your internet connection</li>
-                      <li>Find a quiet space</li>
-                    </ul>
-                  </div>
-                `}
-                
-                <p>See you soon!</p>
-                
-                <p>Best regards,<br>The Mentoring Team</p>
-              </div>
-            `,
-          };
-
-          await this.sendEmail(emailData);
-        }
-      } else if (type === 'push') {
-        // Send push notifications (implement with FCM, OneSignal, etc.)
-        await this.sendPushNotification({
-          title: `Session starting in ${timeLabel}`,
-          body: `${data.subject} with ${data.mentorName}`,
-          userId: data.studentId,
-          data: {
-            sessionId: data.sessionId,
-            meetingLink: data.meetingLink,
-          },
-        });
-
-        await this.sendPushNotification({
-          title: `Session starting in ${timeLabel}`,
-          body: `${data.subject} with ${data.studentName}`,
-          userId: data.mentorId,
-          data: {
-            sessionId: data.sessionId,
-            meetingLink: data.meetingLink,
-          },
-        });
-      }
-
-      console.log(`✅ ${type} reminder sent (${timeLabel})`);
-
-    } catch (error) {
-      console.error(`❌ Error sending ${type} reminder:`, error);
-    }
-  }
-
-  /**
-   * Send email (implement with SendGrid, Mailgun, etc.)
-   */
-  private async sendEmail(emailData: any): Promise<void> {
-    try {
-      // Mock email sending
-      console.log('📧 Email sent to:', emailData.to);
-      console.log('📧 Subject:', emailData.subject);
-      
-      // In production, integrate with email service:
-      // await sendgrid.send(emailData);
-      // await mailgun.messages().send(emailData);
-      
-    } catch (error) {
-      console.error('❌ Email sending failed:', error);
-    }
-  }
-
-  /**
-   * Send push notification
-   */
-  private async sendPushNotification(notificationData: any): Promise<void> {
-    try {
-      // Mock push notification
-      console.log('📱 Push notification sent to:', notificationData.userId);
-      console.log('📱 Title:', notificationData.title);
-      
-      // In production, integrate with push service:
-      // await fcm.send(notificationData);
-      // await oneSignal.createNotification(notificationData);
-      
-    } catch (error) {
-      console.error('❌ Push notification failed:', error);
     }
   }
 }

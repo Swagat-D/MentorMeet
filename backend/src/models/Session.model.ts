@@ -1,3 +1,4 @@
+// backend/src/models/Session.model.ts - Fixed Version
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ISession extends Document {
@@ -15,7 +16,7 @@ export interface ISession extends Document {
   meetingUrl?: string;
   meetingProvider?: 'google_meet' | 'zoom' | 'teams' | 'other';
   mentorAcceptedAt?: Date;
-  autoDeclineAt: Date;
+  autoDeclineAt: Date; // FIXED: Made required
   
   // Booking details
   slotId: string; 
@@ -108,7 +109,7 @@ const SessionSchema = new Schema<ISession>({
   },
   autoDeclineAt: {
     type: Date,
-    required: true,
+    required: true, // FIXED: Made required
     index: true
   },
   
@@ -252,12 +253,20 @@ SessionSchema.statics.findConflicting = function(
   return this.find(query);
 };
 
-// Pre-save middleware to set autoDeclineAt
+// FIXED: Pre-save middleware to ensure autoDeclineAt is always set
 SessionSchema.pre('save', function(next) {
+  // Only set autoDeclineAt if it's not already set and we have scheduledTime
   if (!this.autoDeclineAt && this.scheduledTime) {
     // Set auto-decline to 2 hours before session
     this.autoDeclineAt = new Date(this.scheduledTime.getTime() - (2 * 60 * 60 * 1000));
   }
+  
+  // Validate that autoDeclineAt is before scheduledTime
+  if (this.autoDeclineAt && this.scheduledTime && this.autoDeclineAt >= this.scheduledTime) {
+    // If autoDeclineAt is not before scheduledTime, fix it
+    this.autoDeclineAt = new Date(this.scheduledTime.getTime() - (2 * 60 * 60 * 1000));
+  }
+  
   next();
 });
 
