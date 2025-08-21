@@ -433,8 +433,13 @@ const handleQuickMessage = () => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Availability</Text>
             <View style={styles.availabilityContainer}>
-              {Object.entries(mentor.weeklySchedule).map(([day, slots]) => 
-                renderAvailabilityDay(day, slots as any[])
+              {Object.entries(mentor.weeklySchedule).map(([day, schedule]) =>
+                renderAvailabilityDay(
+                  day,
+                  (schedule as { isAvailable: boolean; timeSlots: { id: string; startTime: string; endTime: string; }[]; }).isAvailable
+                    ? (schedule as { isAvailable: boolean; timeSlots: { id: string; startTime: string; endTime: string; }[]; }).timeSlots
+                    : []
+                )
               )}
             </View>
           </View>

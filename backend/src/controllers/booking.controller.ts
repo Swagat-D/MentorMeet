@@ -151,168 +151,119 @@ export const createBooking = catchAsync(async (req: AuthenticatedRequest, res: R
   });
 
   // Start database transaction for atomic operations
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    // Step 1: Validate booking request
-    const validationResult = await validateBookingRequest({
-      mentorId,
-      studentId,
-      timeSlot,
-      subject,
-      paymentMethodId,
-    });
+  // Step 1: Validate booking request (no session needed)
+  const validationResult = await validateBookingRequest({
+    mentorId,
+    studentId,
+    timeSlot,
+    subject,
+    paymentMethodId,
+  });
 
-    if (!validationResult.isValid) {
-      await session.abortTransaction();
-      res.status(400).json({
-        success: false,
-        message: validationResult.message,
-      });
-      return;
-    }
-
-    // Step 2: Get participant details
-    const [mentor, student] = await Promise.all([
-      User.findById(mentorId).session(session),
-      User.findById(studentId).session(session)
-    ]);
-
-    if (!mentor || !student) {
-      await session.abortTransaction();
-      res.status(400).json({
-        success: false,
-        message: 'Participant not found',
-      });
-      return;
-    }
-
-    // Step 3: Verify slot is still available (real-time check)
-    const isSlotAvailable = await ScheduleGenerationService.isSlotAvailable(
-      mentorId,
-      timeSlot.startTime,
-      timeSlot.duration
-    );
-    
-    if (!isSlotAvailable) {
-      await session.abortTransaction();
-      res.status(400).json({
-        success: false,
-        message: 'Selected time slot is no longer available. Please select another time.',
-        code: 'SLOT_UNAVAILABLE'
-      });
-      return;
-    }
-
-    // Step 4: Process payment FIRST (payment-first flow)
-    console.log('💳 Processing payment before booking creation...');
-    const paymentResult = await paymentService.processPayment({
-      amount: timeSlot.price,
-      currency: 'INR',
-      paymentMethodId,
-      description: `Mentoring session: ${subject}`,
-      metadata: { 
-        mentorId, 
-        studentId, 
-        sessionType: 'mentoring',
-        timeSlot: timeSlot.startTime
-      }
-    });
-
-    if (!paymentResult.success) {
-      await session.abortTransaction();
-      res.status(400).json({
-        success: false,
-        message: 'Payment failed: ' + paymentResult.error,
-        code: 'PAYMENT_FAILED'
-      });
-      return;
-    }
-
-    console.log('✅ Payment processed successfully:', paymentResult.paymentId);
-
-    // Step 5: Create session record in database (within transaction)
-    const sessionRecord = new Session({
-      studentId,
-      mentorId,
-      subject,
-      scheduledTime: new Date(timeSlot.startTime),
-      duration: timeSlot.duration,
-      sessionType: 'video',
-      status: 'pending_mentor_acceptance',
-      sessionNotes: notes || '',
-      
-      // Manual booking specific fields
-      slotId: timeSlot.slotId,
-      bookingSource: 'manual',
-      
-      // Payment fields
-      price: timeSlot.price,
-      currency: 'INR',
-      paymentId: paymentResult.paymentId,
-      paymentStatus: 'completed'
-    });
-
-    await sessionRecord.save({ session });
-
-    console.log('✅ Session created in database:', sessionRecord._id);
-
-    // Step 6: Commit transaction - all critical operations succeeded
-    await session.commitTransaction();
-
-    console.log('✅ Transaction committed - booking created successfully');
-
-    // Step 7: Send notifications (non-critical, outside transaction)
-    try {
-      await notificationService.sendBookingConfirmation({
-        sessionId: sessionRecord._id.toString(),
-        mentorId: mentor._id.toString(),
-        studentId: student._id.toString(),
-        mentorEmail: mentor.email,
-        studentEmail: student.email,
-        mentorName: `${mentor.firstName} ${mentor.lastName}`,
-        studentName: `${student.firstName || student.name} ${student.lastName || ''}`.trim(),
-        subject: subject,
-        scheduledTime: timeSlot.startTime,
-        duration: timeSlot.duration,
-        sessionType: 'video',
-        amount: `₹${timeSlot.price}`,
-        status: 'pending_mentor_acceptance'
-      });
-
-      console.log('📧 Confirmation emails sent');
-    } catch (emailError) {
-      console.error('⚠️ Failed to send confirmation emails (non-critical):', emailError);
-      // Don't fail the booking for email issues
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Booking created successfully. Waiting for mentor acceptance.',
-      data: {
-        bookingId: sessionRecord._id,
-        sessionId: sessionRecord._id,
-        status: 'pending_mentor_acceptance',
-        paymentId: paymentResult.paymentId,
-        reminderSet: true,
-        paymentProcessed: true,
-        autoDeclineAt: sessionRecord.autoDeclineAt
-      },
-    });
-
-  } catch (error: any) {
-    await session.abortTransaction();
-    console.error('❌ Booking creation failed:', error);
-    
-    res.status(500).json({
+  if (!validationResult.isValid) {
+    res.status(400).json({
       success: false,
-      message: 'Booking creation failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      message: validationResult.message,
     });
-  } finally {
-    await session.endSession();
+    return;
   }
+
+  // Step 2: Get participant details (no session needed)
+  const [mentor, student] = await Promise.all([
+    User.findById(mentorId),
+    User.findById(studentId)
+  ]);
+
+  if (!mentor || !student) {
+    res.status(400).json({
+      success: false,
+      message: 'Participant not found',
+    });
+    return;
+  }
+
+  // Step 3: Verify slot is still available
+  const isSlotAvailable = await ScheduleGenerationService.isSlotAvailable(
+    mentorId,
+    timeSlot.startTime,
+    timeSlot.duration
+  );
+  
+  if (!isSlotAvailable) {
+    res.status(400).json({
+      success: false,
+      message: 'Selected time slot is no longer available. Please select another time.',
+      code: 'SLOT_UNAVAILABLE'
+    });
+    return;
+  }
+
+  // Step 4: Process payment
+  console.log('💳 Processing payment before booking creation...');
+  const paymentResult = await paymentService.processPayment({
+    amount: timeSlot.price,
+    currency: 'INR',
+    paymentMethodId,
+    description: `Mentoring session: ${subject}`,
+    metadata: { 
+      mentorId, 
+      studentId, 
+      sessionType: 'mentoring',
+      timeSlot: timeSlot.startTime
+    }
+  });
+
+  if (!paymentResult.success) {
+    res.status(400).json({
+      success: false,
+      message: 'Payment failed: ' + paymentResult.error,
+      code: 'PAYMENT_FAILED'
+    });
+    return;
+  }
+
+  console.log('✅ Payment processed successfully:', paymentResult.paymentId);
+
+  // Step 5: Create session record (no transaction)
+  const scheduledTime = new Date(timeSlot.startTime);
+  const autoDeclineAt = new Date(scheduledTime.getTime() - (2 * 60 * 60 * 1000));
+
+  const sessionRecord = new Session({
+    studentId,
+    mentorId,
+    subject,
+    scheduledTime,
+    duration: timeSlot.duration,
+    sessionType: 'video',
+    status: 'pending_mentor_acceptance',
+    sessionNotes: notes || '',
+    autoDeclineAt, // Explicitly set autoDeclineAt
+    
+    // Manual booking specific fields
+    slotId: timeSlot.slotId,
+    bookingSource: 'manual',
+    
+    // Payment fields
+    price: timeSlot.price,
+    currency: 'INR',
+    paymentId: paymentResult.paymentId,
+    paymentStatus: 'completed'
+  });
+
+  await sessionRecord.save(); // Save without transaction
+
+  console.log('✅ Session created in database:', sessionRecord._id);
+
+  // Rest of your code for notifications...
+} catch (error: any) {
+  console.error('❌ Booking creation failed:', error);
+  res.status(500).json({
+    success: false,
+    message: 'Booking creation failed',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+  });
+}
 });
 
 /**

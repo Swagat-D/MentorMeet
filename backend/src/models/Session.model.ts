@@ -15,7 +15,7 @@ export interface ISession extends Document {
   meetingUrl?: string;
   meetingProvider?: 'google_meet' | 'zoom' | 'teams' | 'other';
   mentorAcceptedAt?: Date;
-  autoDeclineAt: Date; // 2 hours before session
+  autoDeclineAt: Date;
   
   // Booking details
   slotId: string; 
@@ -254,7 +254,7 @@ SessionSchema.statics.findConflicting = function(
 
 // Pre-save middleware to set autoDeclineAt
 SessionSchema.pre('save', function(next) {
-  if (this.isNew || this.isModified('scheduledTime')) {
+  if (!this.autoDeclineAt && this.scheduledTime) {
     // Set auto-decline to 2 hours before session
     this.autoDeclineAt = new Date(this.scheduledTime.getTime() - (2 * 60 * 60 * 1000));
   }

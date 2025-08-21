@@ -6,6 +6,9 @@ import bookingController from '../controllers/booking.controller';
 import MentorProfileService from '../services/mentorProfile.service';
 import ScheduleGenerationService from '../services/scheduleGeneration.service';
 import { z } from 'zod';
+import notificationsService from 'services/notifications.service';
+import { Session } from 'models';
+import { paymentService } from 'services/booking.service';
 
 const router = Router();
 
@@ -212,17 +215,17 @@ router.get('/mentor/pending-sessions', async (req, res) => {
   try {
     const mentorId = req.userId;
     
-    // Get sessions pending mentor acceptance
-    const result = await bookingController.getUserBookings({
-      ...req,
-      query: { 
-        status: 'pending',
-        mentorId // Filter by mentor
-      }
-    } as any, res);
-
-    // Ensure a response is sent
-    return res.json(result);
+    return bookingController.getUserBookings(
+      {
+        ...req,
+        query: {
+          status: 'pending',
+          mentorId // Filter by mentor
+        }
+      } as any,
+      res,
+      (() => {}) 
+    );
     
   } catch (error: any) {
     console.error('❌ Error fetching pending sessions:', error);
@@ -266,7 +269,7 @@ router.put('/:sessionId/accept', async (req, res) => {
     }
     
     const { Session } = await import('../models/Session.model');
-    const { notificationService } = await import('../services/notification.service');
+    const notificationService = notificationsService;
     
     // Find and update session
     const session = await Session.findById(sessionId)
@@ -317,6 +320,8 @@ router.put('/:sessionId/accept', async (req, res) => {
     try {
       await notificationService.sendSessionAcceptanceNotification({
         sessionId: session._id.toString(),
+        mentorId: (session.mentorId as any)._id.toString(),
+        studentId: (session.studentId as any)._id.toString(),
         mentorEmail: (session.mentorId as any).email,
         studentEmail: (session.studentId as any).email,
         mentorName: `${(session.mentorId as any).firstName} ${(session.mentorId as any).lastName}`,
@@ -324,8 +329,7 @@ router.put('/:sessionId/accept', async (req, res) => {
         subject: session.subject,
         scheduledTime: session.scheduledTime.toISOString(),
         duration: session.duration,
-        meetingLink: meetingUrl,
-        meetingProvider,
+        meetingLink: meetingUrl
       });
     } catch (emailError) {
       console.error('⚠️ Failed to send acceptance emails:', emailError);
@@ -358,57 +362,26 @@ router.put('/:sessionId/decline', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { reason } = req.body;
-    const mentorId = req.userId;
-    
-    if (!sessionId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid session ID format',
-      });
-    }
-    
-    const { Session } = await import('../models/Session.model');
-    const { notificationService, paymentService } = await import('../services/notification.service');
-    
-    // Find session
     const session = await Session.findById(sessionId)
-      .populate('studentId', 'firstName lastName email')
-      .populate('mentorId', 'firstName lastName email');
-    
+      .populate('mentorId')
+      .populate('studentId');
     if (!session) {
       return res.status(404).json({
         success: false,
         message: 'Session not found',
       });
     }
-    
-    // Verify mentor owns this session
-    if (session.mentorId._id.toString() !== mentorId) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not authorized to manage this session',
-      });
-    }
-    
-    // Check if session is in correct status
-    if (session.status !== 'pending_mentor_acceptance') {
-      return res.status(400).json({
-        success: false,
-        message: 'Session is not pending acceptance',
-        currentStatus: session.status,
-      });
-    }
-    
+
     // Update session status
     session.status = 'cancelled';
     session.cancellationReason = reason || 'Declined by mentor';
     session.cancelledBy = 'mentor';
     session.cancelledAt = new Date();
-    
-    // Process refund
+
     let refundProcessed = false;
     if (session.price > 0 && session.paymentId) {
       try {
+        // Use the paymentService to call refundPayment
         const refundResult = await paymentService.refundPayment(session.paymentId, session.price);
         if (refundResult.success) {
           session.refundId = refundResult.paymentId;
@@ -421,12 +394,12 @@ router.put('/:sessionId/decline', async (req, res) => {
         session.refundStatus = 'failed';
       }
     }
-    
+
     await session.save();
-    
+
     // Send cancellation emails
     try {
-      await notificationService.sendCancellationNotification({
+      await notificationsService.sendCancellationNotification({
         sessionId: session._id.toString(),
         mentorEmail: (session.mentorId as any).email,
         studentEmail: (session.studentId as any).email,
@@ -441,7 +414,7 @@ router.put('/:sessionId/decline', async (req, res) => {
     } catch (emailError) {
       console.error('⚠️ Failed to send cancellation emails:', emailError);
     }
-    
+
     return res.json({
       success: true,
       message: 'Session declined successfully',
@@ -452,7 +425,7 @@ router.put('/:sessionId/decline', async (req, res) => {
         refundAmount: session.price,
       },
     });
-    
+
   } catch (error: any) {
     console.error('❌ Error declining session:', error);
     return res.status(500).json({

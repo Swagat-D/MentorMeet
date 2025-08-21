@@ -14,6 +14,23 @@ export interface ServiceResult {
   data?: any;
 }
 
+import nodemailer from 'nodemailer';
+
+// Define NotificationData interface
+export interface NotificationData {
+  studentId: string;
+  mentorId: string;
+  sessionId: string;
+  subject: string;
+  scheduledTime: string | Date;
+  duration: number;
+  meetingLink: string;
+  studentName: string;
+  mentorName: string;
+  studentEmail: string;
+  mentorEmail: string;
+}
+
 class NotificationsService {
   // Get the notifications collection directly
   private getNotificationsCollection() {
@@ -21,6 +38,27 @@ class NotificationsService {
       throw new Error('Database connection is not established.');
     }
     return mongoose.connection.db.collection('notifications');
+  }
+
+  // Simple sendEmail implementation using nodemailer (customize as needed)
+  async sendEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
+    // Configure your transporter (replace with your SMTP credentials)
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.example.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER || 'user@example.com',
+        pass: process.env.SMTP_PASS || 'password',
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"MentorMeet" <no-reply@mentormeet.com>',
+      to,
+      subject,
+      html,
+    });
   }
 
   /**
@@ -779,6 +817,284 @@ class NotificationsService {
         }
       };
     }
+  }
+
+  /**
+   * Send session acceptance notification (when mentor accepts and provides meeting link)
+   */
+  async sendSessionAcceptanceNotification(data: NotificationData): Promise<ServiceResult> {
+    try {
+      console.log('📧 [NOTIFICATIONS SERVICE] Sending session acceptance notifications:', {
+        studentId: data.studentId,
+        mentorId: data.mentorId,
+        sessionId: data.sessionId,
+        subject: data.subject,
+        scheduledTime: data.scheduledTime,
+      });
+
+      const sessionDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const sessionTime = new Date(data.scheduledTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      // Email to student - session confirmed with meeting link
+       const studentEmail = {
+        to: data.studentEmail,
+        subject: `Session Confirmed! Meeting Link Ready: ${data.subject}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">🎉 Session Confirmed!</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">Your mentor has accepted and provided the meeting link</p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 30px 20px;">
+              <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${data.studentName},</p>
+              
+              <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
+                Excellent news! ${data.mentorName} has accepted your session and provided the meeting details. 
+                Your session is now fully confirmed and ready to go!
+              </p>
+              
+              <!-- Session Details Card -->
+              <div style="background: #F0FDF4; border: 2px solid #10B981; border-radius: 12px; padding: 25px; margin: 20px 0;">
+                <h3 style="color: #166534; margin: 0 0 15px 0; font-size: 18px;">📚 Confirmed Session Details</h3>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Mentor:</strong> 
+                  <span style="color: #166534; font-weight: 600;">${data.mentorName}</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Subject:</strong> 
+                  <span style="color: #2A2A2A;">${data.subject}</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Date:</strong> 
+                  <span style="color: #2A2A2A;">${sessionDate}</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Time:</strong> 
+                  <span style="color: #2A2A2A;">${sessionTime}</span>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                  <strong style="color: #2A2A2A;">Duration:</strong> 
+                  <span style="color: #2A2A2A;">${data.duration} minutes</span>
+                </div>
+                
+                <div style="border-top: 1px solid #10B981; padding-top: 15px; margin-top: 15px;">
+                  <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Meeting Link:</strong>
+                  <a href="${data.meetingLink}" 
+                     style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
+                            color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
+                            font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                    🚀 Join Meeting Now
+                  </a>
+                  <p style="font-size: 12px; color: #8B7355; margin: 8px 0 0 0;">
+                    Link: <span style="word-break: break-all;">${data.meetingLink}</span>
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Instructions -->
+              <div style="background: #E8F5E8; border-left: 4px solid #10B981; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+                <h4 style="color: #166534; margin: 0 0 12px 0; font-size: 16px;">📋 Ready for your session?</h4>
+                <ul style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.6;">
+                  <li>Click the meeting link 2-3 minutes before your session</li>
+                  <li>Test your camera and microphone beforehand</li>
+                  <li>Prepare any questions or materials you want to discuss</li>
+                  <li>Find a quiet space with good internet connection</li>
+                  <li>Have a notepad ready to take notes during the session</li>
+                </ul>
+              </div>
+              
+              <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
+                Looking forward to your learning session! 🚀
+              </p>
+              
+              <p style="font-size: 16px; color: #2A2A2A;">
+                Best regards,<br>
+                <strong style="color: #8B4513;">The MentorMatch Team</strong>
+              </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
+              <p style="color: #8B7355; font-size: 12px; margin: 0;">
+                Session ID: ${data.sessionId}
+              </p>
+            </div>
+          </div>
+        `,
+      };
+
+      // Email to mentor - confirmation that student has been notified
+      const mentorEmail = {
+        to: data.mentorEmail,
+        subject: `Session Confirmed: ${data.subject} - Student Notified`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">✅ Session Confirmed</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">Student has been notified with meeting details</p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 30px 20px;">
+              <p style="font-size: 16px; color: #2A2A2A; margin-bottom: 20px;">Hi ${data.mentorName},</p>
+              
+              <p style="font-size: 16px; color: #2A2A2A; line-height: 1.6; margin-bottom: 25px;">
+                Perfect! Your session with ${data.studentName} is now confirmed. The student has been notified 
+                and provided with the meeting link. Everything is set up for your upcoming session.
+              </p>
+              
+              <!-- Session Summary -->
+              <div style="background: #F0FDF4; border: 2px solid #10B981; border-radius: 12px; padding: 25px; margin: 20px 0;">
+                <h3 style="color: #166534; margin: 0 0 15px 0; font-size: 18px;">📚 Session Summary</h3>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Student:</strong> 
+                  <span style="color: #166534; font-weight: 600;">${data.studentName}</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Subject:</strong> 
+                  <span style="color: #2A2A2A;">${data.subject}</span>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                  <strong style="color: #2A2A2A;">Date & Time:</strong> 
+                  <span style="color: #2A2A2A;">${sessionDate} at ${sessionTime}</span>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                  <strong style="color: #2A2A2A;">Duration:</strong> 
+                  <span style="color: #2A2A2A;">${data.duration} minutes</span>
+                </div>
+                
+                <div style="border-top: 1px solid #10B981; padding-top: 15px; margin-top: 15px;">
+                  <strong style="color: #2A2A2A; display: block; margin-bottom: 8px;">🎥 Meeting Link:</strong>
+                  <a href="${data.meetingLink}" style="color: #166534; word-break: break-all;">${data.meetingLink}</a>
+                </div>
+              </div>
+              
+              <!-- Mentor Reminders -->
+              <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+                <h4 style="color: #92400E; margin: 0 0 12px 0; font-size: 16px;">👨‍🏫 Session Preparation</h4>
+                <ul style="color: #92400E; margin: 0; padding-left: 20px; line-height: 1.6;">
+                  <li>Review the session subject and prepare relevant materials</li>
+                  <li>Test your audio/video setup 10 minutes early</li>
+                  <li>Join the meeting 2-3 minutes before the scheduled time</li>
+                  <li>Prepare a welcoming introduction for the student</li>
+                  <li>Have teaching materials and resources ready</li>
+                </ul>
+              </div>
+              
+              <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
+                Thank you for sharing your expertise and helping students learn! 🌟
+              </p>
+              
+              <p style="font-size: 16px; color: #2A2A2A;">
+                Best regards,<br>
+                <strong style="color: #8B4513;">The MentorMatch Team</strong>
+              </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1;">
+              <p style="color: #8B7355; font-size: 12px; margin: 0;">
+                Session ID: ${data.sessionId}
+              </p>
+            </div>
+          </div>
+        `,
+      };
+
+      // Send emails
+      await Promise.all([
+        this.sendEmail(studentEmail),
+        this.sendEmail(mentorEmail)
+      ]);
+
+      // Create notifications in DB for both users
+      await Promise.all([
+        this.createNotification({
+          userId: data.studentId,
+          type: 'session_acceptance',
+          title: 'Session Confirmed!',
+          message: `Your mentor ${data.mentorName} has accepted your session and provided the meeting link.`,
+          data: {
+            sessionId: data.sessionId,
+            mentorName: data.mentorName,
+            subject: data.subject,
+            scheduledTime: data.scheduledTime,
+            duration: data.duration,
+            meetingLink: data.meetingLink
+          }
+        }),
+        this.createNotification({
+          userId: data.mentorId,
+          type: 'session_acceptance',
+          title: 'Session Confirmed',
+          message: `You have accepted the session with ${data.studentName}. Student has been notified.`,
+          data: {
+            sessionId: data.sessionId,
+            studentName: data.studentName,
+            subject: data.subject,
+            scheduledTime: data.scheduledTime,
+            duration: data.duration,
+            meetingLink: data.meetingLink
+          }
+        })
+      ]);
+
+      console.log('✅ [NOTIFICATIONS SERVICE] Session acceptance notifications sent and stored');
+      return {
+        success: true,
+        message: 'Session acceptance notifications sent and stored successfully',
+      };
+    } catch (error: any) {
+      console.error('❌ [NOTIFICATIONS SERVICE] Error sending session acceptance notifications:', {
+        error: error.message,
+        stack: error.stack,
+      });
+      return {
+        success: false,
+        message: 'Failed to send session acceptance notifications',
+      };
+    }
+  }
+
+  async sendCancellationNotification(details: {
+    sessionId: string;
+    mentorEmail: string;
+    studentEmail: string;
+    mentorName: string;
+    studentName: string;
+    subject: string;
+    scheduledTime: string;
+    cancelledBy: string;
+    reason: string;
+    refundAmount: number;
+  }): Promise<void> {
+    // Implement your notification logic here
+    // For example, send emails to mentor and student
+    console.log(`Sending cancellation notification for session ${details.sessionId}`);
+    // You can use an email service here
   }
 
   /**

@@ -1,45 +1,130 @@
-// backend/src/services/mentorProfile.service.ts - Use Existing mentorProfiles Collection
-import mongoose from 'mongoose';
+import mongoose, { Document } from 'mongoose';
+import User from '../models/User.model';
+import { OptionalId } from 'mongodb';
 
-// Interface for mentor profile based on your actual data structure
-interface MentorProfile {
-  _id: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
+export interface MentorProfileData {
+  _id: string;
+  userId: string;
+  displayName: string;
   firstName: string;
   lastName: string;
-  displayName: string;
-  bio: string;
-  location: string;
-  timezone: string;
+  email?: string;
+  profileImage: string;
+  bio?: string;
+  location?: string;
+  timezone?: string;
   languages: string[];
+  achievements?: string;
+  socialLinks: {
+    linkedin?: string;
+    twitter?: string;
+    website?: string;
+    github?: string;
+  };
   expertise: string[];
-  subjects?: Array<{ 
-    name: string; 
+  subjects: Array<{
+    name: string;
     level: string;
     experience: string;
-  }>;
+  }> | string[];
   teachingStyles: string[];
   specializations: string[];
-  
-  // Cal.com Integration Fields (from your existing data)
+  pricing: {
+    hourlyRate: number;
+    currency: string;
+    trialSessionEnabled?: boolean;
+    trialSessionRate?: number;
+    groupSessionEnabled?: boolean;
+    groupSessionRate?: number;
+    packageDiscounts?: boolean;
+    packages?: Array<{
+      name: string;
+      sessions: number;
+      price: number;
+      description: string;
+    }>;
+  };
+  preferences: {
+    sessionLength?: string;
+    advanceBooking?: string;
+    maxStudentsPerWeek?: number;
+    preferredSessionType?: string;
+    cancellationPolicy?: string;
+  };
   hourlyRateINR: number;
-  calComUsername: string;
-  calComEventTypes: Array<{
-    id: number;
-    title: string;
-    slug: string;
-    duration: number;
-  }>;
-  calComVerified: boolean;
-  
-  // Profile Status
+  sessionDurations: number[];
+  scheduleType: 'manual' | 'calcom';
+  weeklySchedule: {
+    [key: string]: {
+      isAvailable: boolean;
+      timeSlots: Array<{
+        id: string;
+        startTime: string;
+        endTime: string;
+      }>;
+    };
+  };
   isProfileComplete: boolean;
-  profileStep: string;
   applicationSubmitted: boolean;
-  submittedAt: Date;
-  
-  createdAt: Date;
-  updatedAt: Date;
+  profileStep: string;
+  submittedAt?: string;
+  rating: number;
+  totalSessions: number;
+  totalStudents: number;
+  isOnline: boolean;
+  isVerified: boolean;
+  lastSeen?: string;
+  responseTime?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WeeklySchedule {
+  [day: string]: {
+    isAvailable: boolean;
+    timeSlots: Array<{
+      id: string;
+      startTime: string;
+      endTime: string;
+    }>;
+  };
+}
+
+export interface SearchFilters {
+  expertise?: string[];
+  subjects?: string[];
+  priceRange?: {
+    min: number;
+    max: number;
+  };
+  rating?: number;
+  languages?: string[];
+  availability?: {
+    days?: string[];
+    timeSlots?: string[];
+  };
+  location?: string;
+  isOnline?: boolean;
+  isVerified?: boolean;
+  sortBy?: 'rating' | 'price' | 'experience' | 'popularity' | 'response_time';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export interface SearchResult {
+  mentors: MentorProfileData[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  filters: {
+    availableExpertise: string[];
+    availableSubjects: string[];
+    availableLanguages: string[];
+    priceRange: { min: number; max: number };
+  };
 }
 
 class MentorProfileService {
@@ -57,392 +142,369 @@ class MentorProfileService {
    */
   private getMentorProfilesCollection() {
     if (!mongoose.connection.db) {
-        throw new Error('Database connection is not established.');
-      }
+      throw new Error('Database connection is not established.');
+    }
     return mongoose.connection.db.collection('mentorProfiles');
   }
 
   /**
-   * Find mentor profile by user ID
+   * Find mentor profile by mentor ID
    */
-  async findMentorProfile(userId: string): Promise<MentorProfile | null> {
+  async findMentorProfile(mentorId: string): Promise<MentorProfileData | null> {
     try {
+      if (!mongoose.Types.ObjectId.isValid(mentorId)) {
+        return null;
+      }
       const collection = this.getMentorProfilesCollection();
-      const profile = await collection.findOne({ 
-        userId: new mongoose.Types.ObjectId(userId) 
+      const mentorProfile = await collection.findOne({
+        userId: new mongoose.Types.ObjectId(mentorId)
       });
-      
-      return profile as MentorProfile | null;
-    } catch (error) {
-      console.error('Error finding mentor profile:', error);
+      if (!mentorProfile) return null;
+      return this.formatMentorProfile(mentorProfile);
+    } catch (error: any) {
       return null;
     }
   }
 
   /**
-   * Find mentor profile by Cal.com username
+   * Find mentor profile by profile ID
    */
-  async findMentorByCalComUsername(calComUsername: string): Promise<MentorProfile | null> {
+  async findMentorProfileById(profileId: string): Promise<MentorProfileData | null> {
     try {
+      if (!mongoose.Types.ObjectId.isValid(profileId)) {
+        return null;
+      }
       const collection = this.getMentorProfilesCollection();
-      const profile = await collection.findOne({ 
-        calComUsername: calComUsername.toLowerCase().trim()
+      const mentorProfile = await collection.findOne({
+        _id: new mongoose.Types.ObjectId(profileId)
       });
-      
-      return profile as MentorProfile | null;
-    } catch (error) {
-      console.error('Error finding mentor by Cal.com username:', error);
+      if (!mentorProfile) return null;
+      return this.formatMentorProfile(mentorProfile);
+    } catch (error: any) {
       return null;
     }
   }
 
   /**
-   * Get mentor profile with user data by user ID
+   * Create new mentor profile
    */
-  async getMentorWithUserData(userId: string): Promise<any> {
+  async createMentorProfile(userId: string, profileData: Partial<MentorProfileData>): Promise<MentorProfileData | null> {
     try {
       const collection = this.getMentorProfilesCollection();
-      if (!mongoose.connection.db) {
-        throw new Error('Database connection is not established.');
-      }
-      const usersCollection = mongoose.connection.db.collection('users');
-      
-      // Get mentor profile
-      const profile = await collection.findOne({ 
-        userId: new mongoose.Types.ObjectId(userId) 
-      });
-      
-      if (!profile) return null;
+      const existingProfile = await collection.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+      if (existingProfile) return this.formatMentorProfile(existingProfile);
 
-      // Get user data
-      const user = await usersCollection.findOne({
-        _id: new mongoose.Types.ObjectId(userId)
-      });
+      // Get user details
+      const user = await User.findById(userId);
+      if (!user) return null;
 
-      // Transform for frontend compatibility
-      return {
-        _id: profile._id,
-        userId: profile.userId,
-        displayName: profile.displayName,
-        bio: profile.bio,
-        location: profile.location,
-        timezone: profile.timezone,
-        languages: profile.languages || [],
-        expertise: profile.expertise || [],
-        subjects: profile.subjects || [],
-        teachingStyles: profile.teachingStyles || [],
-        specializations: profile.specializations || [],
-        
-        // Cal.com data
-        hourlyRateINR: profile.hourlyRateINR,
-        calComUsername: profile.calComUsername,
-        calComEventTypes: profile.calComEventTypes || [],
-        calComVerified: profile.calComVerified,
-        
-        // User data
-        firstName: profile.firstName || user?.firstName,
-        lastName: profile.lastName || user?.lastName,
-        email: user?.email,
-        avatar: user?.avatar,
-        
-        // Computed fields for backward compatibility
-        rating: 4.8, // Placeholder - implement proper rating system
-        totalSessions: 0, // Placeholder - implement from sessions collection
-        isOnline: true, // Placeholder - implement real online status
-        
-        // Legacy pricing for backward compatibility
-        pricing: {
-          hourlyRate: Math.round(profile.hourlyRateINR * 0.012), // Convert to USD
-          currency: 'USD'
-        },
-        
-        isProfileComplete: profile.isProfileComplete,
-        profileStep: profile.profileStep,
-        createdAt: profile.createdAt,
-        updatedAt: profile.updatedAt
+      const now = new Date().toISOString();
+      const mentorProfile: Partial<MentorProfileData> = {
+        userId: userId,
+        displayName: profileData.displayName || `${user.firstName} ${user.lastName}`,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        profileImage: profileData.profileImage || this.generateDefaultAvatar(user.firstName, user.lastName),
+        bio: profileData.bio || '',
+        location: profileData.location || '',
+        timezone: profileData.timezone || 'UTC',
+        languages: profileData.languages || ['English'],
+        achievements: profileData.achievements || '',
+        socialLinks: profileData.socialLinks || {},
+        expertise: profileData.expertise || [],
+        subjects: profileData.subjects || [],
+        teachingStyles: profileData.teachingStyles || [],
+        specializations: profileData.specializations || [],
+        pricing: profileData.pricing || { hourlyRate: 50, currency: 'INR' },
+        preferences: profileData.preferences || {},
+        hourlyRateINR: profileData.hourlyRateINR || 50,
+        sessionDurations: profileData.sessionDurations || [30, 60, 90],
+        scheduleType: profileData.scheduleType || 'manual',
+        weeklySchedule: profileData.weeklySchedule || this.getDefaultWeeklySchedule(),
+        isProfileComplete: false,
+        applicationSubmitted: false,
+        profileStep: 'basic_info',
+        rating: 4.5,
+        totalSessions: 0,
+        totalStudents: 0,
+        isOnline: false,
+        isVerified: false,
+        responseTime: 60,
+        createdAt: now,
+        updatedAt: now
       };
-    } catch (error) {
-      console.error('Error getting mentor with user data:', error);
+
+      const result = await collection.insertOne(mentorProfile as OptionalId<Document>);
+      if (!result.insertedId) return null;
+      return this.formatMentorProfile({ ...mentorProfile, _id: result.insertedId });
+    } catch (error: any) {
       return null;
-    }
-  }
-
-  /**
-   * Find mentors with Cal.com setup (for listing)
-   */
-  async findMentorsWithSchedule(): Promise<MentorProfile[]> {
-    try {
-      const collection = this.getMentorProfilesCollection();
-      const profiles = await collection.find({
-        calComVerified: true,
-        isProfileComplete: true,
-        calComUsername: { $exists: true, $ne: '' }
-      }).toArray();
-      
-      return profiles as MentorProfile[];
-    } catch (error) {
-      console.error('Error finding mentors with schedule:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Search mentors by expertise or subjects
-   */
-  async searchMentors(query: {
-    expertise?: string[];
-    subjects?: string[];
-    location?: string;
-    maxRate?: number;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    mentors: any[];
-    total: number;
-    page: number;
-    totalPages: number;
-  }> {
-    try {
-      const {
-        expertise = [],
-        subjects = [],
-        location,
-        maxRate,
-        page = 1,
-        limit = 10
-      } = query;
-
-      const collection = this.getMentorProfilesCollection();
-      if (!mongoose.connection.db) {
-        throw new Error('Database connection is not established.');
-      }
-      const usersCollection = mongoose.connection.db.collection('users');
-
-      // Build search filter
-      const filter: any = {
-        calComVerified: true,
-        isProfileComplete: true
-      };
-
-      if (expertise.length > 0) {
-        filter.expertise = { $in: expertise };
-      }
-
-      if (subjects.length > 0) {
-        filter['subjects.name'] = { $in: subjects };
-      }
-
-      if (location) {
-        filter.location = new RegExp(location, 'i');
-      }
-
-      if (maxRate) {
-        filter.hourlyRateINR = { $lte: maxRate };
-      }
-
-      const skip = (page - 1) * limit;
-
-      // Execute search
-      const [mentors, total] = await Promise.all([
-        collection.find(filter).skip(skip).limit(limit).toArray(),
-        collection.countDocuments(filter)
-      ]);
-
-      // Get user data for each mentor
-      const mentorIds = mentors.map(mentor => mentor.userId);
-      const users = await usersCollection.find({
-        _id: { $in: mentorIds }
-      }).toArray();
-      
-      const userMap = new Map(users.map(user => [user._id.toString(), user]));
-
-      // Transform results
-      const transformedMentors = mentors.map(mentor => {
-        const user = userMap.get(mentor.userId.toString());
-        
-        return {
-          _id: mentor._id,
-          userId: mentor.userId,
-          displayName: mentor.displayName,
-          bio: mentor.bio,
-          location: mentor.location,
-          expertise: mentor.expertise || [],
-          subjects: mentor.subjects || [],
-          
-          // Cal.com data
-          hourlyRateINR: mentor.hourlyRateINR,
-          calComUsername: mentor.calComUsername,
-          calComEventTypes: mentor.calComEventTypes || [],
-          
-          // User data
-          firstName: mentor.firstName || user?.firstName,
-          lastName: mentor.lastName || user?.lastName,
-          email: user?.email,
-          avatar: user?.avatar,
-          
-          // Computed fields
-          rating: 4.8,
-          totalSessions: 0,
-          isOnline: true,
-          
-          // Legacy pricing
-          pricing: {
-            hourlyRate: Math.round(mentor.hourlyRateINR * 0.012),
-            currency: 'USD'
-          }
-        };
-      });
-
-      return {
-        mentors: transformedMentors,
-        total,
-        page,
-        totalPages: Math.ceil(total / limit)
-      };
-
-    } catch (error) {
-      console.error('Error searching mentors:', error);
-      return {
-        mentors: [],
-        total: 0,
-        page: 1,
-        totalPages: 0
-      };
-    }
-  }
-
-  /**
-   * Get featured mentors
-   */
-  async getFeaturedMentors(limit = 6): Promise<any[]> {
-    try {
-      const collection = this.getMentorProfilesCollection();
-      if (!mongoose.connection.db) {
-        throw new Error('Database connection is not established.');
-      }
-      const usersCollection = mongoose.connection.db.collection('users');
-      
-      const mentors = await collection.find({
-        calComVerified: true,
-        isProfileComplete: true
-      })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .toArray();
-
-      // Get user data for each mentor
-      const mentorIds = mentors.map(mentor => mentor.userId);
-      const users = await usersCollection.find({
-        _id: { $in: mentorIds }
-      }).toArray();
-      
-      const userMap = new Map(users.map(user => [user._id.toString(), user]));
-
-      return mentors.map(mentor => {
-        const user = userMap.get(mentor.userId.toString());
-        
-        return {
-          _id: mentor._id,
-          userId: mentor.userId,
-          displayName: mentor.displayName,
-          bio: mentor.bio,
-          expertise: mentor.expertise || [],
-          hourlyRateINR: mentor.hourlyRateINR,
-          calComUsername: mentor.calComUsername,
-          
-          // User data
-          firstName: mentor.firstName || user?.firstName,
-          lastName: mentor.lastName || user?.lastName,
-          
-          // Computed fields
-          rating: 4.8,
-          totalSessions: 0,
-          isOnline: true
-        };
-      });
-
-    } catch (error) {
-      console.error('Error getting featured mentors:', error);
-      return [];
     }
   }
 
   /**
    * Update mentor profile
    */
-  async updateProfile(
-    userId: string, 
-    updateData: any
-  ): Promise<MentorProfile | null> {
+  async updateMentorProfile(profileId: string, updateData: Partial<MentorProfileData>): Promise<MentorProfileData | null> {
     try {
       const collection = this.getMentorProfilesCollection();
-      
       const result = await collection.findOneAndUpdate(
-        { userId: new mongoose.Types.ObjectId(userId) },
-        {
-          $set: {
-            ...updateData,
-            updatedAt: new Date()
-          }
-        },
+        { _id: new mongoose.Types.ObjectId(profileId) },
+        { $set: { ...updateData, updatedAt: new Date().toISOString() } },
         { returnDocument: 'after' }
       );
-
-      return result?.value as MentorProfile | null;
-    } catch (error) {
-      console.error('Error updating mentor profile:', error);
+      if (!result || !result.value) return null;
+      return this.formatMentorProfile(result.value);
+    } catch (error: any) {
       return null;
     }
   }
 
   /**
-   * Validate Cal.com integration
+   * Update mentor weekly schedule
    */
-  async validateCalComIntegration(userId: string): Promise<{
-    isValid: boolean;
-    issues: string[];
-  }> {
+  async updateMentorSchedule(mentorId: string, weeklySchedule: WeeklySchedule): Promise<MentorProfileData | null> {
     try {
-      const profile = await this.findMentorProfile(userId);
-      
-      if (!profile) {
-        return {
-          isValid: false,
-          issues: ['Mentor profile not found']
-        };
-      }
+      const collection = this.getMentorProfilesCollection();
+      const validatedSchedule = this.validateWeeklySchedule(weeklySchedule);
+      if (!validatedSchedule) return null;
+      const result = await collection.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(mentorId) },
+        { $set: { weeklySchedule: validatedSchedule, scheduleType: 'manual', updatedAt: new Date().toISOString() } },
+        { returnDocument: 'after' }
+      );
+      if (!result || !result.value) return null;
+      return this.formatMentorProfile(result.value);
+    } catch (error: any) {
+      return null;
+    }
+  }
 
-      const issues: string[] = [];
+  /**
+   * Search mentors with filters
+   */
+  async searchMentors(filters: SearchFilters = {}): Promise<SearchResult> {
+    try {
+      const {
+        expertise,
+        subjects,
+        priceRange,
+        rating,
+        languages,
+        location,
+        isOnline,
+        isVerified,
+        sortBy = 'rating',
+        sortOrder = 'desc',
+        page = 1,
+        limit = 10,
+        search
+      } = filters;
 
-      if (!profile.calComUsername) {
-        issues.push('Cal.com username not set');
-      }
-
-      if (!profile.calComEventTypes || profile.calComEventTypes.length === 0) {
-        issues.push('No Cal.com event types configured');
-      }
-
-      if (!profile.calComVerified) {
-        issues.push('Cal.com integration not verified');
-      }
-
-      if (!profile.hourlyRateINR || profile.hourlyRateINR < 500) {
-        issues.push('Invalid hourly rate');
-      }
-
-      return {
-        isValid: issues.length === 0,
-        issues
+      const query: any = {
+        isProfileComplete: true,
+        applicationSubmitted: true
       };
 
-    } catch (error) {
-      console.error('Error validating Cal.com integration:', error);
+      if (search) {
+        query.$or = [
+          { displayName: { $regex: search, $options: 'i' } },
+          { bio: { $regex: search, $options: 'i' } },
+          { expertise: { $in: [new RegExp(search, 'i')] } },
+          { specializations: { $in: [new RegExp(search, 'i')] } }
+        ];
+      }
+      if (expertise && expertise.length > 0) {
+        query.expertise = { $in: expertise };
+      }
+      if (subjects && subjects.length > 0) {
+        query.$or = query.$or || [];
+        query.$or.push(
+          { 'subjects.name': { $in: subjects } },
+          { subjects: { $in: subjects } }
+        );
+      }
+      if (priceRange) {
+        query.hourlyRateINR = {
+          $gte: priceRange.min || 0,
+          $lte: priceRange.max || 10000
+        };
+      }
+      if (rating) {
+        query.rating = { $gte: rating };
+      }
+      if (languages && languages.length > 0) {
+        query.languages = { $in: languages };
+      }
+      if (location) {
+        query.location = { $regex: location, $options: 'i' };
+      }
+      if (isOnline !== undefined) {
+        query.isOnline = isOnline;
+      }
+      if (isVerified !== undefined) {
+        query.isVerified = isVerified;
+      }
+
+      const sortObj: any = {};
+      switch (sortBy) {
+        case 'price':
+          sortObj.hourlyRateINR = sortOrder === 'asc' ? 1 : -1;
+          break;
+        case 'experience':
+          sortObj.totalSessions = sortOrder === 'asc' ? 1 : -1;
+          break;
+        case 'popularity':
+          sortObj.totalStudents = sortOrder === 'asc' ? 1 : -1;
+          break;
+        case 'response_time':
+          sortObj.responseTime = sortOrder === 'asc' ? 1 : -1;
+          break;
+        case 'rating':
+        default:
+          sortObj.rating = sortOrder === 'asc' ? 1 : -1;
+          break;
+      }
+
+      const skip = (page - 1) * limit;
+      const collection = this.getMentorProfilesCollection();
+
+      const mentorsCursor = collection.find(query).sort(sortObj).skip(skip).limit(limit);
+      const mentorsArr = await mentorsCursor.toArray();
+      const total = await collection.countDocuments(query);
+
+      const formattedMentors = mentorsArr.map((mentor: any) => this.formatMentorProfile(mentor));
+      const filterMetadata = await this.getFilterMetadata();
+
       return {
-        isValid: false,
-        issues: ['Validation failed due to server error']
+        mentors: formattedMentors,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        filters: filterMetadata
+      };
+    } catch (error: any) {
+      return {
+        mentors: [],
+        total: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0,
+        filters: {
+          availableExpertise: [],
+          availableSubjects: [],
+          availableLanguages: [],
+          priceRange: { min: 0, max: 1000 }
+        }
       };
     }
   }
+
+  /**
+   * Get mentor availability
+   */
+  async getMentorAvailability(mentorId: string): Promise<WeeklySchedule | null> {
+    const mentorProfile = await this.findMentorProfile(mentorId);
+    if (!mentorProfile) return null;
+    return mentorProfile.weeklySchedule || this.getDefaultWeeklySchedule();
+  }
+
+  // --- Helper methods below ---
+
+  private formatMentorProfile(mentorProfile: any): MentorProfileData {
+    // You may want to add more robust null checks here
+    return {
+      _id: mentorProfile._id?.toString() || '',
+      userId: mentorProfile.userId?.toString() || '',
+      displayName: mentorProfile.displayName || '',
+      firstName: mentorProfile.firstName || '',
+      lastName: mentorProfile.lastName || '',
+      email: mentorProfile.email || '',
+      profileImage: mentorProfile.profileImage || '',
+      bio: mentorProfile.bio || '',
+      location: mentorProfile.location || '',
+      timezone: mentorProfile.timezone || 'UTC',
+      languages: mentorProfile.languages || ['English'],
+      achievements: mentorProfile.achievements || '',
+      socialLinks: mentorProfile.socialLinks || {},
+      expertise: mentorProfile.expertise || [],
+      subjects: mentorProfile.subjects || [],
+      teachingStyles: mentorProfile.teachingStyles || [],
+      specializations: mentorProfile.specializations || [],
+      pricing: mentorProfile.pricing || { hourlyRate: 50, currency: 'INR' },
+      preferences: mentorProfile.preferences || {},
+      hourlyRateINR: mentorProfile.hourlyRateINR || 50,
+      sessionDurations: mentorProfile.sessionDurations || [30, 60, 90],
+      scheduleType: mentorProfile.scheduleType || 'manual',
+      weeklySchedule: mentorProfile.weeklySchedule || this.getDefaultWeeklySchedule(),
+      isProfileComplete: mentorProfile.isProfileComplete || false,
+      applicationSubmitted: mentorProfile.applicationSubmitted || false,
+      profileStep: mentorProfile.profileStep || 'basic_info',
+      submittedAt: mentorProfile.submittedAt,
+      rating: mentorProfile.rating || 4.5,
+      totalSessions: mentorProfile.totalSessions || 0,
+      totalStudents: mentorProfile.totalStudents || 0,
+      isOnline: mentorProfile.isOnline || false,
+      isVerified: mentorProfile.isVerified || false,
+      lastSeen: mentorProfile.lastSeen,
+      responseTime: mentorProfile.responseTime || 60,
+      createdAt: mentorProfile.createdAt || new Date().toISOString(),
+      updatedAt: mentorProfile.updatedAt || new Date().toISOString()
+    };
+  }
+
+  private generateDefaultAvatar(firstName?: string, lastName?: string): string {
+    const name = encodeURIComponent(`${firstName || ''} ${lastName || ''}`.trim() || 'Mentor');
+    return `https://ui-avatars.com/api/?name=${name}&background=8B4513&color=fff&size=200`;
+  }
+
+  private getDefaultWeeklySchedule(): WeeklySchedule {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const schedule: WeeklySchedule = {};
+    days.forEach(day => {
+      schedule[day] = { isAvailable: false, timeSlots: [] };
+    });
+    return schedule;
+  }
+
+  private validateWeeklySchedule(schedule: WeeklySchedule): WeeklySchedule | null {
+    try {
+      const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const validatedSchedule: WeeklySchedule = {};
+      for (const day of validDays) {
+        const daySchedule = schedule[day];
+        if (daySchedule) {
+          validatedSchedule[day] = {
+            isAvailable: Boolean(daySchedule.isAvailable),
+            timeSlots: (daySchedule.timeSlots || []).map((slot, index) => ({
+              id: slot.id || `${day}-slot-${index}`,
+              startTime: slot.startTime,
+              endTime: slot.endTime
+            }))
+          };
+        } else {
+          validatedSchedule[day] = { isAvailable: false, timeSlots: [] };
+        }
+      }
+      return validatedSchedule;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Dummy filter metadata for now
+  private async getFilterMetadata() {
+    return {
+      availableExpertise: [],
+      availableSubjects: [],
+      availableLanguages: [],
+      priceRange: { min: 10, max: 200 }
+    };
+  }
 }
 
-export default MentorProfileService.getInstance();
+// Export singleton instance
+const mentorProfileService = MentorProfileService.getInstance();
+export default mentorProfileService;
