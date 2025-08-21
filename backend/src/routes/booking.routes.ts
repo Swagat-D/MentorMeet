@@ -1,69 +1,20 @@
-// backend/src/routes/booking.routes.ts - Updated Routes for Cal.com API v2 Integration
+// backend/src/routes/booking.routes.ts - Updated for Manual Booking Flow
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { validateSchema } from '../validations/auth.validation';
 import bookingController from '../controllers/booking.controller';
-import calComService from '../services/calcom.service';
 import MentorProfileService from '../services/mentorProfile.service';
+import ScheduleGenerationService from '../services/scheduleGeneration.service';
 import { z } from 'zod';
 
 const router = Router();
 
-// Debug endpoint to check Cal.com integration status (public access)
-router.get('/debug/calcom-status', async (req, res) => {
-  try {
-    const healthCheck = await calComService.healthCheck();
-    
-    return res.json({
-      success: true,
-      calcom: {
-        healthy: healthCheck.healthy,
-        apiVersion: 'v2',
-        details: healthCheck.details,
-        suggestions: healthCheck.suggestions
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    return res.json({ 
-      success: false, 
-      error: typeof error === 'object' && error && 'message' in error ? (error as any).message : String(error),
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// Debug endpoint to find mentors with Cal.com integration
-router.get('/debug/mentors-with-calcom', async (req, res) => {
-  try {
-    const mentorsWithSchedule = await MentorProfileService.findMentorsWithSchedule();
-    
-    return res.json({
-      success: true,
-      mentors: mentorsWithSchedule.map(m => ({
-        id: m.userId,
-        profileId: m._id,
-        name: m.displayName,
-        calComUsername: m.calComUsername,
-        calComVerified: m.calComVerified,
-        eventTypesCount: m.calComEventTypes?.length || 0,
-        hourlyRateINR: m.hourlyRateINR
-      }))
-    });
-  } catch (error) {
-    return res.json({ 
-      success: false, 
-      error: typeof error === 'object' && error && 'message' in error ? (error as any).message : String(error) 
-    });
-  }
-});
-
-// Debug endpoint to check specific mentor's Cal.com integration
-router.get('/debug/mentor/:mentorId/calcom', async (req, res) => {
+// Debug endpoint to check mentor's manual schedule
+router.get('/debug/mentor/:mentorId/schedule', async (req, res) => {
   try {
     const { mentorId } = req.params;
     
-    console.log('🔍 Debug: Checking Cal.com integration for mentor:', mentorId);
+    console.log('🔍 Debug: Checking mentor schedule for:', mentorId);
     
     if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.json({
@@ -85,40 +36,27 @@ router.get('/debug/mentor/:mentorId/calcom', async (req, res) => {
       });
     }
 
-    type EventType = {
-      id: number;
-      title: string;
-      length: number;
-      [key: string]: any;
-    };
-    let eventTypes: EventType[] = [];
-    let calcomHealthy = false;
-    let calcomError = null;
-
-    if (mentorProfile.calComUsername && mentorProfile.calComVerified) {
-      try {
-        eventTypes = await calComService.getMentorEventTypes(mentorProfile.calComUsername);
-        calcomHealthy = true;
-      } catch (error: any) {
-        calcomError = error.message;
-      }
-    }
-    
     return res.json({
       success: true,
       mentor: {
         _id: mentorProfile._id,
         userId: mentorProfile.userId,
         displayName: mentorProfile.displayName,
-        calComUsername: mentorProfile.calComUsername,
-        calComVerified: mentorProfile.calComVerified,
         hourlyRateINR: mentorProfile.hourlyRateINR,
-        storedEventTypes: mentorProfile.calComEventTypes || []
+        sessionDurations: mentorProfile.sessionDurations || [60],
+        scheduleType: mentorProfile.scheduleType || 'manual',
+        weeklySchedule: mentorProfile.weeklySchedule || {}
       },
-      calcom: {
-        healthy: calcomHealthy,
-        liveEventTypes: eventTypes,
-        error: calcomError
+      scheduleAnalysis: {
+        hasSchedule: !!mentorProfile.weeklySchedule,
+        availableDays: mentorProfile.weeklySchedule ? 
+          Object.keys(mentorProfile.weeklySchedule).filter(day => 
+            mentorProfile.weeklySchedule[day]?.isAvailable
+          ) : [],
+        totalTimeSlots: mentorProfile.weeklySchedule ? 
+          Object.values(mentorProfile.weeklySchedule).reduce((total: number, day: any) => 
+            total + (day?.timeSlots?.length || 0), 0
+          ) : 0
       }
     });
     
@@ -131,12 +69,12 @@ router.get('/debug/mentor/:mentorId/calcom', async (req, res) => {
   }
 });
 
-// Debug endpoint to test availability for a specific mentor
+// Debug endpoint to test availability generation
 router.get('/debug/mentor/:mentorId/availability/:date', async (req, res) => {
   try {
     const { mentorId, date } = req.params;
     
-    console.log('🔍 Debug: Testing availability for:', { mentorId, date });
+    console.log('🔍 Debug: Testing availability generation for:', { mentorId, date });
     
     const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     
@@ -147,63 +85,32 @@ router.get('/debug/mentor/:mentorId/availability/:date', async (req, res) => {
       });
     }
 
-    if (!mentorProfile.calComUsername || !mentorProfile.calComVerified) {
+    if (!mentorProfile.weeklySchedule) {
       return res.json({
         success: false,
-        error: 'Mentor Cal.com integration not setup',
-        calComUsername: mentorProfile.calComUsername,
-        calComVerified: mentorProfile.calComVerified
-      });
-    }
-
-    let allSlots: any[] = [];
-    let eventTypes: any[] = [];
-    let errors: any[] = [];
-
-    try {
-      eventTypes = await calComService.getMentorEventTypes(mentorProfile.calComUsername);
-      
-      for (const eventType of eventTypes) {
-        try {
-          const slots = await calComService.getAvailableSlots(
-            mentorProfile.calComUsername,
-            eventType.id,
-            date
-          );
-          allSlots.push(...slots.map(slot => ({
-            ...slot,
-            eventTypeTitle: eventType.title,
-            eventTypeDuration: eventType.length
-          })));
-        } catch (eventError: any) {
-          errors.push({
-            eventTypeId: eventType.id,
-            eventTypeTitle: eventType.title,
-            error: eventError.message
-          });
+        error: 'Mentor has no schedule configured',
+        mentorProfile: {
+          displayName: mentorProfile.displayName,
+          hasSchedule: false
         }
-      }
-    } catch (error: any) {
-      errors.push({
-        stage: 'fetch_event_types',
-        error: error.message
       });
     }
+
+    const availableSlots = await ScheduleGenerationService.generateAvailableSlots(mentorId, date);
     
     return res.json({
       success: true,
       mentor: {
         displayName: mentorProfile.displayName,
-        calComUsername: mentorProfile.calComUsername,
-        hourlyRateINR: mentorProfile.hourlyRateINR
+        hourlyRateINR: mentorProfile.hourlyRateINR,
+        sessionDurations: mentorProfile.sessionDurations
       },
-      eventTypes,
-      availableSlots: allSlots,
-      errors,
+      date,
+      weeklySchedule: mentorProfile.weeklySchedule,
+      generatedSlots: availableSlots,
       summary: {
-        eventTypesFound: eventTypes.length,
-        totalSlots: allSlots.length,
-        errorsCount: errors.length
+        totalSlots: availableSlots.length,
+        availableSlots: availableSlots.filter(slot => slot.isAvailable).length
       }
     });
     
@@ -237,7 +144,7 @@ const createBookingSchema = z.object({
       price: z.number().positive(),
       duration: z.number().positive(),
       sessionType: z.enum(['video']),
-      eventTypeId: z.number().positive(), // Cal.com event type ID
+      slotId: z.string(), // Reference to mentor's schedule slot ID
     }),
     sessionType: z.enum(['video']),
     subject: z.string().min(3, 'Subject must be at least 3 characters').max(200, 'Subject too long'),
@@ -254,13 +161,13 @@ const cancelBookingSchema = z.object({
 
 const userBookingsQuerySchema = z.object({
   query: z.object({
-    status: z.enum(['upcoming', 'completed', 'cancelled']).optional(),
+    status: z.enum(['upcoming', 'completed', 'cancelled', 'pending', 'confirmed']).optional(),
     page: z.string().regex(/^\d+$/, 'Page must be a number').optional(),
     limit: z.string().regex(/^\d+$/, 'Limit must be a number').optional(),
   }),
 });
 
-// Main booking endpoints with Cal.com v2 integration
+// Main booking endpoints
 router.post(
   '/available-slots',
   validateSchema(availableSlotsSchema),
@@ -300,135 +207,258 @@ router.put(
   bookingController.cancelBooking
 );
 
-// Cal.com integration endpoints
-router.get('/calcom/health-check', async (req, res) => {
+// Mentor-specific endpoints for session management
+router.get('/mentor/pending-sessions', async (req, res) => {
   try {
-    const healthCheck = await calComService.healthCheck();
+    const mentorId = req.userId;
     
-    return res.json({
-      success: healthCheck.healthy,
-      message: healthCheck.healthy ? 'Cal.com integration is healthy' : 'Cal.com integration has issues',
-      data: healthCheck.details,
-      suggestions: healthCheck.suggestions,
-    });
+    // Get sessions pending mentor acceptance
+    const result = await bookingController.getUserBookings({
+      ...req,
+      query: { 
+        status: 'pending',
+        mentorId // Filter by mentor
+      }
+    } as any, res);
+
+    // Ensure a response is sent
+    return res.json(result);
+    
   } catch (error: any) {
-    console.error('❌ Cal.com health check failed:', error);
+    console.error('❌ Error fetching pending sessions:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to check Cal.com integration status',
+      message: 'Failed to fetch pending sessions',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
 
-router.get('/calcom/mentor/:mentorId/event-types', async (req, res) => {
+// Accept session and provide meeting link
+router.put('/:sessionId/accept', async (req, res) => {
   try {
-    const { mentorId } = req.params;
+    const { sessionId } = req.params;
+    const { meetingUrl, meetingProvider = 'other' } = req.body;
+    const mentorId = req.userId;
     
-    if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (!sessionId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid mentor ID format',
+        message: 'Invalid session ID format',
       });
     }
-
-    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     
-    if (!mentorProfile) {
+    if (!meetingUrl || !meetingUrl.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Meeting URL is required',
+      });
+    }
+    
+    // Validate meeting URL format
+    try {
+      new URL(meetingUrl);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid meeting URL format',
+      });
+    }
+    
+    const { Session } = await import('../models/Session.model');
+    const { notificationService } = await import('../services/notification.service');
+    
+    // Find and update session
+    const session = await Session.findById(sessionId)
+      .populate('studentId', 'firstName lastName email')
+      .populate('mentorId', 'firstName lastName email');
+    
+    if (!session) {
       return res.status(404).json({
         success: false,
-        message: 'Mentor profile not found',
+        message: 'Session not found',
       });
     }
-
-    if (!mentorProfile.calComUsername || !mentorProfile.calComVerified) {
+    
+    // Verify mentor owns this session
+    if (session.mentorId._id.toString() !== mentorId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to manage this session',
+      });
+    }
+    
+    // Check if session is in correct status
+    if (session.status !== 'pending_mentor_acceptance') {
       return res.status(400).json({
         success: false,
-        message: 'Mentor Cal.com integration not configured',
+        message: 'Session is not pending acceptance',
+        currentStatus: session.status,
       });
     }
-
-    const eventTypes = await calComService.getMentorEventTypes(mentorProfile.calComUsername);
+    
+    // Check if session hasn't passed auto-decline time
+    if (new Date() > session.autoDeclineAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Session acceptance deadline has passed',
+      });
+    }
+    
+    // Update session
+    session.status = 'confirmed';
+    session.meetingUrl = meetingUrl.trim();
+    session.meetingProvider = meetingProvider;
+    session.mentorAcceptedAt = new Date();
+    
+    await session.save();
+    
+    // Send confirmation emails
+    try {
+      await notificationService.sendSessionAcceptanceNotification({
+        sessionId: session._id.toString(),
+        mentorEmail: (session.mentorId as any).email,
+        studentEmail: (session.studentId as any).email,
+        mentorName: `${(session.mentorId as any).firstName} ${(session.mentorId as any).lastName}`,
+        studentName: `${(session.studentId as any).firstName} ${(session.studentId as any).lastName}`,
+        subject: session.subject,
+        scheduledTime: session.scheduledTime.toISOString(),
+        duration: session.duration,
+        meetingLink: meetingUrl,
+        meetingProvider,
+      });
+    } catch (emailError) {
+      console.error('⚠️ Failed to send acceptance emails:', emailError);
+      // Don't fail the acceptance for email issues
+    }
     
     return res.json({
       success: true,
-      message: 'Event types retrieved successfully',
+      message: 'Session accepted successfully',
       data: {
-        mentorCalComUsername: mentorProfile.calComUsername,
-        eventTypes,
+        sessionId: session._id,
+        status: session.status,
+        meetingUrl: session.meetingUrl,
+        acceptedAt: session.mentorAcceptedAt,
       },
     });
+    
   } catch (error: any) {
-    console.error('❌ Failed to get mentor event types:', error);
+    console.error('❌ Error accepting session:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to retrieve event types',
+      message: 'Failed to accept session',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
 
-// Test endpoint for specific slot availability
-router.post('/calcom/test-availability', async (req, res) => {
+// Decline session
+router.put('/:sessionId/decline', async (req, res) => {
   try {
-    const { mentorId, eventTypeId, date } = req.body;
+    const { sessionId } = req.params;
+    const { reason } = req.body;
+    const mentorId = req.userId;
     
-    if (!mentorId || !eventTypeId || !date) {
+    if (!sessionId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
         success: false,
-        message: 'mentorId, eventTypeId, and date are required',
+        message: 'Invalid session ID format',
       });
     }
-
-    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
     
-    if (!mentorProfile || !mentorProfile.calComUsername) {
+    const { Session } = await import('../models/Session.model');
+    const { notificationService, paymentService } = await import('../services/notification.service');
+    
+    // Find session
+    const session = await Session.findById(sessionId)
+      .populate('studentId', 'firstName lastName email')
+      .populate('mentorId', 'firstName lastName email');
+    
+    if (!session) {
       return res.status(404).json({
         success: false,
-        message: 'Mentor or Cal.com integration not found',
+        message: 'Session not found',
       });
     }
-
-    const slots = await calComService.getAvailableSlots(
-      mentorProfile.calComUsername,
-      eventTypeId,
-      date
-    );
+    
+    // Verify mentor owns this session
+    if (session.mentorId._id.toString() !== mentorId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to manage this session',
+      });
+    }
+    
+    // Check if session is in correct status
+    if (session.status !== 'pending_mentor_acceptance') {
+      return res.status(400).json({
+        success: false,
+        message: 'Session is not pending acceptance',
+        currentStatus: session.status,
+      });
+    }
+    
+    // Update session status
+    session.status = 'cancelled';
+    session.cancellationReason = reason || 'Declined by mentor';
+    session.cancelledBy = 'mentor';
+    session.cancelledAt = new Date();
+    
+    // Process refund
+    let refundProcessed = false;
+    if (session.price > 0 && session.paymentId) {
+      try {
+        const refundResult = await paymentService.refundPayment(session.paymentId, session.price);
+        if (refundResult.success) {
+          session.refundId = refundResult.paymentId;
+          session.refundStatus = 'processed';
+          session.paymentStatus = 'refunded';
+          refundProcessed = true;
+        }
+      } catch (refundError) {
+        console.error('⚠️ Refund failed:', refundError);
+        session.refundStatus = 'failed';
+      }
+    }
+    
+    await session.save();
+    
+    // Send cancellation emails
+    try {
+      await notificationService.sendCancellationNotification({
+        sessionId: session._id.toString(),
+        mentorEmail: (session.mentorId as any).email,
+        studentEmail: (session.studentId as any).email,
+        mentorName: `${(session.mentorId as any).firstName} ${(session.mentorId as any).lastName}`,
+        studentName: `${(session.studentId as any).firstName} ${(session.studentId as any).lastName}`,
+        subject: session.subject,
+        scheduledTime: session.scheduledTime.toISOString(),
+        cancelledBy: 'mentor',
+        reason: reason || 'Declined by mentor',
+        refundAmount: session.price,
+      });
+    } catch (emailError) {
+      console.error('⚠️ Failed to send cancellation emails:', emailError);
+    }
     
     return res.json({
       success: true,
-      message: 'Availability test completed',
+      message: 'Session declined successfully',
       data: {
-        mentorCalComUsername: mentorProfile.calComUsername,
-        eventTypeId,
-        date,
-        availableSlots: slots,
+        sessionId: session._id,
+        status: session.status,
+        refundProcessed,
+        refundAmount: session.price,
       },
     });
-  } catch (error: any) {
-    console.error('❌ Availability test failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Availability test failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-});
-
-// Clear Cal.com cache endpoint (for development/debugging)
-router.post('/calcom/clear-cache', async (req, res) => {
-  try {
-    calComService.clearCache();
     
-    return res.json({
-      success: true,
-      message: 'Cal.com cache cleared successfully',
-    });
   } catch (error: any) {
+    console.error('❌ Error declining session:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to clear cache',
-      error: error.message,
+      message: 'Failed to decline session',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
@@ -471,6 +501,7 @@ router.post('/:sessionId/rate', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { rating, review } = req.body;
+    const userId = req.userId;
     
     if (!sessionId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
@@ -486,8 +517,44 @@ router.post('/:sessionId/rate', async (req, res) => {
       });
     }
 
-    // TODO: Implement session rating logic
-    // For now, just return success
+    const { Session } = await import('../models/Session.model');
+    
+    const session = await Session.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found',
+      });
+    }
+    
+    const isStudent = session.studentId.toString() === userId;
+    const isMentor = session.mentorId.toString() === userId;
+    
+    if (!isStudent && !isMentor) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to rate this session',
+      });
+    }
+    
+    if (session.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'You can only rate completed sessions',
+      });
+    }
+    
+    // Update rating
+    if (isStudent) {
+      session.studentRating = rating;
+      session.studentReview = review || '';
+    } else {
+      session.mentorRating = rating;
+      session.mentorReview = review || '';
+    }
+    
+    await session.save();
+    
     return res.json({
       success: true,
       message: 'Session rated successfully',
@@ -538,56 +605,17 @@ router.post('/:sessionId/join', async (req, res) => {
   }
 });
 
-// Add to booking.routes.ts
-router.get('/debug/calcom-raw/:username', async (req, res) => {
-  try {
-    const { username } = req.params;
-    
-    const response = await calComService.getRaw(`/event-types?username=${username}`);
-    
-    return res.json({
-      success: true,
-      username,
-      fullResponse: response.data,
-      eventTypeGroups: response.data?.data?.eventTypeGroups,
-      allEventTypesFlat: response.data?.data?.eventTypeGroups?.flatMap((group: any) => 
-        (group.eventTypes || []).map((et: any) => ({
-          id: et.id,
-          title: et.title,
-          slug: et.slug,
-          hidden: et.hidden,
-          disabled: et.disabled,
-          archived: et.archived,
-          teamId: et.teamId,
-          userId: et.userId,
-          ownerId: et.ownerId,
-          length: et.length,
-          price: et.price,
-          status: et.status,
-          createdAt: et.createdAt,
-          updatedAt: et.updatedAt
-        }))
-      )
-    });
-  } catch (error: any) {
-    return res.json({
-      success: false,
-      error: error.message,
-      response: error.response?.data
-    });
-  }
-});
-
 // Health check endpoint
 router.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'Booking system operational with Cal.com v2 integration',
+    message: 'Manual booking system operational',
     timestamp: new Date().toISOString(),
-    integrations: {
-      database: 'connected',
-      calcom: !!process.env.CALCOM_API_KEY,
-      calcomApiVersion: 'v2',
+    features: {
+      manualBooking: true,
+      emailNotifications: true,
+      paymentProcessing: true,
+      autoDecline: true,
     },
   });
 });
@@ -604,11 +632,11 @@ router.use((error: any, req: any, res: any, next: any) => {
     });
   }
   
-  if (error.message?.includes('Cal.com')) {
+  if (error.message?.includes('payment')) {
     return res.status(503).json({
       success: false,
-      message: 'Cal.com service temporarily unavailable',
-      code: 'CALCOM_UNAVAILABLE',
+      message: 'Payment service temporarily unavailable',
+      code: 'PAYMENT_UNAVAILABLE',
     });
   }
   

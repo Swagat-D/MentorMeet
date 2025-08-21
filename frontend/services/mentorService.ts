@@ -1,4 +1,3 @@
-// frontend/services/mentorService.ts - Updated for Real Database Integration
 import ApiService from './api';
 
 export interface MentorProfile {
@@ -51,11 +50,14 @@ export interface MentorProfile {
     cancellationPolicy?: string;
   };
   weeklySchedule: {
-    [key: string]: Array<{
-      startTime: string;
-      endTime: string;
+    [key: string]: {
       isAvailable: boolean;
-    }>;
+      timeSlots: Array<{
+        id: string;
+        startTime: string;
+        endTime: string; 
+      }>;
+    };
   };
   isProfileComplete: boolean;
   applicationSubmitted: boolean;

@@ -1,4 +1,4 @@
-// components/booking/BookingCalendar.tsx - Updated for Cal.com API v2 Integration
+// frontend/components/booking/BookingCalendar.tsx - Updated for Manual Schedule
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -64,6 +64,14 @@ export default function BookingCalendar({
       const isSelected = selectedDate ? 
         date.toDateString() === selectedDate.toDateString() : false;
       
+      // Check if mentor has availability on this day
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const hasAvailability = mentor.weeklySchedule && 
+        mentor.weeklySchedule[dayName] && 
+        mentor.weeklySchedule[dayName].isAvailable &&
+        mentor.weeklySchedule[dayName].timeSlots &&
+        mentor.weeklySchedule[dayName].timeSlots.length > 0;
+      
       days.push({
         date: new Date(date),
         dayNumber: date.getDate(),
@@ -71,11 +79,12 @@ export default function BookingCalendar({
         isToday,
         isPast,
         isSelected,
+        hasAvailability,
       });
     }
     
     return days;
-  }, [currentDate, selectedDate, today]);
+  }, [currentDate, selectedDate, today, mentor.weeklySchedule]);
 
   // Load slots when date is selected
   useEffect(() => {
@@ -96,26 +105,15 @@ export default function BookingCalendar({
       const day = String(date.getDate()).padStart(2, '0');
       const dateString = `${year}-${month}-${day}`;
       
-      console.log('📅 Loading slots for:', dateString);
+      console.log('📅 Loading manual slots for:', dateString);
       
       const slots = await bookingService.getAvailableSlots(mentor._id, dateString);
       
-      // Filter out past slots (additional safety check)
-      const now = new Date();
-      const filteredSlots = slots.filter(slot => {
-        const slotTime = new Date(slot.startTime);
-        return slotTime > now && slot.isAvailable;
-      });
-      
-      // Group slots by event type for better UX
-      const groupedSlots = groupSlotsByEventType(filteredSlots);
-      
-      setAvailableSlots(groupedSlots);
-      console.log('✅ Loaded available slots:', groupedSlots.length);
+      console.log('✅ Loaded available slots:', slots.length);
+      setAvailableSlots(slots);
       
     } catch (error: any) {
       console.error('❌ Error loading slots:', error);
-      
       setErrorMessage(error.message);
       
       // Show user-friendly error dialog
@@ -133,38 +131,23 @@ export default function BookingCalendar({
     }
   };
 
-  const groupSlotsByEventType = (slots: TimeSlot[]): TimeSlot[] => {
-    // Sort slots by start time and event type
-    return slots.sort((a, b) => {
-      const timeCompare = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-      if (timeCompare !== 0) return timeCompare;
-      
-      // If same time, sort by duration (shorter first)
-      return a.duration - b.duration;
-    });
-  };
-
   const getErrorTitle = (errorMessage: string): string => {
     if (errorMessage.includes('Past dates')) return 'Select Future Date';
     if (errorMessage.includes('profile setup')) return 'Profile Incomplete';
-    if (errorMessage.includes('Cal.com integration')) return 'Setup Required';
-    if (errorMessage.includes('session types')) return 'No Session Types';
+    if (errorMessage.includes('schedule')) return 'No Schedule Available';
     if (errorMessage.includes('availability')) return 'Service Unavailable';
     return 'No Available Times';
   };
 
   const getErrorSuggestion = (errorMessage: string): string => {
     if (errorMessage.includes('Past dates')) {
-      return 'For the best experience, please book sessions at least 2 hours in advance. Try selecting tomorrow or a future date.';
+      return 'Please select tomorrow or a future date for booking.';
     }
     if (errorMessage.includes('profile setup')) {
-      return 'This mentor is still setting up their profile. Please check back later or browse other mentors.';
+      return 'This mentor is still setting up their profile. Please check back later.';
     }
-    if (errorMessage.includes('Cal.com integration')) {
-      return 'This mentor is configuring their availability system. Please try again later.';
-    }
-    if (errorMessage.includes('session types')) {
-      return 'This mentor hasn\'t configured any session types yet. Please try another mentor or check back later.';
+    if (errorMessage.includes('schedule')) {
+      return 'This mentor hasn\'t configured their availability schedule yet.';
     }
     if (errorMessage.includes('availability')) {
       return 'Unable to load availability right now. Please check your internet connection and try again.';
@@ -182,6 +165,17 @@ export default function BookingCalendar({
         : 'Please select tomorrow or a future date for booking.';
       
       Alert.alert('Select Future Date', message, [{ text: 'OK' }]);
+      return;
+    }
+    
+    // Check if mentor has availability on this day
+    if (!day.hasAvailability) {
+      const dayName = day.date.toLocaleDateString('en-US', { weekday: 'long' });
+      Alert.alert(
+        'No Availability',
+        `${mentor.displayName} doesn't have availability scheduled for ${dayName}s. Please select a different day.`,
+        [{ text: 'OK' }]
+      );
       return;
     }
     
@@ -226,11 +220,10 @@ export default function BookingCalendar({
     return `₹${price.toLocaleString('en-IN')}`;
   };
 
-  const getEventTypeLabel = (slot: TimeSlot) => {
-    // Generate label based on duration
-    if (slot.duration <= 30) return 'Quick Session';
-    if (slot.duration <= 60) return 'Standard Session';
-    if (slot.duration <= 90) return 'Extended Session';
+  const getDurationLabel = (duration: number) => {
+    if (duration <= 30) return 'Quick Session';
+    if (duration <= 60) return 'Standard Session';
+    if (duration <= 90) return 'Extended Session';
     return 'Long Session';
   };
 
@@ -276,6 +269,19 @@ export default function BookingCalendar({
         </TouchableOpacity>
       </View>
 
+      {/* Mentor Schedule Summary */}
+      {mentor.weeklySchedule && (
+        <View style={styles.scheduleInfo}>
+          <MaterialIcons name="info-outline" size={16} color="#8B7355" />
+          <Text style={styles.scheduleInfoText}>
+            Available: {Object.entries(mentor.weeklySchedule)
+              .filter(([_, daySchedule]) => daySchedule.isAvailable)
+              .map(([day, _]) => day.charAt(0).toUpperCase() + day.slice(1, 3))
+              .join(', ')}
+          </Text>
+        </View>
+      )}
+
       {/* Day Names */}
       <View style={styles.dayNamesContainer}>
         {dayNames.map((day, index) => (
@@ -298,6 +304,7 @@ export default function BookingCalendar({
                   day.isPast && styles.dayButtonPast,
                   day.isSelected && styles.dayButtonSelected,
                   day.isToday && !day.isSelected && styles.dayButtonToday,
+                  day.hasAvailability && day.isCurrentMonth && !day.isPast && styles.dayButtonAvailable,
                 ]}
                 onPress={() => handleDateSelect(day)}
                 disabled={day.isPast || !day.isCurrentMonth}
@@ -311,6 +318,9 @@ export default function BookingCalendar({
                 ]}>
                   {day.dayNumber}
                 </Text>
+                {day.hasAvailability && day.isCurrentMonth && !day.isPast && !day.isSelected && (
+                  <View style={styles.availabilityDot} />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -334,7 +344,7 @@ export default function BookingCalendar({
           {loadingSlots ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#8B4513" />
-              <Text style={styles.loadingText}>Loading available times from Cal.com...</Text>
+              <Text style={styles.loadingText}>Loading available times...</Text>
             </View>
           ) : errorMessage ? (
             <View style={styles.errorContainer}>
@@ -365,7 +375,7 @@ export default function BookingCalendar({
             >
               {availableSlots.map((slot, index) => {
                 const isSelected = selectedSlot?.id === slot.id;
-                const eventTypeLabel = getEventTypeLabel(slot);
+                const durationLabel = getDurationLabel(slot.duration);
                 
                 return (
                   <TouchableOpacity
@@ -401,10 +411,10 @@ export default function BookingCalendar({
                             </Text>
                           </View>
                           <Text style={[
-                            styles.eventTypeLabel,
-                            isSelected && styles.eventTypeLabelSelected
+                            styles.durationLabel,
+                            isSelected && styles.durationLabelSelected
                           ]}>
-                            {eventTypeLabel}
+                            {durationLabel}
                           </Text>
                         </View>
                         
@@ -460,7 +470,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   navButton: {
     width: 40,
@@ -480,6 +490,23 @@ const styles = StyleSheet.create({
     fontSize: isTablet ? 22 : 20,
     fontWeight: 'bold',
     color: '#2A2A2A',
+  },
+
+  // Schedule Info
+  scheduleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F3EE',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  scheduleInfoText: {
+    fontSize: 12,
+    color: '#8B7355',
+    marginLeft: 6,
+    fontWeight: '500',
   },
 
   // Day Names
@@ -513,6 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
     marginHorizontal: 2,
+    position: 'relative',
   },
   dayButtonInactive: {
     opacity: 0.3,
@@ -539,6 +567,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#8B4513',
   },
+  dayButtonAvailable: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
   dayText: {
     fontSize: 14,
     fontWeight: '600',
@@ -552,6 +585,15 @@ const styles = StyleSheet.create({
   },
   dayTextToday: {
     color: '#8B4513',
+  },
+  availabilityDot: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
   },
 
   // Time Slots Section
@@ -714,12 +756,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
-  eventTypeLabel: {
+  durationLabel: {
     fontSize: 12,
     color: '#8B7355',
     fontWeight: '500',
   },
-  eventTypeLabelSelected: {
+  durationLabelSelected: {
     color: '#FFFFFF',
     opacity: 0.9,
   },

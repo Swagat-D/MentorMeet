@@ -1,4 +1,4 @@
-// services/bookingService.ts - Updated with Cal.com API v2 Integration
+// frontend/services/bookingService.ts - Updated for Manual Booking Flow
 import ApiService from './api';
 
 export interface TimeSlot {
@@ -10,7 +10,7 @@ export interface TimeSlot {
   price: number;
   duration: number;
   sessionType: 'video';
-  eventTypeId: number; // Cal.com event type ID
+  slotId: string; // Reference to mentor's schedule slot
 }
 
 export interface BookingRequest {
@@ -29,8 +29,8 @@ export interface BookingResponse {
     bookingId: string;
     sessionId: string;
     paymentId: string;
-    meetingLink?: string;
-    calComBookingUid: string;
+    status: string;
+    autoDeclineAt?: string;
     reminderSet: boolean;
     paymentProcessed: boolean;
   };
@@ -58,14 +58,15 @@ export interface Session {
     type: 'video';
     duration: number;
   };
-  status: 'scheduled' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending_mentor_acceptance' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   meetingLink?: string;
   notes?: string;
   userRating?: number;
   price: number;
   currency: string;
   meetingProvider?: string;
-  calComBookingUid?: string;
+  autoDeclineAt?: string;
+  mentorAcceptedAt?: string;
 }
 
 class BookingService {
@@ -79,11 +80,11 @@ class BookingService {
   }
 
   /**
-   * Get available time slots for a mentor via Cal.com API v2
+   * Get available time slots from mentor's manual schedule
    */
   async getAvailableSlots(mentorId: string, date: string): Promise<TimeSlot[]> {
     try {
-      console.log('📅 Fetching available slots via Cal.com:', { mentorId, date });
+      console.log('📅 Fetching available slots from manual schedule:', { mentorId, date });
 
       const response = await ApiService.post('BOOKING_AVAILABLE_SLOTS', {
         mentorId,
@@ -100,12 +101,10 @@ class BookingService {
               throw new Error('Past dates are not available for booking. Please select tomorrow or a future date.');
             case 'no_profile':
               throw new Error('This mentor hasn\'t completed their profile setup yet.');
-            case 'no_calcom_setup':
-              throw new Error('This mentor hasn\'t set up their Cal.com integration yet.');
-            case 'no_event_types':
-              throw new Error('This mentor hasn\'t configured any session types yet.');
-            case 'calcom_unavailable':
-              throw new Error('Unable to fetch availability. Please try again in a few minutes.');
+            case 'no_schedule':
+              throw new Error('This mentor hasn\'t configured their availability schedule yet.');
+            case 'no_slots_available':
+              throw new Error('No available slots for this date. Try selecting a different date.');
             default:
               throw new Error(response.message || 'Failed to fetch available slots');
           }
@@ -114,7 +113,7 @@ class BookingService {
       }
 
       const slots = response.data || [];
-      console.log('✅ Available slots fetched:', slots.length);
+      console.log('✅ Available slots fetched from manual schedule:', slots.length);
       
       // Sort slots by start time
       return slots.sort((a: TimeSlot, b: TimeSlot) => 
@@ -128,11 +127,11 @@ class BookingService {
   }
 
   /**
-   * Create a booking with payment-first flow
+   * Create a manual booking with payment-first flow
    */
   async createBooking(bookingRequest: BookingRequest): Promise<BookingResponse> {
     try {
-      console.log('🎯 Creating booking with payment-first flow:', bookingRequest);
+      console.log('🎯 Creating manual booking:', bookingRequest);
 
       const response = await ApiService.post('BOOKING_CREATE', bookingRequest);
 
@@ -148,9 +147,6 @@ class BookingService {
           case 'SLOT_UNAVAILABLE':
             errorMessage = 'This time slot is no longer available. Please select another time.';
             break;
-          case 'CALCOM_BOOKING_FAILED':
-            errorMessage = 'Unable to create the meeting. Your payment has been refunded. Please try again.';
-            break;
           default:
             break;
         }
@@ -158,15 +154,15 @@ class BookingService {
         throw new Error(errorMessage);
       }
 
-      console.log('✅ Booking created successfully:', response.data);
+      console.log('✅ Manual booking created successfully:', response.data);
       return {
         success: true,
-        message: 'Booking created successfully! Check your email for meeting details.',
+        message: response.message || 'Booking created successfully! Waiting for mentor acceptance.',
         data: response.data,
       };
 
     } catch (error: any) {
-      console.error('❌ Booking creation failed:', error);
+      console.error('❌ Manual booking creation failed:', error);
       return {
         success: false,
         message: error.message || 'Booking creation failed. Please try again.',
@@ -206,42 +202,9 @@ class BookingService {
   }
 
   /**
-   * Reschedule a booking
-   */
-  async rescheduleBooking(bookingId: string, newTimeSlot: TimeSlot): Promise<BookingResponse> {
-    try {
-      console.log('🔄 Rescheduling booking:', { bookingId, newTimeSlot });
-
-      const response = await ApiService.put('BOOKING_RESCHEDULE', {
-        newTimeSlot,
-      }, {
-        urlParams: { bookingId }
-      });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to reschedule booking');
-      }
-
-      console.log('✅ Booking rescheduled successfully');
-      return {
-        success: true,
-        message: 'Booking rescheduled successfully',
-        data: response.data,
-      };
-
-    } catch (error: any) {
-      console.error('❌ Booking reschedule failed:', error);
-      return {
-        success: false,
-        message: error.message || 'Booking reschedule failed',
-      };
-    }
-  }
-
-  /**
    * Get user's bookings
    */
-  async getUserBookings(status?: 'upcoming' | 'completed' | 'cancelled', page = 1, limit = 10): Promise<{
+  async getUserBookings(status?: 'upcoming' | 'completed' | 'cancelled' | 'pending' | 'confirmed', page = 1, limit = 10): Promise<{
     sessions: Session[];
     pagination: {
       page: number;
@@ -277,7 +240,8 @@ class BookingService {
         price: session.price,
         currency: session.currency || 'INR',
         meetingProvider: session.meetingProvider,
-        calComBookingUid: session.calendarEventId,
+        autoDeclineAt: session.autoDeclineAt,
+        mentorAcceptedAt: session.mentorAcceptedAt,
       }));
 
       console.log('✅ User bookings fetched:', formattedSessions.length);
@@ -324,12 +288,98 @@ class BookingService {
       return {
         ...response.data,
         currency: response.data.currency || 'INR',
-        calComBookingUid: response.data.calendarEventId
       };
 
     } catch (error: any) {
       console.error('❌ Error fetching booking details:', error);
       return null;
+    }
+  }
+
+  /**
+   * Accept a session as a mentor
+   */
+  async acceptSession(sessionId: string, meetingUrl: string, meetingProvider = 'other'): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    try {
+      console.log('✅ Accepting session:', { sessionId, meetingProvider });
+
+      const response = await ApiService.put(`/booking/${sessionId}/accept`, {
+        meetingUrl,
+        meetingProvider,
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to accept session');
+      }
+
+      console.log('✅ Session accepted successfully');
+      return {
+        success: true,
+        message: 'Session accepted successfully. Student has been notified.',
+        data: response.data,
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error accepting session:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to accept session',
+      };
+    }
+  }
+
+  /**
+   * Decline a session as a mentor
+   */
+  async declineSession(sessionId: string, reason?: string): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    try {
+      console.log('❌ Declining session:', { sessionId, reason });
+
+      const response = await ApiService.put(`/booking/${sessionId}/decline`, {
+        reason: reason || 'Declined by mentor',
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to decline session');
+      }
+
+      console.log('✅ Session declined successfully');
+      return {
+        success: true,
+        message: 'Session declined. Student has been refunded.',
+        data: response.data,
+      };
+
+    } catch (error: any) {
+      console.error('❌ Error declining session:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to decline session',
+      };
+    }
+  }
+
+  /**
+   * Get pending sessions for mentor
+   */
+  async getPendingSessions(): Promise<Session[]> {
+    try {
+      console.log('⏳ Fetching pending sessions...');
+
+      const result = await this.getUserBookings('pending');
+      return result.sessions;
+
+    } catch (error: any) {
+      console.error('❌ Error fetching pending sessions:', error);
+      return [];
     }
   }
 
@@ -354,17 +404,20 @@ class BookingService {
     totalSessions: number;
     completedSessions: number;
     upcomingSessions: number;
+    pendingSessions: number;
     totalSpent: number;
     averageRating?: number;
   }> {
     try {
-      const [completed, upcoming] = await Promise.all([
+      const [completed, upcoming, pending] = await Promise.all([
         this.getUserBookings('completed', 1, 100),
         this.getUserBookings('upcoming', 1, 100),
+        this.getUserBookings('pending', 1, 100),
       ]);
 
       const completedSessions = completed.sessions;
       const upcomingSessions = upcoming.sessions;
+      const pendingSessions = pending.sessions;
 
       const ratingsWithValues = completedSessions
         .map(s => s.userRating)
@@ -377,9 +430,10 @@ class BookingService {
       const totalSpent = completedSessions.reduce((sum, session) => sum + session.price, 0);
 
       return {
-        totalSessions: completedSessions.length + upcomingSessions.length,
+        totalSessions: completedSessions.length + upcomingSessions.length + pendingSessions.length,
         completedSessions: completedSessions.length,
         upcomingSessions: upcomingSessions.length,
+        pendingSessions: pendingSessions.length,
         totalSpent,
         averageRating,
       };
@@ -390,6 +444,7 @@ class BookingService {
         totalSessions: 0,
         completedSessions: 0,
         upcomingSessions: 0,
+        pendingSessions: 0,
         totalSpent: 0,
       };
     }
@@ -498,6 +553,47 @@ class BookingService {
     } catch (error: any) {
       console.error('❌ Error joining session:', error);
       return { success: false };
+    }
+  }
+
+  /**
+   * Check if a session needs mentor acceptance
+   */
+  isSessionPendingAcceptance(session: Session): boolean {
+    return session.status === 'pending_mentor_acceptance';
+  }
+
+  /**
+   * Check if a session is confirmed and ready to join
+   */
+  isSessionReady(session: Session): boolean {
+    return session.status === 'confirmed' && !!session.meetingLink;
+  }
+
+  /**
+   * Get time until auto-decline for pending sessions
+   */
+  getTimeUntilAutoDecline(session: Session): number | null {
+    if (!session.autoDeclineAt) return null;
+    
+    const now = new Date().getTime();
+    const autoDeclineTime = new Date(session.autoDeclineAt).getTime();
+    const timeRemaining = autoDeclineTime - now;
+    
+    return timeRemaining > 0 ? timeRemaining : 0;
+  }
+
+  /**
+   * Format time remaining until auto-decline
+   */
+  formatTimeUntilAutoDecline(timeRemaining: number): string {
+    const hours = Math.floor(timeRemaining / (1000 * 60 * 60));
+    const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
     }
   }
 }
