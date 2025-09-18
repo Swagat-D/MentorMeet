@@ -26,7 +26,7 @@ class NetworkDiscoveryService {
   // Most likely IPs based on your backend output
   private static readonly PRIORITY_IPS = [
     '192.168.8.1',      
-    '192.168.145.210',
+    '192.168.68.210',
     '192.168.1.1',      
     '192.168.0.1',      
     '10.0.0.1',         

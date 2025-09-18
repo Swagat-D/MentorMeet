@@ -318,129 +318,170 @@ export default function SessionsScreen() {
   };
 
   const renderSessionCard = (session: Session) => {
-    const statusInfo = getSessionStatusInfo(session);
-    const canJoin = (statusInfo.text === 'Live Now' || statusInfo.text.includes('In')) && session.meetingLink && session.status === 'confirmed';
-    const canCancel = !['completed', 'cancelled'].includes(session.status) && statusInfo.text !== 'Past';
-    const canRate = session.status === 'completed' && !session.userRating;
-    
-    // FIXED: Get proper display name
-    const mentorName = getDisplayName(session.mentor);
-    const studentName = getDisplayName(session.student);
+  const statusInfo = getSessionStatusInfo(session);
+  const canJoin = (statusInfo.text === 'Live Now' || statusInfo.text.includes('In')) && session.meetingLink && session.status === 'confirmed';
+  const canCancel = !['completed', 'cancelled'].includes(session.status) && statusInfo.text !== 'Past';
+  const canRate = session.status === 'completed' && !session.userRating;
+  
+  // Get proper display name
+  const mentorName = getDisplayName(session.mentor);
+  const studentName = getDisplayName(session.student);
 
-    return (
-      <View key={session.id} style={styles.sessionCard}>
-        {/* Session Header */}
-        <View style={styles.sessionHeader}>
-          <View style={styles.sessionHeaderLeft}>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={{ uri: session.mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentorName)}&background=8B4513&color=fff` }}
-                style={styles.mentorAvatar}
+  return (
+    <View key={session.id} style={styles.sessionCard}>
+      {/* Session Header */}
+      <View style={styles.sessionHeader}>
+        <View style={styles.sessionHeaderLeft}>
+          <View style={styles.avatarContainer}>
+            <Image
+              source={{ uri: session.mentor.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(mentorName)}&background=8B4513&color=fff` }}
+              style={styles.mentorAvatar}
+            />
+          </View>
+          <View style={styles.sessionHeaderInfo}>
+            <Text style={styles.sessionMentorName}>{mentorName}</Text>
+            <Text style={styles.sessionSubject} numberOfLines={1}>
+              {session.subject}
+            </Text>
+            <View style={styles.sessionMetaRow}>
+              <MaterialIcons name="schedule" size={14} color="#8B7355" />
+              <Text style={styles.sessionMetaText}>
+                {formatSessionDate(session.date)} • {formatSessionTime(session.date)}
+              </Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={[styles.sessionStatusContainer, { backgroundColor: statusInfo.bgColor }]}>
+          <MaterialIcons 
+            name={statusInfo.icon} 
+            size={14} 
+            color={statusInfo.color} 
+          />
+          <Text style={[styles.sessionStatus, { color: statusInfo.color }]}>
+            {statusInfo.text}
+          </Text>
+        </View>
+      </View>
+
+      {/* Session Details */}
+      <View style={styles.sessionDetails}>
+        <View style={styles.sessionDetailRow}>
+          <MaterialIcons name="timer" size={16} color="#8B7355" />
+          <Text style={styles.sessionDetailText}>{session.duration} minutes</Text>
+        </View>
+        
+        <View style={styles.sessionDetailRow}>
+          <MaterialIcons name="videocam" size={16} color="#8B7355" />
+          <Text style={styles.sessionDetailText}>Video Session</Text>
+        </View>
+        
+        <View style={styles.sessionDetailRow}>
+          <MaterialIcons name="payment" size={16} color="#8B7355" />
+          <Text style={styles.sessionDetailText}>₹{session.price}</Text>
+        </View>
+      </View>
+
+      {/* Meeting URL Status */}
+      <View style={styles.meetingUrlContainer}>
+        <View style={styles.meetingUrlRow}>
+          <MaterialIcons name="link" size={16} color="#8B7355" />
+          <Text style={styles.meetingUrlLabel}>Meeting Link:</Text>
+          {session.meetingLink ? (
+            <TouchableOpacity
+              style={styles.meetingUrlAvailable}
+              onPress={() => openMeetingLink(session.meetingLink!)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.meetingUrlAvailableText}>Available</Text>
+              <MaterialIcons name="launch" size={14} color="#10B981" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.meetingUrlPending}>
+              <Text style={styles.meetingUrlPendingText}>
+                {session.status === 'pending_mentor_acceptance' 
+                  ? 'Awaiting mentor' 
+                  : session.status === 'cancelled'
+                  ? 'Not applicable'
+                  : 'Not provided'}
+              </Text>
+              <MaterialIcons 
+                name={session.status === 'pending_mentor_acceptance' ? 'schedule' : 'info'} 
+                size={14} 
+                color="#F59E0B" 
               />
             </View>
-            <View style={styles.sessionHeaderInfo}>
-              <Text style={styles.sessionMentorName}>{mentorName}</Text>
-              <Text style={styles.sessionSubject} numberOfLines={1}>
-                {session.subject}
-              </Text>
-              <View style={styles.sessionMetaRow}>
-                <MaterialIcons name="schedule" size={14} color="#8B7355" />
-                <Text style={styles.sessionMetaText}>
-                  {formatSessionDate(session.date)} • {formatSessionTime(session.date)}
-                </Text>
-              </View>
-            </View>
-          </View>
-          
-          <View style={[styles.sessionStatusContainer, { backgroundColor: statusInfo.bgColor }]}>
-            <MaterialIcons 
-              name={statusInfo.icon} 
-              size={14} 
-              color={statusInfo.color} 
-            />
-            <Text style={[styles.sessionStatus, { color: statusInfo.color }]}>
-              {statusInfo.text}
-            </Text>
-          </View>
+          )}
         </View>
-
-        {/* Session Details */}
-        <View style={styles.sessionDetails}>
-          <View style={styles.sessionDetailRow}>
-            <MaterialIcons name="timer" size={16} color="#8B7355" />
-            <Text style={styles.sessionDetailText}>{session.duration} minutes</Text>
-          </View>
-          
-          <View style={styles.sessionDetailRow}>
-            <MaterialIcons name="videocam" size={16} color="#8B7355" />
-            <Text style={styles.sessionDetailText}>Video Session</Text>
-          </View>
-          
-          <View style={styles.sessionDetailRow}>
-            <MaterialIcons name="payment" size={16} color="#8B7355" />
-            <Text style={styles.sessionDetailText}>₹{session.price}</Text>
-          </View>
-        </View>
-
-        {/* Session Actions */}
-        {(canJoin || canRate || canCancel) && (
-          <View style={styles.sessionActions}>
-            {canJoin && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.joinButton]}
-                onPress={() => openMeetingLink(session.meetingLink!)}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="videocam" size={18} color="#FFFFFF" />
-                <Text style={styles.joinButtonText}>
-                  {statusInfo.text === 'Live Now' ? 'Join Now' : 'Join Meeting'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            
-            {canRate && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => handleSessionAction(session, 'rate')}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="star" size={18} color="#F59E0B" />
-                <Text style={styles.secondaryButtonText}>Rate</Text>
-              </TouchableOpacity>
-            )}
-            
-            {canCancel && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => handleSessionAction(session, 'cancel')}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="cancel" size={18} color="#DC2626" />
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* User Rating Display */}
-        {session.userRating && (
-          <View style={styles.ratingContainer}>
-            <Text style={styles.ratingLabel}>Your Rating:</Text>
-            <View style={styles.ratingStars}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <MaterialIcons
-                  key={star}
-                  name={star <= session.userRating! ? 'star' : 'star-border'}
-                  size={16}
-                  color="#D4AF37"
-                />
-              ))}
-            </View>
-          </View>
+        
+        {/* Additional meeting info for Google Meet */}
+        {session.meetingLink && (
+          <Text style={styles.meetingProviderText}>
+            Google Meet • Tap to join
+          </Text>
         )}
       </View>
-    );
-  };
+
+      {/* Session Actions */}
+      {(canJoin || canRate || canCancel) && (
+        <View style={styles.sessionActions}>
+          {canJoin && (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.joinButton]}
+              onPress={() => openMeetingLink(session.meetingLink!)}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="videocam" size={18} color="#FFFFFF" />
+              <Text style={styles.joinButtonText}>
+                {statusInfo.text === 'Live Now' ? 'Join Now' : 'Join Meeting'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {canRate && (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={() => handleSessionAction(session, 'rate')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="star" size={18} color="#F59E0B" />
+              <Text style={styles.secondaryButtonText}>Rate</Text>
+            </TouchableOpacity>
+          )}
+          
+          {canCancel && (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.cancelButton]}
+              onPress={() => handleSessionAction(session, 'cancel')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="cancel" size={18} color="#DC2626" />
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* User Rating Display */}
+      {session.userRating && (
+        <View style={styles.ratingContainer}>
+          <Text style={styles.ratingLabel}>Your Rating:</Text>
+          <View style={styles.ratingStars}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <MaterialIcons
+                key={star}
+                name={star <= session.userRating! ? 'star' : 'star-border'}
+                size={16}
+                color="#D4AF37"
+              />
+            ))}
+          </View>
+          {/* If you want to show a review, replace with a valid property from Session, e.g. session.review or remove this block */}
+        </View>
+      )}
+    </View>
+  );
+};
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -951,6 +992,68 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     marginLeft: 6,
   },
+
+  meetingUrlContainer: {
+  paddingTop: 12,
+  borderTopWidth: 1,
+  borderTopColor: '#F3F1EB',
+  marginTop: 12,
+},
+meetingUrlRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginBottom: 4,
+},
+meetingUrlLabel: {
+  fontSize: 14,
+  color: '#8B7355',
+  fontWeight: '500',
+},
+meetingUrlAvailable: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#ECFDF5',
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 6,
+  gap: 4,
+  marginLeft: 'auto',
+},
+meetingUrlAvailableText: {
+  fontSize: 12,
+  color: '#10B981',
+  fontWeight: '600',
+},
+meetingUrlPending: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#FEF3C7',
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 6,
+  gap: 4,
+  marginLeft: 'auto',
+},
+meetingUrlPendingText: {
+  fontSize: 12,
+  color: '#F59E0B',
+  fontWeight: '500',
+},
+meetingProviderText: {
+  fontSize: 11,
+  color: '#8B7355',
+  fontStyle: 'italic',
+  marginLeft: 24, // Align with the icon
+  marginTop: 2,
+},
+userReviewText: {
+  fontSize: 12,
+  color: '#666',
+  fontStyle: 'italic',
+  marginTop: 4,
+  marginLeft: 8,
+},
 
   // Rating
   ratingContainer: {

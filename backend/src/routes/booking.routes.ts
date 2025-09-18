@@ -12,119 +12,6 @@ import { paymentService } from 'services/booking.service';
 
 const router = Router();
 
-// Debug endpoint to check mentor's manual schedule
-router.get('/debug/mentor/:mentorId/schedule', async (req, res) => {
-  try {
-    const { mentorId } = req.params;
-    
-    console.log('🔍 Debug: Checking mentor schedule for:', mentorId);
-    
-    if (!mentorId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.json({
-        success: false,
-        error: 'Invalid ObjectId format',
-        mentorId,
-        format: 'Expected 24 character hex string'
-      });
-    }
-    
-    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
-    
-    if (!mentorProfile) {
-      return res.json({
-        success: false,
-        error: 'Mentor profile not found',
-        mentorId,
-        suggestion: 'Check if mentor has completed profile setup'
-      });
-    }
-
-    return res.json({
-      success: true,
-      mentor: {
-        _id: mentorProfile._id,
-        userId: mentorProfile.userId,
-        displayName: mentorProfile.displayName,
-        hourlyRateINR: mentorProfile.hourlyRateINR,
-        sessionDurations: mentorProfile.sessionDurations || [60],
-        scheduleType: mentorProfile.scheduleType || 'manual',
-        weeklySchedule: mentorProfile.weeklySchedule || {}
-      },
-      scheduleAnalysis: {
-        hasSchedule: !!mentorProfile.weeklySchedule,
-        availableDays: mentorProfile.weeklySchedule ? 
-          Object.keys(mentorProfile.weeklySchedule).filter(day => 
-            mentorProfile.weeklySchedule[day]?.isAvailable
-          ) : [],
-        totalTimeSlots: mentorProfile.weeklySchedule ? 
-          Object.values(mentorProfile.weeklySchedule).reduce((total: number, day: any) => 
-            total + (day?.timeSlots?.length || 0), 0
-          ) : 0
-      }
-    });
-    
-  } catch (error: any) {
-    return res.json({
-      success: false,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-// Debug endpoint to test availability generation
-router.get('/debug/mentor/:mentorId/availability/:date', async (req, res) => {
-  try {
-    const { mentorId, date } = req.params;
-    
-    console.log('🔍 Debug: Testing availability generation for:', { mentorId, date });
-    
-    const mentorProfile = await MentorProfileService.findMentorProfile(mentorId);
-    
-    if (!mentorProfile) {
-      return res.json({
-        success: false,
-        error: 'Mentor profile not found'
-      });
-    }
-
-    if (!mentorProfile.weeklySchedule) {
-      return res.json({
-        success: false,
-        error: 'Mentor has no schedule configured',
-        mentorProfile: {
-          displayName: mentorProfile.displayName,
-          hasSchedule: false
-        }
-      });
-    }
-
-    const availableSlots = await ScheduleGenerationService.generateAvailableSlots(mentorId, date);
-    
-    return res.json({
-      success: true,
-      mentor: {
-        displayName: mentorProfile.displayName,
-        hourlyRateINR: mentorProfile.hourlyRateINR,
-        sessionDurations: mentorProfile.sessionDurations
-      },
-      date,
-      weeklySchedule: mentorProfile.weeklySchedule,
-      generatedSlots: availableSlots,
-      summary: {
-        totalSlots: availableSlots.length,
-        availableSlots: availableSlots.filter(slot => slot.isAvailable).length
-      }
-    });
-    
-  } catch (error: any) {
-    return res.json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
 // Apply authentication to all routes below
 router.use(authenticate);
 
@@ -466,6 +353,90 @@ router.get('/payment/validate', async (req, res) => {
       message: 'Payment validation failed',
       error: error.message,
     });
+  }
+});
+
+// Add meeting URL endpoint (for the email form submission)
+router.post('/:sessionId/meeting-url', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { meetingUrl } = req.body;
+
+    // Validate Google Meet URL
+    const isValidGoogleMeetUrl = (url: string): boolean => {
+      const patterns = [
+        /^https:\/\/meet\.google\.com\/[a-z0-9-]+$/i,
+        /^https:\/\/meet\.google\.com\/[a-z0-9-]+-[a-z0-9-]+-[a-z0-9-]+$/i,
+        /^https:\/\/meet\.google\.com\/lookup\/[a-z0-9-]+$/i
+      ];
+      return patterns.some(pattern => pattern.test(url.trim()));
+    };
+
+    if (!meetingUrl || !isValidGoogleMeetUrl(meetingUrl)) {
+      return res.status(400).send(`
+        <html><body style="font-family:Arial;padding:50px;text-align:center;">
+          <h2 style="color:#DC2626;">Invalid Google Meet URL</h2>
+          <p>Please provide a valid Google Meet URL like:<br>
+          https://meet.google.com/abc-def-ghi</p>
+          <button onclick="history.back()">Go Back</button>
+        </body></html>
+      `);
+    }
+
+    const session = await Session.findById(sessionId)
+      .populate('mentorId', 'firstName lastName name email')
+      .populate('studentId', 'firstName lastName name email');
+
+    if (!session) {
+      return res.status(404).send('<html><body><h2>Session not found</h2></body></html>');
+    }
+
+    // Update session
+    session.meetingUrl = meetingUrl.trim();
+    session.meetingProvider = 'google_meet';
+    if (session.status === 'pending_mentor_acceptance') {
+      session.status = 'confirmed';
+      session.mentorAcceptedAt = new Date();
+    }
+    await session.save();
+
+    // Send confirmation emails (reuse existing notification service)
+    const mentor = session.mentorId as { name?: string; firstName?: string; lastName?: string; email?: string; _id?: any };
+    const student = session.studentId as { name?: string; firstName?: string; lastName?: string; email?: string; _id?: any };
+    const mentorName = mentor.name || `${mentor.firstName ?? ''} ${mentor.lastName ?? ''}`.trim();
+    const studentName = student.name || `${student.firstName ?? ''} ${student.lastName ?? ''}`.trim();
+
+    try {
+      await notificationsService.sendSessionAcceptanceNotification({
+        sessionId: session._id.toString(),
+        mentorId: session.mentorId._id.toString(),
+        studentId: session.studentId._id.toString(),
+        mentorEmail: mentor.email ?? '',
+        studentEmail: student.email ?? '',
+        mentorName,
+        studentName,
+        subject: session.subject,
+        scheduledTime: session.scheduledTime.toISOString(),
+        duration: session.duration,
+        meetingLink: meetingUrl
+      });
+    } catch (emailError) {
+      console.error('Failed to send emails:', emailError);
+    }
+
+    return res.status(200).send(`
+      <html><body style="font-family:Arial;padding:50px;text-align:center;">
+        <div style="max-width:500px;margin:0 auto;padding:40px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+          <div style="font-size:48px;margin-bottom:20px;">✅</div>
+          <h1 style="color:#10B981;">Meeting Link Added!</h1>
+          <p>Session confirmed and both parties have been notified.</p>
+          <a href="${meetingUrl}" style="background:#8B4513;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Test Meeting Link</a>
+        </div>
+      </body></html>
+    `);
+  } catch (error) {
+    console.error('Error updating meeting URL:', error);
+    res.status(500).send('<html><body><h2>Server Error</h2></body></html>');
   }
 });
 

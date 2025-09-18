@@ -1,4 +1,3 @@
-// backend/src/models/Session.model.ts - Fixed Version
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ISession extends Document {
@@ -7,22 +6,19 @@ export interface ISession extends Document {
   mentorId: mongoose.Types.ObjectId;
   subject: string;
   scheduledTime: Date;
-  duration: number; // in minutes
+  duration: number;
   sessionType: 'video' | 'audio' | 'in-person';
   status: 'pending_mentor_acceptance' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   sessionNotes?: string;
   
-  // Manual booking specific fields
   meetingUrl?: string;
   meetingProvider?: 'google_meet' | 'zoom' | 'teams' | 'other';
   mentorAcceptedAt?: Date;
-  autoDeclineAt: Date; // FIXED: Made required
+  autoDeclineAt: Date;
   
-  // Booking details
   slotId: string; 
   bookingSource: 'manual';
   
-  // Payment fields
   price: number;
   currency: string;
   paymentId: string;
@@ -30,23 +26,30 @@ export interface ISession extends Document {
   refundId?: string;
   refundStatus?: 'pending' | 'processed' | 'failed';
   
-  // Cancellation
   cancellationReason?: string;
   cancelledBy?: 'student' | 'mentor' | 'system';
   cancelledAt?: Date;
   
-  // Ratings and feedback
   studentRating?: number;
   mentorRating?: number;
   studentReview?: string;
   mentorReview?: string;
   
-  // Timestamps
   createdAt: Date;
   updatedAt: Date;
 
   // Virtuals
   readonly endTime: Date;
+}
+
+function isValidGoogleMeetUrl(url: string): boolean {
+  const googleMeetPatterns = [
+    /^https:\/\/meet\.google\.com\/[a-z0-9-]+$/i,
+    /^https:\/\/meet\.google\.com\/[a-z0-9-]+-[a-z0-9-]+-[a-z0-9-]+$/i,
+    /^https:\/\/meet\.google\.com\/lookup\/[a-z0-9-]+$/i
+  ];
+  
+  return googleMeetPatterns.some(pattern => pattern.test(url.trim()));
 }
 
 const SessionSchema = new Schema<ISession>({
@@ -98,18 +101,28 @@ const SessionSchema = new Schema<ISession>({
   // Manual booking specific fields
   meetingUrl: {
     type: String,
-    trim: true
+    trim: true,
+    default: null, // CHANGED: Explicitly set to null initially
+    validate: {
+      validator: function(url: string) {
+        // If URL is provided, validate it's a Google Meet URL
+        if (!url) return true;
+        return isValidGoogleMeetUrl(url);
+      },
+      message: 'Meeting URL must be a valid Google Meet link (e.g., https://meet.google.com/xyz-abc-def)'
+    }
   },
   meetingProvider: {
     type: String,
-    enum: ['google_meet', 'zoom', 'teams', 'other']
+    enum: ['google_meet', 'zoom', 'teams', 'other'],
+    default: 'google_meet' // CHANGED: Default to Google Meet since we're enforcing it
   },
   mentorAcceptedAt: {
     type: Date
   },
   autoDeclineAt: {
     type: Date,
-    required: true, // FIXED: Made required
+    required: true,
     index: true
   },
   
@@ -253,7 +266,7 @@ SessionSchema.statics.findConflicting = function(
   return this.find(query);
 };
 
-// FIXED: Pre-save middleware to ensure autoDeclineAt is always set
+// Pre-save middleware to ensure autoDeclineAt is always set
 SessionSchema.pre('save', function(next) {
   // Only set autoDeclineAt if it's not already set and we have scheduledTime
   if (!this.autoDeclineAt && this.scheduledTime) {
@@ -269,6 +282,22 @@ SessionSchema.pre('save', function(next) {
   
   next();
 });
+
+// ADDED: Method to update meeting URL by mentor
+SessionSchema.methods.updateMeetingUrl = function(meetingUrl: string) {
+  if (!isValidGoogleMeetUrl(meetingUrl)) {
+    throw new Error('Please provide a valid Google Meet URL (e.g., https://meet.google.com/xyz-abc-def)');
+  }
+  
+  this.meetingUrl = meetingUrl;
+  this.meetingProvider = 'google_meet';
+  
+  // If mentor is adding meeting URL, consider session as confirmed
+  if (this.status === 'pending_mentor_acceptance') {
+    this.status = 'confirmed';
+    this.mentorAcceptedAt = new Date();
+  }
+};
 
 export const Session = mongoose.model<ISession>('Session', SessionSchema);
 export default Session;

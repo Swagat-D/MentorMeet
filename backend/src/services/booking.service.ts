@@ -494,7 +494,7 @@ class NotificationService {
   /**
    * Get booking confirmation HTML template
    */
-  private getBookingConfirmationHTML(data: any): string {
+private getBookingConfirmationHTML(data: any): string {
     const isForMentor = data.isForMentor;
     const recipientName = isForMentor ? data.mentorName : data.studentName;
     const otherPartyName = isForMentor ? data.studentName : data.mentorName;
@@ -511,8 +511,12 @@ class NotificationService {
     .header { background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%); padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0; }
     .content { padding: 30px 20px; }
     .details { background: #F8F3EE; border: 2px solid #8B4513; border-radius: 12px; padding: 25px; margin: 20px 0; }
+    .meeting-url-form { background: #E3F2FD; border: 2px solid #2196F3; border-radius: 12px; padding: 25px; margin: 20px 0; }
+    .form-input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; margin: 10px 0; box-sizing: border-box; }
+    .form-button { background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
     .meeting-link { background: #10B981; color: white; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
     .footer { background: #F8F3EE; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; border-top: 1px solid #E8DDD1; }
+    .warning-box { background: #FFF3CD; border: 2px solid #F59E0B; border-radius: 8px; padding: 15px; margin: 15px 0; }
   </style>
 </head>
 <body>
@@ -563,25 +567,67 @@ class NotificationService {
           <strong style="color: #2A2A2A;">Duration:</strong> 
           <span style="color: #2A2A2A;">${data.duration} minutes</span>
         </div>
+      </div>
+
+      ${isForMentor && !data.meetingLink ? `
+      <!-- Meeting URL Form for Mentor -->
+      <div class="meeting-url-form">
+        <h3 style="color: #1976D2; margin: 0 0 15px 0; font-size: 18px;">🎥 Provide Meeting Link</h3>
         
-        ${data.meetingLink ? `
-        <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
-          <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Meeting Link:</strong>
-          <a href="${data.meetingLink}" 
-             style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
-                    color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
-                    font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
-            🚀 Join Meeting Now
-          </a>
-        </div>
-        ` : `
-        <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
-          <p style="color: #F59E0B; font-weight: 600; margin: 0;">
-            ⏳ ${isForMentor ? 'Please accept this session and provide a meeting link' : 'Waiting for mentor to accept and provide meeting link'}
+        <p style="color: #2A2A2A; margin-bottom: 15px; font-size: 14px;">
+          Please provide a Google Meet link for this session. The student will receive the link once you submit it.
+        </p>
+        
+        <div class="warning-box">
+          <p style="color: #D97706; margin: 0; font-size: 13px; font-weight: 600;">
+            ⚠️ <strong>Important:</strong> Please use only Google Meet links.<br>
+            Example: https://meet.google.com/abc-def-ghi
           </p>
         </div>
-        `}
+        
+        <form action="${process.env.FRONTEND_URL}/api/sessions/${data.sessionId}/meeting-url" method="POST" style="margin-top: 15px;">
+          <input 
+            type="url" 
+            name="meetingUrl" 
+            class="form-input" 
+            placeholder="https://meet.google.com/your-meeting-code" 
+            required 
+            pattern="https://meet\.google\.com/.*"
+            title="Please enter a valid Google Meet URL"
+            style="margin-bottom: 10px;"
+          />
+          <button type="submit" class="form-button">
+            ✅ Set Meeting Link
+          </button>
+        </form>
+        
+        <p style="color: #666; font-size: 12px; margin-top: 10px; text-align: center;">
+          Once you provide the meeting link, the session will be confirmed and both you and the student will be notified.
+        </p>
       </div>
+      ` : ''}
+
+      ${data.meetingLink ? `
+      <!-- Existing Meeting Link Display -->
+      <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+        <strong style="color: #2A2A2A; display: block; margin-bottom: 10px;">🎥 Meeting Link:</strong>
+        <a href="${data.meetingLink}" 
+           style="display: inline-block; background: linear-gradient(135deg, #10B981 0%, #059669 100%); 
+                  color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
+                  font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+          🚀 Join Meeting Now
+        </a>
+      </div>
+      ` : (!isForMentor ? `
+      <div style="border-top: 1px solid #D2691E; padding-top: 15px; margin-top: 15px;">
+        <p style="color: #F59E0B; font-weight: 600; margin: 0;">
+          ⏳ Waiting for mentor to provide meeting link
+        </p>
+        <p style="color: #666; font-size: 14px; margin: 5px 0 0 0;">
+          You will receive another email with the meeting link once the mentor provides it.
+        </p>
+      </div>
+      ` : '')}
       
       <p style="font-size: 16px; color: #2A2A2A; margin-top: 25px;">
         ${isForMentor 
